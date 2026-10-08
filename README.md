@@ -35,6 +35,12 @@
 
 <img src="docs/images/settings.png" alt="설정 화면" width="320">
 
+### 후원
+
+1Key 는 무료이고 광고도 추적도 없습니다. 도움이 됐다면 설정 맨 아래 **후원하기 › 열기** 에서 휴대폰으로 QR 을 찍어 카카오페이로 후원할 수 있습니다. 후원하지 않아도 모든 기능은 그대로이고, 이 화면은 직접 열 때만 보입니다(알림·팝업 없음). QR 은 빌드에 든 그림이라 화면을 열 때 네트워크를 쓰지 않습니다.
+
+<img src="docs/images/support.png" alt="후원 화면(밝게 · 어둡게)" width="560">
+
 ## 빌드
 
 준비(한 번만): .NET 8 SDK, Visual Studio 2022 Build Tools("C++ 데스크톱 개발" + Windows 11 SDK). 설치 파일까지 만들려면 NSIS.

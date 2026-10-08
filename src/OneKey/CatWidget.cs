@@ -486,6 +486,9 @@ internal static unsafe class CatWidget
     /// <summary>실행 파일에 그 PNG 가 들어 있는가.</summary>
     internal static bool HasPng(string name) => typeof(CatWidget).Assembly.GetManifestResourceInfo(name) is not null;
 
+    /// <summary>LoadPng 로 받은 이미지를 놓는다.</summary>
+    internal static void FreeImage(nint img) { if (img != 0) GdipDisposeImage(img); }
+
     /// <summary>실행 파일에 넣은 PNG 를 GDI+ 이미지로(복사본). 실패하면 0. 받은 쪽이 GdipDisposeImage.</summary>
     internal static nint LoadPng(string name)
     {

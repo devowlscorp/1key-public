@@ -215,6 +215,14 @@ internal static unsafe class Gdiplus
         }
     }
 
+    /// <summary>GDI+ 이미지를 dc 에 w×h 로 매끄럽게(고품질 바이큐빅, 알파 섞기) 그린다. 후원 화면의 고양이(AppSupport.cs).</summary>
+    public static void DrawImageSmooth(nint dc, nint img, int x, int y, int w, int h)
+    {
+        if (img == 0 || w <= 0 || h <= 0 || GdipCreateFromHDC(dc, out nint g) != 0) return;
+        try { GdipSetInterpolationMode(g, 7 /* HighQualityBicubic */); GdipSetPixelOffsetMode(g, 4 /* Half */); GdipDrawImageRectI(g, img, x, y, w, h); }
+        finally { GdipDeleteGraphics(g); }
+    }
+
     [DllImport("gdiplus.dll")] private static extern int GdipCreateBitmapFromScan0(int w, int h, int stride, int format, byte* scan0, out nint bitmap);
     [DllImport("gdiplus.dll")] private static extern int GdipDisposeImage(nint image);
     [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectI(nint graphics, nint image, int x, int y, int w, int h);

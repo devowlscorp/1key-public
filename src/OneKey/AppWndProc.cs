@@ -550,6 +550,7 @@ internal sealed unsafe partial class App
         if (_cur == Screen.Settings && id == IdTheme) { PreviewTheme(); return; }
         if (_cur == Screen.Settings && id == IdLang) { PreviewLanguage(); return; }
         if (id == IdHelp) { ShowHelp(); return; }
+        if (id == Native.IDCANCEL && _cur == Screen.Support) { ShowScreen(Screen.Settings); return; }   // Esc: 후원 화면에서 설정으로
         if (id >= IdTile && id < IdTile + LaunchStore.Max) { if (_cur == Screen.List) OnTile(id - IdTile); return; }
         if (_cur == Screen.PickProgram && id >= IdPkRow && id < IdPkRow + PickMax) { OnPickRow(id - IdPkRow); return; }
         if (_cur == Screen.PickProgram && id == IdPkSearch && code == (int)EN_CHANGE)
@@ -639,6 +640,9 @@ internal sealed unsafe partial class App
             case IdEInAdd: ChangeInputs(-1); return;
             case 336: case 337: case 338: ChangeInputs(id - 335); return;
             case IdRowAdvanced: ShowScreen(Screen.Advanced); return;
+            case IdRowSupport: ShowScreen(Screen.Support); return;
+            case IdSupBack: case IdSupClose: ShowScreen(Screen.Settings); return;
+            case IdSupOpen: OpenSupportLink(0); return;
             case IdSave: SaveList(); return;
 
             // 편집
