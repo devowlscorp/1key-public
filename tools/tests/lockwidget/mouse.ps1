@@ -68,7 +68,8 @@ $r1 = Rect $w; $pt = P 190 90; [T2]::Drag($pt[0], $pt[1], 60, 0); Start-Sleep -M
 Check "drag mascot moves widget (and input follows)" (($r2.L - $r1.L) -ge 50 -and ($hr3.L - $hr2.L) -ge 40) "widget dx $($r2.L - $r1.L), host dx $($hr3.L - $hr2.L)"
 $r = $r2
 # 6) minimize with the − button (logical x = 190-13, y = 13)
-$pt = P 160 15;   # since 0.3.124 the widget-mode button sits between - and x: - is at 190-26-4 (26 px buttons since 0.5.6) [T2]::Click($pt[0], $pt[1]); Start-Sleep -Milliseconds 700
+# since 0.3.124 the widget-mode button sits between - and x: - is at 190-26-4 (26 px buttons since 0.5.6)
+$pt = P 160 15; [T2]::Click($pt[0], $pt[1]); Start-Sleep -Milliseconds 700
 Check "− minimizes" ([T2]::IsIconic($w)) "iconic=$([T2]::IsIconic($w))"
 [void][T2]::ShowWindow($w, 9); Start-Sleep -Milliseconds 600
 # 7) close via SC_CLOSE -> demo exits
