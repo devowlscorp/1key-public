@@ -12,7 +12,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.5.14</Version>
+    <Version>0.5.15</Version>
     <Product>1Key</Product>
     <AssemblyTitle>1Key - 단축키 입력기</AssemblyTitle>
     <Company>1Key</Company>
@@ -29,6 +29,8 @@
     <!-- 마스코트: 고양이(Codex 시안 v15 밝음·v18 어두움의 9방향 시선, 높이 256px — 발 아래 끝·몸 가운데 맞춤). 작업 표시줄 고양이(CatWidget)와
          잠금 위젯의 둘러보기(MascotGreet)가 함께 쓴다 -->
     <EmbeddedResource Include="Assets\cat\cat_*.png" LogicalName="%(Filename)%(Extension)" />
+    <!-- 작업 표시줄 고양이 동작(tools/cat/make_clips.py — 미리 곱한 색 JPEG + 투명도 PNG, 목록 catclips.txt; CatClips.cs) -->
+    <EmbeddedResource Include="Assets\cat\catclip_*.jpg;Assets\cat\catclip_*_a.png;Assets\cat\catclips.txt" LogicalName="%(Filename)%(Extension)" />
     <!-- 후원 화면 QR(tools/support/make_qr.py 가 SupportLinks.cs 의 주소로 만든다 — 실행 중 네트워크 없음) -->
     <EmbeddedResource Include="Assets\support\qr_*.png" LogicalName="%(Filename)%(Extension)" />
   </ItemGroup>

@@ -10,7 +10,7 @@ namespace OneKey;
 /// 창·환경·클릭 규칙은 <see cref="Walker"/> 와 같다(층 창, 항상 위, 활성화 없음, 환경은 <see cref="EnvOk(out Native.RECT, out int, out int)"/>).
 /// Walker 는 걷기 그림(mascot_walk)이 없고 고양이 그림이 있으면 이 클래스로 넘긴다(<see cref="Use"/>).
 /// </summary>
-internal static unsafe class CatWidget
+internal static unsafe partial class CatWidget
 {
     public const string ClassName = "OneKeyCat";
     private static readonly string[] Names = { "up-left", "up", "up-right", "left", "center", "right", "down-left", "down", "down-right" };
@@ -62,6 +62,7 @@ internal static unsafe class CatWidget
 
     public static void Destroy()
     {
+        FlushTestLog();
         _wanted = false;
         HideAll();
         if (_hwnd != 0) { Native.DestroyWindow(_hwnd); _hwnd = 0; }
@@ -94,12 +95,14 @@ internal static unsafe class CatWidget
         Native.KillTimer(_hwnd, TimerCheck);
         _lastCheck = Environment.TickCount64;
         SetTick(GazeMs);
+        ScheduleNextClip(Environment.TickCount64);
         SetProps();
     }
 
     private static void Hide(bool keepCheck)
     {
         CancelPress();
+        StopClip();
         if (_clock != ClockPhase.None) { FlipClock.Hide(); _clock = ClockPhase.None; }
         if (_hwnd != 0)
         {
@@ -232,6 +235,7 @@ internal static unsafe class CatWidget
             GdipDeleteGraphics(g); g = 0;
             GdipDisposeImage(bmp); bmp = 0;
             if (!MakeDib(_w, _h, out _xmem, out _xdib, out _xold, out _xbits)) return false;
+            MeasureSit();   // 동작 그림을 앉은 고양이에 맞춘다(CatClips.cs)
             ok = true;
             return true;
         }
@@ -261,6 +265,7 @@ internal static unsafe class CatWidget
 
     private static void FreeArt()
     {
+        StopClip(); _sitTop = -1;
         if (_xmem != 0 && _xold != 0) Native.SelectObject(_xmem, _xold);
         if (_xdib != 0) Native.DeleteObject(_xdib);
         if (_xmem != 0) Native.DeleteDC(_xmem);
@@ -331,6 +336,7 @@ internal static unsafe class CatWidget
     private static void Tick()
     {
         if (!_shown) return;
+        if (_clipOn || _clipLoading) return;   // 동작 중에는 시선·환경 점검을 쉰다(틱 스레드가 그린다, CatClips.cs)
         long now = Environment.TickCount64;
         // 2초마다 환경을 다시 본다(전체 화면·시스템 패널·작업 표시줄·테마 바뀜). 시계가 움직이는 동안은 미룬다(끊기지 않게)
         if (_clock == ClockPhase.None && now - _lastCheck >= CheckMs)
@@ -358,6 +364,7 @@ internal static unsafe class CatWidget
             if (now - _fadeStart >= FadeMs) _from = _gaze;
         }
         SetTick(anim || _clock != ClockPhase.None ? FastMs : GazeMs);
+        if (!anim && _clock == ClockPhase.None && !(dt.Minute == 59 && dt.Second >= 40)) MaybeStartClip(now);   // 정시 시계 앞 20초에는 시작하지 않는다
     }
 
     // ------------------------------------------------------------------ 정시 알림
@@ -526,7 +533,7 @@ internal static unsafe class CatWidget
                 {
                     bool was = _pressed && Native.GetCapture() == hwnd;
                     int x = (short)(lParam & 0xFFFF), y = (short)((lParam >> 16) & 0xFFFF);
-                    bool inside = x >= 0 && y >= 0 && x < _w && y < _h;
+                    bool inside = x >= 0 && y >= 0 && x < CurW && y < CurH;
                     _pressed = false;
                     if (Native.GetCapture() == hwnd) Native.ReleaseCapture();
                     if (was && inside && _shown && _owner != 0)
@@ -538,6 +545,13 @@ internal static unsafe class CatWidget
                 }
                 case 0x0215:             // WM_CAPTURECHANGED
                     _pressed = false;
+                    return 0;
+                case (int)WM_ANIMTICK:   // 동작 틱(CatClips.cs의 틱 스레드)
+                    Interlocked.Exchange(ref _tickPending, 0);
+                    if ((int)wParam == Volatile.Read(ref _tickGen)) ClipTick();
+                    return 0;
+                case (int)WM_CLIPREADY:
+                    OnClipReady((int)wParam);
                     return 0;
                 case 0x0113:             // WM_TIMER
                     if (wParam == (nint)TimerTick) Tick();
