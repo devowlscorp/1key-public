@@ -12,7 +12,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.4.1</Version>
+    <Version>0.4.3</Version>
     <Product>1Key</Product>
     <AssemblyTitle>1Key - 단축키 입력기</AssemblyTitle>
     <Company>1Key</Company>

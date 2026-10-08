@@ -50,6 +50,11 @@ internal static unsafe class LockWidget
     private static long _animStart;
     private static bool _hover, _tracking, _pressed;
     private static bool _hoverDone;   // 마우스를 올려 시작한 인사가 한 바퀴 끝났다(올린 채로 있으면 서 있는다 — 다시 올리면 또 한 번, 0.3.123)
+    // 넓어질 때의 야옹(공개판, 2026-10-08 사용자: 마스터 비밀번호를 넣도록 넓어지면 입을 벌리고 야옹): 한 번만 하고 정면으로 선다.
+    // 좁아지면 다시 할 수 있다. 입 그림이 없으면(MeowN = 0) 예전처럼 넓은 동안 둘러보기를 되풀이한다
+    private static bool _meowDone;
+    private static bool Wide => _eTo > 0;
+    private static bool Meowing => Wide && MascotGreet.MeowN > 0;
     private static int _pressedPart;             // 1 = −, 2 = ×, 3 = 화살표, 6 = 위젯 모드
 
     /// <summary>
@@ -408,6 +413,9 @@ internal static unsafe class LockWidget
 
     private static long _clickAt;
 
+    /// <summary>지금 그릴 인사 띠의 칸: 야옹 중이면 띠 뒤쪽(LookN 부터), 아니면 둘러보기. 0 = 정면.</summary>
+    private static int GreetCell() => _frame <= 0 ? 0 : Meowing ? Math.Min(Frames - 1, MascotGreet.LookN + _frame) : Math.Min(Frames - 1, _frame);
+
     private static void Recalc()
     {
         if (_hwnd == 0) return;
@@ -420,8 +428,10 @@ internal static unsafe class LockWidget
         {
             _eFrom = _e; _eTo = target; _animStart = Environment.TickCount64;
             Native.SetTimer(_hwnd, TimerAnim, 15, 0);
+            _frame = 0;   // 둘러보기 ↔ 야옹: 처음부터
+            if (target <= 0) _meowDone = false;
         }
-        bool greet = visible && !minimized && (_eTo > 0 || (_hover && !_hoverDone));
+        bool greet = visible && !minimized && (Meowing ? !_meowDone : _eTo > 0 || (_hover && !_hoverDone));
         if (visible && !minimized) Native.SetTimer(_hwnd, TimerBackdrop, BackdropMs, 0); else Native.KillTimer(_hwnd, TimerBackdrop);
         if (greet) Native.SetTimer(_hwnd, TimerGreet, GreetMs, 0);
         else { Native.KillTimer(_hwnd, TimerGreet); if (_frame != 0) { _frame = 0; Render(); } }
@@ -566,7 +576,7 @@ internal static unsafe class LockWidget
             {
                 float mw = MasW;
                 int dx = S(W / 2 - mw / 2), dy = S(MasTop), dw = S(mw), dh = S(MasH);
-                GdipDrawImageRectRectI(g, _sprite, dx, dy, dw, dh, MascotGreet.Cell(_frame, Frames) * _spriteW, 0, _spriteW, _spriteH, 2, 0, 0, 0);
+                GdipDrawImageRectRectI(g, _sprite, dx, dy, dw, dh, GreetCell() * _spriteW, 0, _spriteW, _spriteH, 2, 0, 0, 0);
             }
         }
         finally { GdipDeleteGraphics(g); }
@@ -970,8 +980,9 @@ internal static unsafe class LockWidget
                     if (wParam == (nint)TimerAnim) TickAnim();
                     else if (wParam == (nint)TimerGreet)
                     {
-                        _frame = (_frame + 1) % MascotGreet.Period(Frames);
-                        if (_frame == 0 && _eTo <= 0 && _hover) { _hoverDone = true; Recalc(); }   // 마우스로 시작한 인사는 한 바퀴만
+                        _frame = (_frame + 1) % (Meowing ? MascotGreet.MeowN : Math.Max(1, MascotGreet.LookN));
+                        if (_frame == 0 && Meowing) { _meowDone = true; Recalc(); }                       // 야옹은 한 번만
+                        else if (_frame == 0 && _eTo <= 0 && _hover) { _hoverDone = true; Recalc(); }   // 마우스로 시작한 인사는 한 바퀴만
                         Render();
                     }
                     else if (wParam == (nint)TimerBackdrop) { if (_e < 0.05 && CheckBackdrop()) Render(); }
