@@ -8,7 +8,7 @@ Output in src/OneKey/Assets/cat/:
                        cat is SIT_H px tall; colour PREMULTIPLIED by alpha (black where transparent), JPEG q88
   catclip_<name>_a.png the strip's alpha as an 8-bit grey PNG (the app joins the two into one premultiplied strip — the in-house
                        0.3.121 way: an RGBA PNG strip was 3-4x bigger)
-  catclips.txt         one line per motion: name frames cellW cellH anchorX feetY sitH [x:1 = test/sequence only]
+  catclips.txt         one line per motion: name frames cellW cellH anchorX feetY sitH [x:1 = not a rest motion (walk parts)]
                        anchorX = the sitting cat's centre in the cell, feetY = its feet line from the cell top
   py -3.12 tools/cat/make_clips.py <final frames dir> <chain dir>
 """
@@ -66,11 +66,19 @@ if __name__ == "__main__":
         fr = load(final / m)
         sit = sit or bbox(fr[0])
         lines.append(strip(m, fr, bbox(fr[0])))
-    # walk: the joined chain from the first M02 frame to the last M02r frame (turn, three steps with the RIFE seams, turn back)
+    # walk (0.5.15-D, user: walk around like the in-house edition): from the joined chain, two strips that share the front-sit reference
+    # (same scale and anchor, so the app can switch between them in place):
+    #   WT = turn out: M02 (front sit -> stand -> side) + the RIFE seam into the walk (the app plays it backwards to turn back)
+    #   WL = one walk cycle of M03 (16 frames, cyclic: frame 16 == frame 0) - the app repeats it and moves the window
     meta = json.loads((chain / "chain.json").read_text(encoding="utf-8"))["frames"]
-    idx = [i for i, (lab, _) in enumerate(meta) if lab in ("M02", "M03", "M02r") or (lab == "J" and 0 < i < len(meta) and any(m[0] in ("M02", "M03", "M02r") for m in meta[max(0, i - 3):i + 4]))]
-    walk = [np.asarray(Image.open(chain / "chain" / f"{i:04d}.png").convert("RGBA")) for i in range(idx[0], idx[-1] + 1)]
-    lines.append(strip("W", walk, bbox(walk[0]), " x:1"))
+    labs = [lab for lab, _ in meta]
+    m03 = labs.index("M03")
+    turn = list(range(0, m03))                       # M02 + seam
+    cycle = list(range(m03, m03 + 16))
+    load_c = lambda ids: [np.asarray(Image.open(chain / "chain" / f"{i:04d}.png").convert("RGBA")) for i in ids]
+    ref = bbox(load_c([0])[0])                       # front sit of the chain
+    lines.append(strip("WT", load_c(turn), ref, " x:1"))
+    lines.append(strip("WL", load_c(cycle), ref, " x:1"))
     (OUT / "catclips.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     total = sum(p.stat().st_size for p in OUT.glob("catclip_*"))
     print("total", total // 1024, "KB")
