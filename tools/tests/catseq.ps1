@@ -39,7 +39,7 @@ function Analyze([string]$log, [bool]$shown) {
   for ($c = 0; $c -lt $starts.Count; $c++) {
     $s = $starts[$c]; $end = if ($c + 1 -lt $starts.Count) { $starts[$c + 1].at } else { $ticks.Count }
     $seg = @($ticks | Select-Object -Skip $s.at -First ($end - $s.at))
-    $frames = @($seg | Where-Object { $_.what -match ('^' + [regex]::Escape($s.label) + ' (\d+) s\d+$') })
+    $frames = @($seg | Where-Object { $_.what -match ('^' + [regex]::Escape($s.label) + ' (\d+) s\d+( c\S+ x-?\d+)?$') })
     $endTick = @($seg | Where-Object { $_.what -eq 'S' })
     if ($c + 1 -eq $starts.Count -and $endTick.Count -eq 0) { $cut = " (last start $($s.label) cut off by the end of the run, not judged)"; break }
     $judged++

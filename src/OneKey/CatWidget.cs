@@ -87,6 +87,7 @@ internal static unsafe partial class CatWidget
         if (!EnsureWindow()) { _why = 9; SetProps(); return; }
         if (_mem == 0 || dpi != _dpi || light != _light) { FreeArt(); _dpi = dpi; _light = light; if (!BuildArt()) { FreeArt(); _why = 8; RetryLater(); return; } }
         _work = work;
+        _posX = int.MinValue;   // 보일 때마다 집에서
         _gaze = _from = GazeNow(Environment.TickCount64); _pending = -1; _fadeStart = 0;
         if (!Render()) { FreeArt(); _why = 11; RetryLater(); return; }
         _shown = true; _why = 0; _showGen++;
@@ -277,7 +278,8 @@ internal static unsafe partial class CatWidget
         _dpi = 0;
     }
 
-    private static int WinX => _work.right - _w - (int)Math.Round(MarginLogical * _dpi / 96.0);
+    /// <summary>앉은 고양이 창의 왼쪽: 집(작업 표시줄 오른쪽 끝) 또는 걷기로 간 자리(다니는 범위 안 — CatClips.cs).</summary>
+    private static int WinX => _posX == int.MinValue ? HomeX : Math.Clamp(_posX, MinX, HomeX);
     private static int WinY => _work.bottom - _h;
 
     /// <summary>지금 시선 그림(시선이 막 바뀌었으면 앞 그림과 섞어서)을 제자리에 내보낸다.</summary>
@@ -322,6 +324,7 @@ internal static unsafe partial class CatWidget
     private static int GazeNow(long now)
     {
         if (_clock != ClockPhase.None) return Up;
+        if (_wantFront) return Center;   // 다음 동작을 하려고 정면을 본다(CatClips.MaybeStartClip)
         if (!Native.GetCursorPos(out Native.POINT p)) return Center;
         if (p.x != _lastCursor.x || p.y != _lastCursor.y) { _lastCursor = p; _lastMove = now; }
         if (now - _lastMove > IdleMs) return Center;
@@ -364,7 +367,7 @@ internal static unsafe partial class CatWidget
             if (now - _fadeStart >= FadeMs) _from = _gaze;
         }
         SetTick(anim || _clock != ClockPhase.None ? FastMs : GazeMs);
-        if (!anim && _clock == ClockPhase.None && !(dt.Minute == 59 && dt.Second >= 40)) MaybeStartClip(now);   // 정시 시계 앞 20초에는 시작하지 않는다
+        if (!anim && _clock == ClockPhase.None) MaybeStartClip(now);   // 정시 시계 앞(:59:20 부터)에는 시작하지 않는다(MaybeStartClip)
     }
 
     // ------------------------------------------------------------------ 정시 알림
@@ -445,7 +448,8 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestWalkerShows", _showGen);
         Native.SetPropW(_owner, "OneKeyTestWalkerTimer", _hwnd != 0 && _shown ? 1 : 0);
         Native.SetPropW(_owner, "OneKeyTestCatGaze", _gaze);
-        Native.SetPropW(_owner, "OneKeyTestCatLight", _shown ? (_light ? 2 : 1) : 0);   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
+        Native.SetPropW(_owner, "OneKeyTestCatLight", _shown ? (_light ? 2 : 1) : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatX", _shown ? WinX : 0);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
     /// <summary>시험: 지정 배율로 밝은·어두운 띠(9장)와, 커서 9자리에 대한 시선 표를 dir 에 남긴다.</summary>

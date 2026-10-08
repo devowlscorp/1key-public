@@ -6,37 +6,54 @@ namespace OneKey;
 /// <summary>
 /// 작업 표시줄 고양이의 동작(2026-10-09 사용자: 사내판처럼 모든 장을 검사하고 이어 붙인 뒤 앱에 넣고, 131-A~L 처럼 장 누락·지연이 없는지 시험).
 /// 그림: Assets/cat/catclip_&lt;이름&gt;.jpg(미리 곱한 색) + _a.png(투명도) — tools/cat/make_clips.py 가 검사한 장들로 만든다. catclips.txt 한 줄 =
-/// 이름 장수 칸폭 칸높이 앉은고양이가운데x 발선y 앉은키 [x:1 = 차례 시험에서만].
-/// 재생: 고해상도 대기 타이머 스레드가 62.5 ms(16 fps)마다 창에 틱을 보내고, 틱마다 정확히 한 장(시간으로 장을 고르지 않는다 — 사내판 131-B 의
+/// 이름 장수 칸폭 칸높이 앉은고양이가운데x 발선y 앉은키 [x:1 = 쉬는 동작이 아님(걷기 부품)].
+/// 0.5.15-D(2026-10-09 사용자: "아티 버전처럼 다양한 동작으로 돌아다니는 고양이"): 쉬었다가(5~14초, 커서 쪽을 쳐다본다) 걷기 55 % · 쉬는 동작 45 %.
+/// 걷기 = 돌아서기(WT, 앉기 → 서기 → 옆) → 걸음 주기(WL 16장)를 몇 번 되풀이하며 창을 옮김 → 돌아서기를 거꾸로 → 새 자리에 앉아 다시 쳐다본다.
+/// 다니는 범위는 작업 표시줄 오른쪽 5분의 1(사내판과 같음). 그림은 오른쪽을 보는 것뿐이라 왼쪽으로 갈 때는 좌우를 뒤집는다.
+/// 재생: 고해상도 대기 타이머 스레드가 62.5 ms(16 fps)마다 창에 틱을 보내고, 틱마다 정확히 한 걸음(시간으로 장을 고르지 않는다 — 사내판 131-B 의
 /// 한 장 두 번·다음 장 건너뜀이 없게). 그림 띠는 다른 스레드에서 풀고 줄인 뒤 시작한다(시작 멈춤 없음, 사내판 131-D/E).
-/// 언제: 커서가 20초 넘게 멈춰 고양이가 정면을 볼 때, 45~120초에 한 번 쉬는 동작 하나(밝은 테마만 — 검은 고양이 동작 그림은 아직 없다).
-/// 시험 모드: ONEKEY_TEST_CAT_SEQ=1 이면 목록 순서대로 모든 동작(x:1 포함)을 0.6초 사이를 두고 되풀이하고, ONEKEY_TEST_CAT_LOG 파일에
-/// 틱마다 간격·일한 시간·동작/장·내보내기를 적는다(tools/tests/catseq.ps1 이 판정).
+/// 밝은 고양이만(검은 고양이 동작 그림은 아직 없다 — 어두우면 쳐다보기만).
+/// 시험 모드: ONEKEY_TEST_CAT_SEQ=1 이면 목록 순서대로 모든 그림(x:1 포함)을 0.6초 사이를 두고 되풀이하고(catseq.ps1), ONEKEY_TEST_CAT_WALK=1 이면
+/// 걷기만 0.6초 사이로 되풀이한다(catwalk.ps1). 둘 다 ONEKEY_TEST_CAT_LOG 파일에 틱마다 간격·일한 시간·걸음·창 자리를 적는다.
 /// </summary>
 internal static unsafe partial class CatWidget
 {
     private sealed class ClipInfo { public string Name = ""; public int Frames, CellW, CellH, AnchorX, FeetY, SitH; public bool SeqOnly; }
     private sealed class ClipArt { public ClipInfo Info = null!; public int Gen, CellW, CellH; public uint[] Px = Array.Empty<uint>(); }
+    /// <summary>재생 한 걸음: 어느 그림의 몇 번째 장, 좌우 뒤집기, 시작 자리에서 옆으로 간 거리(px, 걷기).</summary>
+    private readonly record struct PlayStep(int Art, int Cell, bool Mirror, double Dx);
 
     internal static readonly bool SeqTest = Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_SEQ") == "1";
+    internal static readonly bool WalkTest = Program.IsTestMode && !SeqTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_WALK") == "1";
     private const int ClipTickMs = 62, BlendFrames = 3, SeqGapMs = 600;
     private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
+    /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼. 앞발이 땅을 미는 빠르기(약 4.5)와 거의 움직이지 않는 뒷발 사이.</summary>
+    private const double WalkStripPx = 3.6;
+    private const int WalkCycle = 16;
 
     private static ClipInfo[]? _clips;
     private static bool _clipOn, _clipLoading;
     private static int _clipGen, _clipFrame, _seqNext, _clipLast = -1;
-    private static ClipArt? _art;
+    private static ClipArt[] _arts = Array.Empty<ClipArt>();
+    private static PlayStep[] _steps = Array.Empty<PlayStep>();
+    private static string _playName = "";
     private static long _nextClipAt;
+    private static bool _wantFront;               // 다음 동작을 하려고 정면을 본다(GazeNow)
     private static readonly Random _rnd = new();
-    // 지금 동작 창(화면 좌표·크기)과 그 그림(_cxbits)
-    private static int _cx, _cy, _ccw, _cch;
+    // 지금 동작 창(화면 좌표·크기)과 그 그림(_cxbits, 한 줄 _cxStride 픽셀 — 그림마다 칸 크기가 달라 가장 큰 칸으로 만든다)
+    private static int _cx, _cy, _ccw, _cch, _cxStride;
     private static nint _cxmem, _cxdib, _cxold, _cxbits;
     // 정면 그림의 앉은 고양이(칸 안 좌표): 동작 그림을 같은 키·발선·가운데에 맞춘다
     private static int _sitTop = -1, _sitBot, _sitCx;
-    private static volatile ClipArt? _ready;
+    private static volatile ClipArt[]? _ready;
+    // 앉은 고양이 창의 왼쪽(화면 좌표). int.MinValue = 집(작업 표시줄 오른쪽 끝, 보일 때마다 여기서 시작). 걷기가 끝나면 간 자리
+    private static int _posX = int.MinValue, _baseX;
 
     private static int CurW => _clipOn ? _ccw : _w;
     private static int CurH => _clipOn ? _cch : _h;
+    private static int HomeX => _work.right - _w - (int)Math.Round(MarginLogical * _dpi / 96.0);
+    /// <summary>다니는 범위의 왼쪽 끝(앉은 고양이 창 왼쪽): 작업 표시줄 오른쪽 5분의 1(사내판과 같음 — 너무 넓지 않게).</summary>
+    private static int MinX => Math.Min(HomeX, _work.right - (_work.right - _work.left) / 5);
 
     /// <summary>catclips.txt(실행 파일에 든 목록). 없으면 빈 목록.</summary>
     private static ClipInfo[] Clips()
@@ -62,6 +79,8 @@ internal static unsafe partial class CatWidget
         return _clips = list.ToArray();
     }
 
+    private static int ClipIndex(string name) => Array.FindIndex(Clips(), c => c.Name == name);
+
     /// <summary>정면(가운데) 그림에서 앉은 고양이의 위·아래·가운데를 잰다(BuildArt 뒤).</summary>
     private static void MeasureSit()
     {
@@ -76,37 +95,98 @@ internal static unsafe partial class CatWidget
         _sitTop = top; _sitBot = bot + 1; _sitCx = (left + right + 1) / 2;
     }
 
-    /// <summary>쉬는 동작을 시작할 때인가(Tick 에서, 시선 모드일 때).</summary>
+    /// <summary>
+    /// 다음 동작을 시작할 때인가(Tick 에서, 시선 모드일 때). 때가 되면 먼저 정면을 보고(시선 섞기 0.16초), 정면이 되면 걷기 55 % · 쉬는 동작 45 %.
+    /// 정시 시계 앞(:59:20 부터)에는 시작하지 않는다 — 걷기는 길면 20초 가까이 걸린다.
+    /// </summary>
     private static void MaybeStartClip(long now)
     {
-        if (_clipOn || _clipLoading || _clock != ClockPhase.None || _pressed || _hwnd == 0) return;
+        if (_clipOn || _clipLoading || _clock != ClockPhase.None || _pressed || _hwnd == 0) { _wantFront = false; return; }
         if (SeqTest) { if (now >= _nextClipAt) StartClip(NextSeq()); return; }
-        if (!_light || _gaze != Center || _from != _gaze || now - _lastMove <= IdleMs || now < _nextClipAt) return;
+        var dt = DateTime.Now;
+        if (!_light || now < _nextClipAt || (dt.Minute == 59 && dt.Second >= 20)) { _wantFront = false; return; }
+        _wantFront = true;
+        if (_gaze != Center || _from != _gaze) return;
+        _wantFront = false;
+        if ((WalkTest || _rnd.Next(100) < 55) && StartWalk()) return;
+        if (WalkTest) { ScheduleNextClip(now); return; }
         var all = Clips();
         var rest = Enumerable.Range(0, all.Length).Where(i => !all[i].SeqOnly && i != _clipLast).ToArray();
-        if (rest.Length == 0) return;
+        if (rest.Length == 0) { ScheduleNextClip(now); return; }
         StartClip(rest[_rnd.Next(rest.Length)]);
     }
 
     private static int NextSeq() { var all = Clips(); if (all.Length == 0) return -1; int i = _seqNext % all.Length; _seqNext = i + 1; return i; }
 
-    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest ? SeqGapMs : 45_000 + _rnd.Next(75_000));
+    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest ? SeqGapMs : 5_000 + _rnd.Next(9_000));
 
-    /// <summary>그 동작의 그림 띠를 다른 스레드에서 지금 배율로 준비한다. 다 되면 WM_CLIPREADY 로 시작(그동안 시선 그림 그대로).</summary>
+    /// <summary>쉬는 동작(또는 차례 시험의 그림) 하나: 그 그림의 모든 장을 차례로, 제자리에서.</summary>
     private static void StartClip(int index)
     {
         var all = Clips();
         if (index < 0 || index >= all.Length || _sitTop < 0) { ScheduleNextClip(Environment.TickCount64); return; }
         _clipLast = index;
-        var info = all[index];
-        double k = (_sitBot - _sitTop) / (double)info.SitH;
+        var steps = new PlayStep[all[index].Frames];
+        for (int i = 0; i < steps.Length; i++) steps[i] = new PlayStep(0, i, false, 0);
+        StartPlay(all[index].Name, new[] { all[index] }, steps);
+    }
+
+    /// <summary>
+    /// 걷기: 방향·걸음 주기 수는 매번 무작위(사내판처럼 — 짧게 2~3번 20 %, 보통 4~6번 50 %, 길게 7~9번 30 %, 한 번 = 1초), 범위 끝 가까이면 안쪽으로.
+    /// 갈 자리가 한 주기만큼도 없으면 false(쉬는 동작을 한다).
+    /// </summary>
+    private static bool StartWalk()
+    {
+        int it = ClipIndex("WT"), il = ClipIndex("WL");
+        if (it < 0 || il < 0 || _sitTop < 0) return false;
+        var all = Clips();
+        var turn = all[it]; var loop = all[il];
+        if (loop.Frames != WalkCycle) return false;
+        double k = (_sitBot - _sitTop) / (double)loop.SitH;
+        double dx = WalkStripPx * k, cyclePx = dx * WalkCycle;
+        int x = WinX;
+        double roomL = x - MinX, roomR = HomeX - x;
+        int dir;
+        if (roomL < cyclePx && roomR < cyclePx) return false;
+        if (roomL < cyclePx) dir = 1;
+        else if (roomR < cyclePx) dir = -1;
+        else
+        {
+            double pos = (x - MinX) / Math.Max(1.0, HomeX - MinX);   // 0 = 왼쪽 끝, 1 = 집
+            dir = pos > 0.8 ? (_rnd.Next(4) == 0 ? 1 : -1) : pos < 0.2 ? (_rnd.Next(4) == 0 ? -1 : 1) : _rnd.Next(2) == 0 ? -1 : 1;
+            if ((dir < 0 ? roomL : roomR) < cyclePx) dir = -dir;
+        }
+        int r = _rnd.Next(100);
+        int cycles = r < 20 ? 2 + _rnd.Next(2) : r < 70 ? 4 + _rnd.Next(3) : 7 + _rnd.Next(3);   // 돌아서기·돌아오기가 3.4초씩이라 걷는 쪽을 길게
+        cycles = Math.Max(1, Math.Min(cycles, (int)Math.Floor((dir < 0 ? roomL : roomR) / cyclePx)));
+        if (WalkTest) cycles = Math.Min(cycles, 2);
+        bool m = dir < 0;
+        var steps = new List<PlayStep>();
+        for (int i = 0; i < turn.Frames; i++) steps.Add(new PlayStep(0, i, m, 0));               // 앉기 → 서기 → 옆
+        double moved = 0;
+        for (int c = 0; c < cycles; c++)
+            for (int i = 0; i < WalkCycle; i++) { moved += dir * dx; steps.Add(new PlayStep(1, i, m, moved)); }
+        moved += dir * dx; steps.Add(new PlayStep(1, 0, m, moved));                                // 주기 첫 장(= 끝 다음 장)에서 멈춘다
+        for (int i = turn.Frames - 1; i >= 0; i--) steps.Add(new PlayStep(0, i, m, moved));     // 거꾸로: 옆 → 서기 → 앉기
+        LogLine($"walkplan dir {dir} cycles {cycles} dx {dx:0.000} from {x} min {MinX} home {HomeX}");
+        StartPlay("walk", new[] { turn, loop }, steps.ToArray());
+        return true;
+    }
+
+    /// <summary>그림 띠들을 다른 스레드에서 지금 배율로 준비한다. 다 되면 WM_CLIPREADY 로 시작(그동안 시선 그림 그대로).</summary>
+    private static void StartPlay(string name, ClipInfo[] infos, PlayStep[] steps)
+    {
+        double k = (_sitBot - _sitTop) / (double)infos[0].SitH;
         int gen = ++_clipGen;
         nint hwnd = _hwnd;
         _clipLoading = true;
+        _playName = name; _steps = steps;
         ThreadPool.QueueUserWorkItem(_ =>
         {
-            var art = PrepareClip(info, k, gen);
-            _ready = art;
+            var arts = new ClipArt[infos.Length];
+            for (int i = 0; i < infos.Length; i++)
+                if ((arts[i] = PrepareClip(infos[i], k, gen)!) is null) { arts = null!; break; }
+            _ready = arts;
             Native.PostMessageW(hwnd, WM_CLIPREADY, gen, 0);
         });
     }
@@ -166,52 +246,56 @@ internal static unsafe partial class CatWidget
         }
     }
 
-    /// <summary>준비가 끝났다: 동작 창 자리를 정하고 틱을 시작한다(첫 그림은 첫 틱에).</summary>
+    /// <summary>준비가 끝났다: 동작 창(가장 큰 칸)을 만들고 틱을 시작한다(첫 그림은 첫 틱에).</summary>
     private static void OnClipReady(int gen)
     {
-        var art = _ready; _ready = null;
+        var arts = _ready; _ready = null;
         _clipLoading = false;
-        if (art is null || art.Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed) { ScheduleNextClip(Environment.TickCount64); return; }
+        if (arts is null || arts.Length == 0 || arts[0].Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed) { ScheduleNextClip(Environment.TickCount64); return; }
         FreeClipDib();
-        if (!MakeDib(art.CellW, art.CellH, out _cxmem, out _cxdib, out _cxold, out _cxbits)) { FreeClipDib(); ScheduleNextClip(Environment.TickCount64); return; }
-        double k = art.CellW / (double)art.Info.CellW;
-        _ccw = art.CellW; _cch = art.CellH;
-        _cx = WinX + _sitCx - (int)Math.Round(art.Info.AnchorX * k);
-        _cy = WinY + _sitBot - (int)Math.Round(art.Info.FeetY * k);
-        _cx = Math.Clamp(_cx, _work.left, Math.Max(_work.left, _work.right - _ccw));
-        _art = art; _clipOn = true; _clipFrame = -1;
-        LogClipStart(art.Info);
+        int mw = 0, mh = 0;
+        foreach (var a in arts) { mw = Math.Max(mw, a.CellW); mh = Math.Max(mh, a.CellH); }
+        if (!MakeDib(mw, mh, out _cxmem, out _cxdib, out _cxold, out _cxbits)) { FreeClipDib(); ScheduleNextClip(Environment.TickCount64); return; }
+        _cxStride = mw;
+        _arts = arts; _baseX = WinX;
+        _clipOn = true; _clipFrame = -1;
+        LogClipStart(_playName, _steps);
         if (!StartTicks(ClipTickMs)) { EndClip(); return; }
         _lastTickTs = Stopwatch.GetTimestamp();   // 첫 틱의 간격 = 시작부터(시작 멈춤 재기)
     }
 
-    /// <summary>틱 하나 = 다음 한 장. 마지막 장 다음 틱에 정면 그림으로 돌아간다.</summary>
+    /// <summary>틱 하나 = 다음 한 걸음. 마지막 걸음 다음 틱에 정면 그림으로 돌아간다(걷기면 간 자리에서).</summary>
     private static void ClipTick()
     {
         long t0 = Stopwatch.GetTimestamp();
         NoteTickTiming();
-        if (!_clipOn || _art is not ClipArt art) { StopTicks(); return; }
+        if (!_clipOn || _arts.Length == 0) { StopTicks(); return; }
         _clipFrame++;
-        if (_clipFrame >= art.Info.Frames) { EndClip(); LogTick(t0, "S"); return; }
-        bool ok = RenderClip(art, _clipFrame);
+        if (_clipFrame >= _steps.Length) { EndClip(); LogTick(t0, "S"); return; }
+        var s = _steps[_clipFrame];
+        bool ok = RenderStep(_clipFrame);
         NotePush(ok);
-        if (DumpDir is not null && (_clipFrame < 4 || _clipFrame % 6 == 0 || _clipFrame >= art.Info.Frames - 4)) DumpClipFrame(art.Info.Name, _clipFrame);
-        LogTick(t0, $"{art.Info.Name} {_clipFrame} s{_clipFrame}");
+        if (DumpDir is not null && (_clipFrame < 4 || _clipFrame % 6 == 0 || _clipFrame >= _steps.Length - 4)) DumpClipFrame(_playName, _clipFrame);
+        LogTick(t0, $"{_playName} {_clipFrame} s{_clipFrame} c{s.Art}:{s.Cell}{(s.Mirror ? "m" : "")} x{_cx}");
     }
 
+    /// <summary>동작이 끝났다: 걷기면 간 자리가 앉은 고양이의 새 자리(범위 안으로).</summary>
     private static void EndClip()
     {
         StopTicks();
-        _clipOn = false; _art = null;
+        if (_clipOn && _steps.Length > 0 && _steps[^1].Dx != 0)
+            _posX = Math.Clamp(_baseX + (int)Math.Round(_steps[^1].Dx), MinX, HomeX);
+        _clipOn = false; _arts = Array.Empty<ClipArt>();
         FreeClipDib();
-        if (_shown) Render();
+        if (_shown) { _from = _gaze = Center; Render(); }
         ScheduleNextClip(Environment.TickCount64);
+        SetProps();
     }
 
     private static void StopClip()
     {
-        _clipGen++; _clipLoading = false; _ready = null;
-        if (_clipOn) { StopTicks(); _clipOn = false; _art = null; }
+        _clipGen++; _clipLoading = false; _ready = null; _wantFront = false;
+        if (_clipOn) { StopTicks(); _clipOn = false; _arts = Array.Empty<ClipArt>(); }
         FreeClipDib();
     }
 
@@ -223,34 +307,47 @@ internal static unsafe partial class CatWidget
         _cxmem = _cxdib = _cxold = _cxbits = 0;
     }
 
-    /// <summary>동작 한 장을 내보낸다. 처음·끝 몇 장은 정면 그림과 섞는다(같은 자세라 이음매가 보이지 않게).</summary>
-    private static bool RenderClip(ClipArt art, int f)
+    /// <summary>
+    /// 한 걸음을 내보낸다: 그 그림의 장(왼쪽으로 갈 때는 좌우를 뒤집어)을 앉은 고양이의 가운데·발선에 맞춘 자리(+ 간 거리)에.
+    /// 처음·끝 몇 걸음은 정면 그림과 섞는다(같은 자세라 이음매가 보이지 않게 — 끝은 간 자리의 정면).
+    /// </summary>
+    private static bool RenderStep(int i)
     {
         if (_cxbits == 0) return false;
-        int cw = art.CellW, chh = art.CellH, TW = cw * art.Info.Frames;
+        var s = _steps[i];
+        var art = _arts[s.Art];
+        int cw = art.CellW, chh = art.CellH, TW = cw * art.Info.Frames, S = _cxStride;
+        double k = art.CellW / (double)art.Info.CellW;
+        double anchor = art.Info.AnchorX * k;
+        if (s.Mirror) anchor = cw - anchor;
+        _ccw = cw; _cch = chh;
+        _cx = _baseX + _sitCx + (int)Math.Round(s.Dx) - (int)Math.Round(anchor);
+        _cy = WinY + _sitBot - (int)Math.Round(art.Info.FeetY * k);
+        _cx = Math.Clamp(_cx, _work.left, Math.Max(_work.left, _work.right - _ccw));
         uint* o = (uint*)_cxbits;
         fixed (uint* px = art.Px)
             for (int y = 0; y < chh; y++)
             {
-                uint* s = px + y * TW + f * cw, d = o + y * cw;
-                for (int x = 0; x < cw; x++) d[x] = s[x];
+                uint* src = px + y * TW + s.Cell * cw, d = o + y * S;
+                if (s.Mirror) for (int x = 0; x < cw; x++) d[x] = src[cw - 1 - x];
+                else for (int x = 0; x < cw; x++) d[x] = src[x];
             }
-        int n = art.Info.Frames;
-        int fromEnd = n - 1 - f;
-        uint t = f < BlendFrames ? (uint)((f + 1) * 256 / (BlendFrames + 1)) : fromEnd < BlendFrames ? (uint)((fromEnd + 1) * 256 / (BlendFrames + 1)) : 256;
+        int n = _steps.Length, fromEnd = n - 1 - i;
+        uint t = i < BlendFrames ? (uint)((i + 1) * 256 / (BlendFrames + 1)) : fromEnd < BlendFrames ? (uint)((fromEnd + 1) * 256 / (BlendFrames + 1)) : 256;
         if (t < 256 && _bits != 0 && _light)   // 섞을 정면 그림도 밝은 고양이일 때만(동작 그림은 밝은 고양이뿐 — 어두운 테마의 차례 시험은 섞지 않는다)
         {
-            // 정면 그림(시선 띠의 가운데 칸)을 동작 창 안 같은 자리에 놓고 섞는다: 결과 = 정면 × (1 − t) + 동작 × t
-            int ox = WinX - _cx, oy = WinY - _cy, W = _w * Names.Length;
-            uint* src = (uint*)_bits;
+            // 정면 그림(시선 띠의 가운데 칸)을 동작 창 안 같은 자리에 놓고 섞는다: 결과 = 정면 × (1 − t) + 동작 × t. 끝 쪽은 간 자리의 정면
+            int gx0 = i < BlendFrames ? _baseX : _baseX + (int)Math.Round(s.Dx);
+            int ox = gx0 - _cx, oy = WinY - _cy, W = _w * Names.Length;
+            uint* gsrc = (uint*)_bits;
             uint u = 256 - t;
             for (int y = 0; y < chh; y++)
                 for (int x = 0; x < cw; x++)
                 {
                     int gx = x - ox, gy = y - oy;
-                    uint p = gx >= 0 && gy >= 0 && gx < _w && gy < _h ? src[gy * W + Center * _w + gx] : 0, q = o[y * cw + x];
-                    o[y * cw + x] = (((p >> 24) * u + (q >> 24) * t) >> 8 << 24) | ((((p >> 16) & 255) * u + ((q >> 16) & 255) * t) >> 8 << 16)
-                                  | ((((p >> 8) & 255) * u + ((q >> 8) & 255) * t) >> 8 << 8) | (((p & 255) * u + (q & 255) * t) >> 8);
+                    uint p = gx >= 0 && gy >= 0 && gx < _w && gy < _h ? gsrc[gy * W + Center * _w + gx] : 0, q = o[y * S + x];
+                    o[y * S + x] = (((p >> 24) * u + (q >> 24) * t) >> 8 << 24) | ((((p >> 16) & 255) * u + ((q >> 16) & 255) * t) >> 8 << 16)
+                                 | ((((p >> 8) & 255) * u + ((q >> 8) & 255) * t) >> 8 << 8) | (((p & 255) * u + (q & 255) * t) >> 8);
                 }
         }
         var dst = new Native.POINT { x = _cx, y = _cy };
@@ -317,7 +414,7 @@ internal static unsafe partial class CatWidget
 
     // ------------------------------------------------------------------ 시험 기록(사내판 WalkerTest 와 같은 줄 모양 — catseq.ps1 이 읽는다)
 
-    private static readonly string? LogPath = SeqTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
+    private static readonly string? LogPath = SeqTest || WalkTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _logQ = new();
     private static long _logLastFlush, _lastTickTs;
     private static int _logFlushing, _pushN, _pushFail, _lateN;
@@ -327,10 +424,12 @@ internal static unsafe partial class CatWidget
 
     private static void LogLine(string s) { if (LogPath is not null) _logQ.Enqueue(DateTime.Now.ToString("HH:mm:ss.fff") + " " + s); }
 
-    private static void LogClipStart(ClipInfo c)
+    private static void LogClipStart(string name, PlayStep[] steps)
     {
         if (LogPath is null) return;
-        LogLine($"clipstart {c.Name} steps {c.Frames} frames {c.Frames} fps 16 ticks {string.Join(",", Enumerable.Repeat(1, c.Frames))} air {new string('0', c.Frames)}");
+        int n = steps.Length;
+        LogLine($"clipstart {name} steps {n} frames {n} fps 16 ticks {string.Join(",", Enumerable.Repeat(1, n))} air {new string('0', n)}");
+        if (name == "walk") LogLine($"walksteps {string.Join(",", steps.Select(t => $"{t.Art}:{t.Cell}{(t.Mirror ? "m" : "")}:{t.Dx:0.0}"))}");
     }
 
     private static void NoteTickTiming()
@@ -387,7 +486,7 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>시험(ONEKEY_TEST_CAT_DUMP=폴더): 내보낸 그림(화면이 아니라 동작 창의 그림 자체)을 PNG 로 — 사람이 눈으로 볼 때만, 시간 시험과 따로 돌린다.</summary>
-    private static readonly string? DumpDir = SeqTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_DUMP") : null;
+    private static readonly string? DumpDir = SeqTest || WalkTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_DUMP") : null;
 
     private static void DumpClipFrame(string name, int f)
     {
@@ -396,7 +495,7 @@ internal static unsafe partial class CatWidget
         try
         {
             Directory.CreateDirectory(DumpDir);
-            if (GdipCreateBitmapFromScan0(_ccw, _cch, _ccw * 4, 0xE200B, _cxbits, out bmp) != 0 || bmp == 0) return;
+            if (GdipCreateBitmapFromScan0(_ccw, _cch, _cxStride * 4, 0xE200B, _cxbits, out bmp) != 0 || bmp == 0) return;
             Guid png = new("557CF406-1A04-11D3-9A73-0000F81EF32E");
             fixed (char* fp = Path.Combine(DumpDir, $"{name}_{f:000}.png")) GdipSaveImageToFile(bmp, fp, &png, 0);
             File.AppendAllText(Path.Combine(DumpDir, "frames.txt"), $"{name} {f} win {_cx},{_cy} {_ccw}x{_cch} gaze {WinX},{WinY} {_w}x{_h} sit {_sitTop}-{_sitBot} cx {_sitCx}" + Environment.NewLine);
