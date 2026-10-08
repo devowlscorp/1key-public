@@ -38,11 +38,13 @@ public class RS {
   }
   public static Color Bg;
   static bool Near(Color a, Color b) { return Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) < 12; }
-  public static bool Screen(int x, int y, int w, int h, string path) {
+  public static bool Screen(int x, int y, int w, int h, string path) { return Screen(x, y, w, h, h, path); }
+  // checkH: 위에서부터 가림 바탕이어야 하는 높이(그 아래는 작업 표시줄 등 - 검사하지 않는다)
+  public static bool Screen(int x, int y, int w, int h, int checkH, string path) {
     using (var b = new Bitmap(w, h)) {
       using (var g = Graphics.FromImage(b)) g.CopyFromScreen(x, y, 0, 0, new Size(w, h));
       // 왼쪽 위·왼쪽 아래 모서리와 왼쪽 가장자리 가운데는 가림 바탕이어야 한다 - 아니면 다른 창이 비친 것: 저장하지 않는다
-      if (!Near(b.GetPixel(1, 1), Bg) || !Near(b.GetPixel(1, h - 2), Bg) || !Near(b.GetPixel(1, h / 2), Bg)) return false;
+      if (!Near(b.GetPixel(1, 1), Bg) || !Near(b.GetPixel(1, checkH - 2), Bg) || !Near(b.GetPixel(1, checkH / 2), Bg)) return false;
       b.Save(path);
     }
     return true;
@@ -109,14 +111,15 @@ try {
       $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
       $s = [Math]::Max(1.0, (Get-ItemProperty 'HKCU:\Control Panel\Desktop\WindowMetrics' -ErrorAction Ignore).AppliedDPI / 96.0)
       $w = [int](460 * $s); $h = [int](260 * $s)
+      $sb = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $tb = $sb.Bottom - $wa.Bottom   # 작업 표시줄 높이: 함께 찍는다(시스템 트레이는 사용자가 비움)
       foreach ($t in @(@(1400, "a"), @(900, "b"), @(2600, "c"))) {
         Start-Sleep -Milliseconds $t[0]; [Windows.Forms.Application]::DoEvents()
         [RS]::Top([RS]::Find([uint32]$p.Id, "OneKeyFlipClock")); [RS]::Top([RS]::Find([uint32]$p.Id, "OneKeyCat"))
-        if ([RS]::Screen($wa.Right - $w, $wa.Bottom - $h, $w, $h, "$Out\taskbar-$($t[1]).png")) { $made += "taskbar-$($t[1])" }
+        if ([RS]::Screen($wa.Right - $w, $wa.Bottom - $h, $w, $h + $tb, $h, "$Out\taskbar-$($t[1]).png")) { $made += "taskbar-$($t[1])" }
       }
       Start-Sleep -Milliseconds 9000
       [RS]::Top([RS]::Find([uint32]$p.Id, "OneKeyCat"))
-      if ([RS]::Screen($wa.Right - $w, $wa.Bottom - $h, $w, $h, "$Out\taskbar-cat.png")) { $made += "taskbar-cat" }
+      if ([RS]::Screen($wa.Right - $w, $wa.Bottom - $h, $w, $h + $tb, $h, "$Out\taskbar-cat.png")) { $made += "taskbar-cat" }
       $bg.Close()
     }
     Quit1Key
