@@ -477,7 +477,7 @@ internal static unsafe partial class CatWidget
         Guid png = new("557CF406-1A04-11D3-9A73-0000F81EF32E");
         fixed (char* gp = Path.Combine(dir, "cat-greet.png")) GdipSaveImageToFile(greet, gp, &png, 0);
         GdipDisposeImage(greet);
-        lines.Add($"greet frames {gn} look {MascotGreet.LookN} meow {MascotGreet.MeowN}");
+        lines.Add($"greet frames {gn} pad {MascotGreet.Pad} look {MascotGreet.Look.Length} meow {MascotGreet.Meow.Length} chain {MascotGreet.Chain.Length} blink {MascotGreet.Blink.Length} blep {MascotGreet.Blep.Length} ears {MascotGreet.Ears.Length}");
         File.WriteAllLines(log, lines);
         FreeArt();
         return true;
