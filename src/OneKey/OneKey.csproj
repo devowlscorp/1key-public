@@ -12,7 +12,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
     <Product>1Key</Product>
     <AssemblyTitle>1Key - 단축키 입력기</AssemblyTitle>
     <Company>1Key</Company>
@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <!-- 글자 그리기(DirectWrite, Dw.cs)에 쓰는 Pretendard 원본 두 굵기와 그 라이선스(OFL 1.1)를 exe 안에 넣는다.
-       Pretendard-Bold.ttf 는 글꼴 비교 시안(tools/fontcompare)용이라 넣지 않는다. -->
+  -->
   <ItemGroup>
     <EmbeddedResource Include="Fonts\Pretendard-Regular.ttf" LogicalName="Pretendard-Regular.ttf" />
     <EmbeddedResource Include="Fonts\Pretendard-SemiBold.ttf" LogicalName="Pretendard-SemiBold.ttf" />

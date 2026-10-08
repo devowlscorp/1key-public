@@ -160,62 +160,6 @@ internal static unsafe class Gdiplus
         }
     }
 
-    public static void DrawMascotIcon(nint hdc, int x, int y, int size, uint colorref, float width, bool face = true)
-    {
-        Init();
-        const int SS = 4;
-        int big = size * SS;
-        nint g = 0, bg = 0, bmp = 0, path = 0, pen = 0;
-        try
-        {
-            if (GdipCreateBitmapFromScan0(big, big, 0, 0xE200B /* PixelFormat32bppPARGB */, null, out bmp) != 0 || bmp == 0) return;
-            if (GdipGetImageGraphicsContext(bmp, out bg) != 0) return;
-            GdipGraphicsClear(bg, 0);
-            GdipSetSmoothingMode(bg, SmoothingModeAntiAlias);
-            GdipSetPixelOffsetMode(bg, PixelOffsetModeHalf);
-            float k = big / 64f;
-            float X(float v) => v * k;
-            float Y(float v) => v * k;
-            void C(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3) => GdipAddPathBezier(path, X(x0), Y(y0), X(x1), Y(y1), X(x2), Y(y2), X(x3), Y(y3));
-            GdipCreatePath(0, out path);
-            // 귀: M13 31 L15 9 L27 19 · M37 19 L49 9 L51 31
-            GdipStartPathFigure(path);
-            C(13, 31, 13, 31, 15, 9, 15, 9); C(15, 9, 15, 9, 27, 19, 27, 19); GdipStartPathFigure(path); C(37, 19, 37, 19, 49, 9, 49, 9); C(49, 9, 49, 9, 51, 31, 51, 31);   // 고양이 귀 둘(공개판)
-            // 바깥 머리: M32 19 C19 19 11 27 11 38 C11 49 19 56 32 56 C45 56 53 49 53 38 C53 27 45 19 32 19 Z
-            GdipStartPathFigure(path);
-            C(32, 19, 19, 19, 11, 27, 11, 38); C(11, 38, 11, 49, 19, 56, 32, 56); C(32, 56, 45, 56, 53, 49, 53, 38); C(53, 38, 53, 27, 45, 19, 32, 19);
-            GdipClosePathFigure(path);
-            // (안쪽 얼굴 윤곽은 뺀다 — 두 겹이면 옆 아이콘보다 굵어 보인다, 0.3.93 사용자)
-            if (face)
-            {
-                // 눈: M25 36 V38, M39 36 V38
-                GdipStartPathFigure(path); GdipAddPathLine(path, X(25), Y(36), X(25), Y(38));
-                GdipStartPathFigure(path); GdipAddPathLine(path, X(39), Y(36), X(39), Y(38));
-                // 입: M28 43 Q32 47 36 43 (2차 곡선을 3차로)
-                GdipStartPathFigure(path);
-                C(28, 43, 28 + 2f / 3 * 4, 43 + 2f / 3 * 4, 36 - 2f / 3 * 4, 43 + 2f / 3 * 4, 36, 43);
-            }
-            GdipCreatePen1(Argb(colorref), width * SS, UnitPixel, out pen);
-            GdipSetPenLineJoin(pen, 2 /* Round */);
-            GdipSetPenStartCap(pen, 2 /* LineCapRound */);
-            GdipSetPenEndCap(pen, 2);
-            GdipDrawPath(bg, pen, path);
-            GdipDeleteGraphics(bg); bg = 0;
-            if (GdipCreateFromHDC(hdc, out g) != 0) { g = 0; return; }
-            GdipSetInterpolationMode(g, 7 /* HighQualityBicubic */);
-            GdipSetPixelOffsetMode(g, 2 /* HighQuality */);
-            GdipDrawImageRectI(g, bmp, x, y, size, size);
-        }
-        finally
-        {
-            if (pen != 0) GdipDeletePen(pen);
-            if (path != 0) GdipDeletePath(path);
-            if (bg != 0) GdipDeleteGraphics(bg);
-            if (g != 0) GdipDeleteGraphics(g);
-            if (bmp != 0) GdipDisposeImage(bmp);
-        }
-    }
-
     [DllImport("gdiplus.dll")] private static extern int GdipCreateBitmapFromScan0(int w, int h, int stride, int format, byte* scan0, out nint bitmap);
     [DllImport("gdiplus.dll")] private static extern int GdipDisposeImage(nint image);
     [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectI(nint graphics, nint image, int x, int y, int w, int h);

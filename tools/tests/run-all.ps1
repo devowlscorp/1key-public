@@ -31,7 +31,7 @@ $map = [ordered]@{
   '^src/OneKey/Argon2\.cs$'                                                   = @("siteunit", "kdfcross")
   '^src/OneKey/(Backup|AppBackup)\.cs$'                                     = @("siteunit", "backup")
   '^src/OneKey/(Dialog|Help|Backdrop)\.cs$'                                    = @("dialog", "help")
-  '^src/OneKey/(Theme|Controls|Toggle|Dw|DwStatic|AppUiKit|AppPaint|Fx|Toast|ThinScroll|Gdiplus)\.cs$' = @("layout", "dw", "printclient", "..\design\contrast-b")
+  '^src/OneKey/(Theme|Controls|Toggle|Dw|DwStatic|AppUiKit|AppPaint|Fx|Toast|ThinScroll|Gdiplus)\.cs$' = @("layout", "dw", "printclient")
   '^src/OneKey/(AppList|AppEdit|AppAdvanced|AppWndProc|AppTray)\.cs$'          = @("layout", "settingsro", "many", "addforms")
   '^src/OneKey/CtlAcc\.cs$'                                                    = @("a11y")
   '^src/OneKey/(i18n/strings\.tsv|L\.cs|Strings\.g\.cs)$'                      = @("i18ngen", "i18n")
@@ -39,7 +39,7 @@ $map = [ordered]@{
   '^installer/'                                                                = @("psblocked")
   '^tools/tests/lib/'                                                          = @("selfcheck")
 }
-$noWindow = @("selfcheck", "siteunit", "kdfcross", "i18ngen", "psblocked", "..\design\contrast-b")
+$noWindow = @("selfcheck", "siteunit", "kdfcross", "i18ngen", "psblocked")
 $start = @("startup")
 
 $changed = @()

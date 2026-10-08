@@ -80,7 +80,7 @@ internal static unsafe class Program
         if (IsTestMode && args.Length >= 3 && args[0] == "--walker-dump")   // 시험: 작업 표시줄 마스코트 그림을 PNG 로(모양 확인용)
         {
             Gdiplus.Init();
-            return Walker.DumpForTest(args[1], int.TryParse(args[2], out int wd) ? wd : 96) ? 0 : 3;
+            return CatWidget.DumpForTest(args[1], int.TryParse(args[2], out int wd) ? wd : 96) ? 0 : 3;
         }
         if (IsTestMode && args.Length >= 2 && args[0] == "--clock-dump")   // 시험: 정시 알림 플립시계 그림을 PNG 로(밝음·어두움, 넘어가는 단계별)
             return FlipClock.DumpForTest(args[1]) ? 0 : 3;

@@ -151,12 +151,12 @@ internal sealed unsafe partial class App
             {
                 string? area = lParam != 0 ? Marshal.PtrToStringUni(lParam) : null;
                 if (area is "ImmersiveColorSet" or "WindowsThemeElement") RethemeAll();
-                Walker.EnvChanged();   // 작업 영역·작업 표시줄 설정이 바뀌었을 수 있다
+                CatWidget.EnvChanged();   // 작업 영역·작업 표시줄 설정이 바뀌었을 수 있다
                 return 0;
             }
 
             case 0x007E:   // WM_DISPLAYCHANGE: 화면 구성·해상도
-                Walker.EnvChanged();
+                CatWidget.EnvChanged();
                 break;
 
             case 0x0018:   // WM_SHOWWINDOW: 본창이 보이거나 숨는다 — 처리가 끝난 뒤 마스코트를 다시 맞춘다
@@ -477,7 +477,7 @@ internal sealed unsafe partial class App
                 return 0;
 
             case Native.WM_DESTROY:
-                Walker.Destroy();
+                CatWidget.Destroy();
                 Launcher.Cancel(null);   // 진행 중 실행 요청: 아직 실행 호출 전이면 하지 않는다
                 LaunchDrop.Revoke(hwnd);
                 ReleaseChip();
@@ -494,7 +494,7 @@ internal sealed unsafe partial class App
             // 탐색기(작업 표시줄)가 다시 시작되면 트레이 아이콘이 사라진다. 다시 넣는다.
             _trayAdded = false;
             AddTrayIcon();
-            Walker.EnvChanged();   // 작업 표시줄이 새로 생겼다: 자리를 다시 맞춘다
+            CatWidget.EnvChanged();   // 작업 표시줄이 새로 생겼다: 자리를 다시 맞춘다
             return 0;
         }
         return Native.DefWindowProcW(hwnd, msg, wParam, lParam);

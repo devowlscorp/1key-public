@@ -539,7 +539,7 @@ internal sealed unsafe partial class App
 
     private void DoLock()
     {
-        Walker.SetWanted(false);   // 잠기면 마스코트는 숨는다(잠금 위젯만)
+        CatWidget.SetWanted(false);   // 잠기면 마스코트는 숨는다(잠금 위젯만)
         _kdfGen++;              // 계산 중이던 마스터 바꾸기 결과는 반영하지 않는다
         ReleaseChip();          // 잠그면 입력 대기도 끝난다 (자동 잠금·Win+L·절전 포함)
         if (!_cfg.IsUnlocked) return;

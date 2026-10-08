@@ -34,3 +34,7 @@ powershell -ExecutionPolicy Bypass -File build-aot.ps1
 
 - 마스코트 고양이 그림은 AI(Codex)로 만든 그림입니다.
 - 코드 서명이 없는 exe 라 처음 실행할 때 SmartScreen 경고가 나올 수 있습니다.
+
+## 라이선스
+
+[MIT](LICENSE). 함께 들어 있는 Pretendard 글꼴은 SIL Open Font License 1.1(`src/OneKey/Fonts/OFL-Pretendard.txt`)을 따릅니다.

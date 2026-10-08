@@ -363,7 +363,7 @@ internal sealed unsafe partial class App
     private void EnterRecoveryOnly()
     {
         _recoveryOnly = true;
-        Walker.SetWanted(false);
+        CatWidget.SetWanted(false);
         if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestRecovery", 1);
         if (Unlocked) DoLock();
         _kdfGen++;

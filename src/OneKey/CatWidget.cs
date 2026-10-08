@@ -7,7 +7,7 @@ namespace OneKey;
 /// 공개판의 작업 표시줄 마스코트: 고양이(Codex 시안, 9방향 시선 × 밝은·어두운 테마). 걷지 않고 작업 영역 오른쪽 아래(알림 영역 위)에 앉아
 /// 마우스 커서 쪽을 쳐다본다. 커서가 고양이 위에 있거나 한동안 움직이지 않으면 정면, 정시 알림 동안은 위(머리 위의 시계)를 본다.
 /// 시선이 바뀔 때는 두 그림을 잠깐 섞는다. 그림 색은 Windows 테마(밝음 = 회색 고양이, 어두움 = 검은 고양이)를 따른다.
-/// 창·환경·클릭 규칙은 <see cref="Walker"/> 와 같다(층 창, 항상 위, 활성화 없음, 환경은 <see cref="Walker.EnvOk(out Native.RECT, out int, out int)"/>).
+/// 창·환경·클릭 규칙은 <see cref="Walker"/> 와 같다(층 창, 항상 위, 활성화 없음, 환경은 <see cref="EnvOk(out Native.RECT, out int, out int)"/>).
 /// Walker 는 걷기 그림(mascot_walk)이 없고 고양이 그림이 있으면 이 클래스로 넘긴다(<see cref="Use"/>).
 /// </summary>
 internal static unsafe class CatWidget
@@ -18,10 +18,6 @@ internal static unsafe class CatWidget
     private const int HeightLogical = 52, MarginLogical = 18;
     private const int GazeMs = 100, FastMs = 16, FadeMs = 160, CheckMs = 2000, IdleMs = 20000;
     private const nuint TimerTick = 1, TimerCheck = 2;
-
-    /// <summary>고양이 그림이 들어 있고 걷기 그림은 없는가(공개판).</summary>
-    public static bool Use { get; } = Has("cat_light_center.png") && Has("cat_dark_center.png") && !Has("mascot_walk.png");
-    private static bool Has(string name) => typeof(CatWidget).Assembly.GetManifestResourceInfo(name) is not null;
 
     private static nint _hwnd, _owner;
     private static uint _clickMsg;
@@ -46,7 +42,7 @@ internal static unsafe class CatWidget
 
     public static bool IsShown => _shown;
     public static void Init(nint owner, uint clickMsg) { _owner = owner; _clickMsg = clickMsg; }
-    public static bool AcceptClick(int gen) => _shown && gen == _showGen && !_pressed && Walker.EnvOk(out _, out _);
+    public static bool AcceptClick(int gen) => _shown && gen == _showGen && !_pressed && EnvOk(out _, out _);
 
     public static void SetWanted(bool want)
     {
@@ -77,7 +73,7 @@ internal static unsafe class CatWidget
     private static void Evaluate()
     {
         if (!_wanted) { HideAll(); return; }
-        if (!Walker.EnvOk(out Native.RECT work, out int dpi, out int why))
+        if (!EnvOk(out Native.RECT work, out int dpi, out int why))
         {
             if (_shown) Hide(keepCheck: true);
             _why = why;
@@ -143,6 +139,66 @@ internal static unsafe class CatWidget
     }
 
     private static void KeepOnTop() => Native.SetWindowPos(_hwnd, (nint)(-1) /* HWND_TOPMOST */, 0, 0, 0, 0, Native.SWP_NOMOVE_ | Native.SWP_NOSIZE_ | Native.SWP_NOACTIVATE);
+
+    // ------------------------------------------------------------------ 환경
+
+    /// <summary>
+    /// 보여도 되는 환경인가. 주 모니터의 작업 영역·배율을 돌려준다. 알림을 받는 상태가 아니거나(전체 화면·발표·바쁨·확인 실패), 작업 표시줄이
+    /// 아래가 아니거나 자동 숨김이거나 주 모니터가 아니거나, 시스템 패널이 앞에 있거나, 무엇이든 확인하지 못하면 false(숨김 쪽, Codex Q1·Q2·Q3).
+    /// </summary>
+    internal static bool EnvOk(out Native.RECT work, out int dpi) => EnvOk(out work, out dpi, out _);
+
+    internal static bool EnvOk(out Native.RECT work, out int dpi, out int why)
+    {
+        work = default; dpi = 0; why = 10;
+        try
+        {
+            if (Program.IsTestMode)
+            {
+                string dir = Config.Dir;
+                if (File.Exists(Path.Combine(dir, "test-walker-busy"))) { why = 2; return false; }   // 합성 상태 주입
+                if (File.Exists(Path.Combine(dir, "test-walker-panel"))) { why = 6; return false; }
+            }
+            why = 2;
+            if (SHQueryUserNotificationState(out int qs) != 0 || qs != 5 /* QUNS_ACCEPTS_NOTIFICATIONS */) return false;
+            why = 3;
+            var abd = new APPBARDATA { cbSize = (uint)sizeof(APPBARDATA) };
+            if (SHAppBarMessage(5 /* ABM_GETTASKBARPOS */, ref abd) == 0 || abd.uEdge != 3 /* ABE_BOTTOM */) return false;
+            var st = new APPBARDATA { cbSize = (uint)sizeof(APPBARDATA) };
+            if ((SHAppBarMessage(4 /* ABM_GETSTATE */, ref st) & 1 /* ABS_AUTOHIDE */) != 0) return false;
+            why = 4;
+            nint primary = MonitorFromPoint(new Native.POINT { x = 0, y = 0 }, 1 /* MONITOR_DEFAULTTOPRIMARY */);
+            if (primary == 0 || MonitorFromRect(ref abd.rc, 0 /* NULL */) != primary) return false;
+            var mi = new Native.MONITORINFO { cbSize = (uint)sizeof(Native.MONITORINFO) };
+            if (!Native.GetMonitorInfoW(primary, ref mi)) return false;
+            if (Math.Abs(mi.rcWork.bottom - abd.rc.top) > 2) return false;   // 작업 영역 아래 끝이 작업 표시줄 위 가장자리가 아니면(예상 밖 배치)
+            why = 5;
+            if (GetDpiForMonitor(primary, 0 /* MDT_EFFECTIVE_DPI */, out uint dx, out _) != 0 || dx is < 48 or > 480) return false;
+            why = 6;
+            if (SystemPanelUp()) return false;
+            why = 7;
+            work = mi.rcWork; dpi = (int)dx;
+            int fh = (int)Math.Round(HeightLogical * dpi / 96.0);
+            if ((work.right - work.left) / 5 < fh * 5 || work.bottom - work.top < fh * 3) return false;   // 좁은 작업 영역
+            why = 0;
+            return true;
+        }
+        catch { why = 10; return false; }
+    }
+
+    /// <summary>시작 메뉴·검색·알림/빠른 설정·작업 표시줄 메뉴·넘침 영역 등이 앞에 있으면 true. 앞 창이 없어도 true(모르면 숨김).</summary>
+    private static bool SystemPanelUp()
+    {
+        nint fg = Native.GetForegroundWindow();
+        if (fg == 0) return true;
+        string cls = Native.GetClassName(fg);
+        if (cls is "Windows.UI.Core.CoreWindow" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "NotifyIconOverflowWindow" or "TopLevelWindowForOverflowXamlIsland"
+            or "Xaml_WindowedPopupClass" or "#32768" or "XamlExplorerHostIslandWindow" or "MultitaskingViewFrame" or "ForegroundStaging" or "TaskListThumbnailWnd"
+            or "Windows.UI.Input.InputSite.WindowClass" or "ControlCenterWindow" or "LauncherTipWnd") return true;
+        // 떠 있는 팝업 메뉴(#32768)가 하나라도 보이면(다른 앱의 메뉴 포함 — 아래쪽을 가릴 수 있다)
+        nint menu = FindWindowW("#32768", null);
+        return menu != 0 && Native.IsWindowVisible(menu);
+    }
 
     // ------------------------------------------------------------------ 그림
 
@@ -280,7 +336,7 @@ internal static unsafe class CatWidget
         if (_clock == ClockPhase.None && now - _lastCheck >= CheckMs)
         {
             _lastCheck = now;
-            bool redo = !Walker.EnvOk(out Native.RECT work, out int dpi) || dpi != _dpi || work.bottom != _work.bottom || work.left != _work.left
+            bool redo = !EnvOk(out Native.RECT work, out int dpi) || dpi != _dpi || work.bottom != _work.bottom || work.left != _work.left
                 || work.right != _work.right || FlipClock.WindowsLight() != _light;
             if (redo) { Evaluate(); return; }
             KeepOnTop();
@@ -462,7 +518,7 @@ internal static unsafe class CatWidget
                     if (Native.GetCapture() == hwnd) Native.ReleaseCapture();
                     if (was && inside && _shown && _owner != 0)
                     {
-                        if (Walker.EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
+                        if (EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
                         else Evaluate();
                     }
                     return 0;
@@ -490,6 +546,13 @@ internal static unsafe class CatWidget
     [StructLayout(LayoutKind.Sequential)] private struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
     [StructLayout(LayoutKind.Sequential)] private struct BIH { public uint biSize; public int biWidth, biHeight; public ushort biPlanes, biBitCount; public uint biCompression, biSizeImage; public int biX, biY; public uint biClrUsed, biClrImportant; }
 
+    [StructLayout(LayoutKind.Sequential)] private struct APPBARDATA { public uint cbSize; public nint hWnd; public uint uCallbackMessage, uEdge; public Native.RECT rc; public nint lParam; }
+    [DllImport("shell32.dll")] private static extern int SHQueryUserNotificationState(out int state);
+    [DllImport("shell32.dll")] private static extern nuint SHAppBarMessage(uint msg, ref APPBARDATA data);
+    [DllImport("user32.dll")] private static extern nint MonitorFromPoint(Native.POINT pt, uint flags);
+    [DllImport("user32.dll")] private static extern nint MonitorFromRect(ref Native.RECT rc, uint flags);
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint FindWindowW(string? cls, string? title);
     [DllImport("user32.dll")] private static extern bool UpdateLayeredWindow(nint hwnd, nint hdcDst, ref Native.POINT pptDst, ref SIZE psize, nint hdcSrc, ref Native.POINT pptSrc, uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
     [DllImport("gdi32.dll")] private static extern nint CreateDIBSection(nint hdc, ref BIH bmi, uint usage, out nint bits, nint section, uint offset);
     [DllImport("shlwapi.dll", EntryPoint = "#12")] private static extern nint SHCreateMemStream(byte* pInit, uint cbInit);

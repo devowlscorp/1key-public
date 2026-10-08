@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.4.0";
+    public const string Version = "0.4.1";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -295,7 +295,7 @@ internal sealed unsafe partial class App
 
         if (!RegisterWindowClass()) return 1;
         if (!CreateMainWindow()) return 1;
-        Walker.Init(_hwnd, WM_WALKER_CLICK);
+        CatWidget.Init(_hwnd, WM_WALKER_CLICK);
 
         // 관리자 권한으로 실행 중일 때도 일반 권한의 새 버전/탐색기가 보내는 메시지를 받도록 허용한다 (UIPI).
         fixed (char* tc = "TaskbarCreated") _msgTaskbarCreated = Native.RegisterWindowMessageW(tc);
