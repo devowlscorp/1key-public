@@ -63,6 +63,7 @@ PowerShell 5.1 에서 `powershell -ExecutionPolicy Bypass -File <스크립트> [
 | `mem.ps1` | **T12** (기본 회귀 아님, 약 40분) 3/30/99개에서 잠금·해제 유휴, 100회 반복 조작, 재잠금의 메모리·GDI/USER·핸들, 잠금 해제 시간, 마스터 변경의 **성공 화면이 보일 때까지의 시간**(목록 위의 성공 토스트 문구, 오류 상자는 실패), 같은 프로세스에서 잠금 화면이 실제로 뜬 것을 먼저 확인한 뒤 새 마스터로 해제(ME-n-7, 메모리의 비밀로 여는 것이라 디스크 확인은 아님), 다시 실행해 새 마스터로 디스크의 파일을 엶(ME-n-8). 저장 실패 주입(`save:fail`)에서 성공으로 세지 않는 음성 사례(ME-neg). `-SkipLockForSelfTest` 는 잠금 클릭을 빼서 ME-n-7 이 실패하는지(시험의 시험) 본다. CSV 로 남긴다. 준비 상태(항목 수·자동 잠금 끔)와 측정 유효성도 판정한다. `-ExtraRounds N` 으로 100회씩 더 반복 | 28 (기본 크기 3개) |
 | `catseq.ps1` | (기본 회귀 아님, 창 시험) 작업 표시줄 고양이 동작(0.5.15): `ONEKEY_TEST_CAT_SEQ=1` 로 동작을 차례로 재생하며 틱마다 기록 → 모든 장이 한 틱에 한 번씩 순서대로, 늦은 틱 0, 간격 ±2 ms 99 %, 일한 시간. `-AnalyzeOnly <log>` | CS00–CS07 |
 | `lockseq.ps1` | (기본 회귀 아님, 창 시험) 잠금 위젯 고양이 동작(0.5.15-A): 데모 위젯을 넓혀 `ONEKEY_TEST_LOCK_SEQ=1` 로 이어진 동작 → 깜빡임 → 메롱 → 귀를 600 ms 쉬며 되풀이, 틱마다 기록 → 차례, 모든 걸음이 한 번씩 순서대로 뒤 정면, 늦은 틱 0, 간격 ±2 ms 99 %, 일한 시간(밝음·어두움). `-AnalyzeOnly <log>` | LS00–LS05 × 테마 |
+| `cattheme.ps1` | (창 시험) 작업 표시줄 고양이 색(0.5.15-C): 1Key 테마 밝게 → 회색 고양이, 어둡게 → 검은 고양이(Windows 테마와 상관없이), 시스템 따름 → Windows 작업 표시줄 테마(`SystemUsesLightTheme`). 시험 속성 `OneKeyTestCatLight` 로 읽음 | 4 |
 
 `bounce.ps1`·`many.ps1`·`shot2_nofg.ps1`·`inject.ps1`·`mem.ps1` 은 키 큰 흉내 화면(`$TallScreen`)을 써서 목록 행 수가 모니터에 따라 바뀌지 않게 한다. 작은 화면 동작은 `layout.ps1` 이 맡는다.
 

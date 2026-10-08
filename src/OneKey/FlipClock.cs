@@ -18,6 +18,17 @@ internal static unsafe class FlipClock
     private static int _w, _h;
     private static bool _registered;
 
+    /// <summary>
+    /// 작업 표시줄 고양이·정시 시계(·그 둘이 띄우는 그림)의 색이 밝은가(0.5.15-C, 2026-10-09 사용자: 1Key 테마를 따로 둔 것은 Windows 와 별도로 쓰려는 것):
+    /// 1Key 설정의 테마가 밝게/어둡게면 그것, "시스템 따름"이면 Windows 작업 표시줄 테마(<see cref="WindowsLight"/>). 시험의 ONEKEY_TEST_THEME 도 따른다.
+    /// </summary>
+    public static bool MascotLight() => Theme.Mode switch
+    {
+        1 => true,
+        2 => false,
+        _ => Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_THEME") is "light" or "dark" ? Environment.GetEnvironmentVariable("ONEKEY_TEST_THEME") == "light" : WindowsLight(),
+    };
+
     /// <summary>Windows(작업 표시줄) 테마가 밝은가. 읽지 못하면 어두움으로 본다(작업 표시줄 기본).</summary>
     public static bool WindowsLight()
     {
