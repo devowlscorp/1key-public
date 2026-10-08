@@ -1,0 +1,31 @@
+# 빌드 결과 (exe 는 build\<버전>\ 에 따로 보관, 저장소에는 넣지 않는다)
+build/
+bin/
+obj/
+tmp/
+*.exe
+*.dll
+*.pdb
+
+# 비밀·설정 파일: 실제 비밀번호가 들어 있을 수 있다 (WorkHelper 옛 설정, 시험 설정 포함)
+docs/.workhelper/
+*.dat
+*.key
+*.pfx
+*.pem
+.env*
+
+# 큰 디자인 원본·영상 (로컬에만)
+*.sketch
+*.mp4
+docs/apple-ios-27-ui-kit_assets_*/
+
+# 편집기·OS
+.vs/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini
+
+# 시험 기록(tools/tests 가 만든다)
+docs/test-logs/

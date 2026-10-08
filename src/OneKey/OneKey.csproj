@@ -1,0 +1,75 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>1Key</AssemblyName>
+    <RootNamespace>OneKey</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>0.4.0</Version>
+    <Product>1Key</Product>
+    <AssemblyTitle>1Key - 단축키 입력기</AssemblyTitle>
+    <Company>1Key</Company>
+    <Copyright>Copyright (c) 2026</Copyright>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- 글자 그리기(DirectWrite, Dw.cs)에 쓰는 Pretendard 원본 두 굵기와 그 라이선스(OFL 1.1)를 exe 안에 넣는다.
+       Pretendard-Bold.ttf 는 글꼴 비교 시안(tools/fontcompare)용이라 넣지 않는다. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Fonts\Pretendard-Regular.ttf" LogicalName="Pretendard-Regular.ttf" />
+    <EmbeddedResource Include="Fonts\Pretendard-SemiBold.ttf" LogicalName="Pretendard-SemiBold.ttf" />
+    <EmbeddedResource Include="Fonts\OFL-Pretendard.txt" LogicalName="OFL-Pretendard.txt" />
+    <!-- 마스코트: 고양이(Codex 시안 v15 밝음·v18 어두움의 9방향 시선, 높이 256px — 발 아래 끝·몸 가운데 맞춤). 작업 표시줄 고양이(CatWidget)와
+         잠금 위젯의 둘러보기(MascotGreet)가 함께 쓴다 -->
+    <EmbeddedResource Include="Assets\cat\cat_*.png" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- 다국어(0.2.54): i18n\strings.tsv(키 · ko · en · zh-Hans · ja · vi) 를 빌드 전에 Strings.g.cs 로 만든다.
+       생성기가 키 중복·ko/en 누락·자리표시자 불일치를 검사하고, 문제가 있으면 빌드가 멈춘다. 만든 파일도 저장소에 둔다. -->
+  <Target Name="GenStrings" BeforeTargets="BeforeBuild" Inputs="i18n\strings.tsv;..\..\tools\i18n\gen-strings.ps1" Outputs="Strings.g.cs">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\tools\i18n\gen-strings.ps1&quot;" />
+  </Target>
+
+  <!-- 크기 최적화: 리플렉션/전역화/진단 기능을 전부 제거한다. -->
+  <PropertyGroup>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <NullabilityInfoContextSupport>false</NullabilityInfoContextSupport>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- NativeAOT (PublishAot=true) 로 낼 때: 런타임이 필요 없는 순수 네이티브 exe, 약 3MB.
+       배포 대상 PC 에는 아무것도 설치할 필요가 없다. -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <StackTraceSupport>false</StackTraceSupport>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <DebuggerSupport>false</DebuggerSupport>
+    <UseNativeHttpHandler>true</UseNativeHttpHandler>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+  </PropertyGroup>
+
+  <!-- AOT 툴체인이 없을 때의 대안: 트리밍된 단일 파일 -->
+  <PropertyGroup Condition="'$(PublishAot)' != 'true'">
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+</Project>
