@@ -149,6 +149,7 @@ internal sealed unsafe partial class App
                 double hd = hero.D * k, hx = hero.Cx * k - hd / 2, hy = Yp(hero.Y);
                 Metal.Knob(body, hx, hy, hd, k, dark, 0, 2);
             }
+            if (_page.Qr is { } qr) DrawSupportQr(body, qr.X, qr.Y, qr.S, k);   // 후원 화면(AppSupport.cs)
             if (_page.Bubble is { } bb) Metal.Plate(body, bb.X * k, Yp(bb.Y), bb.W * k, bb.H * k, 18 * k, k, dark, true);
             for (int fi = 0; fi < _page.Fields.Count; fi++)
             {
@@ -178,6 +179,11 @@ internal sealed unsafe partial class App
                 MetalUi.Text(dc, 17, true, _page.Title, Metal.Ink(dark), _page.TitleL * k, tmid - 14 * k, _page.TitleR * k, tmid + 14 * k, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
                 Native.RestoreDC(dc, sv);
             }
+        }
+        if (_page.Pic is { } pic)   // 후원 화면의 고양이(작업 표시줄 고양이와 같은 그림, 테마 색)
+        {
+            nint img = CatWidget.LoadPng(Theme.IsDark ? "cat_dark_center.png" : "cat_light_center.png");
+            if (img != 0) { Gdiplus.DrawImageSmooth(dc, img, (int)Math.Round(pic.X * k), Yp(pic.Y), (int)Math.Round(pic.H * k), (int)Math.Round(pic.H * k)); CatWidget.FreeImage(img); }
         }
         if (!_page.ListHeader) return;
         double top = Yp(8), mid = top + MetalUi.KnobD / 2.0 * k;   // 머리줄 단추의 가운데 줄
