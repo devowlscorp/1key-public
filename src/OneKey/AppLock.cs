@@ -487,7 +487,10 @@ internal sealed unsafe partial class App
         if (_cfg.PayloadInvalid)
             LockMsg(T.LockPayloadInvalid(Config.FilePath), AppTitle, Native.MB_OK | Native.MB_ICONERROR);
         else
+        {
+            if (LockWidget.IsShown) LockWidget.Sad();   // 잠금 위젯 고양이가 귀를 내렸다 올린다(0.5.15-A) — 알림 창이 떠 있는 동안에도 움직인다
             LockMsg(T.LockWrongMaster, AppTitle, Native.MB_OK | Native.MB_ICONERROR);
+        }
         Native.SetText(LockField(0), "");
         FocusLockField(0);
     }

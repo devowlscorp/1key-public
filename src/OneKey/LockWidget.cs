@@ -35,8 +35,11 @@ internal static unsafe class LockWidget
     public static int TestFailAt = Program.IsTestMode && int.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_LOCKWIDGET_FAIL"), out int tf) ? tf : 0;   // 통합 시험: 환경 변수로도
     private static int _renders;
     private static bool _failed, _live;
-    private const nuint TimerAnim = 1, TimerGreet = 2, TimerBackdrop = 3, TimerRest = 4;
+    private const nuint TimerAnim = 1, TimerBackdrop = 3, TimerRest = 4;
     private const int GreetMs = MascotGreet.FrameMs, ExpandMs = 220;   // 0.3.121: 인사 16 fps(예전 19장 100 ms)
+    // 인사 틱(0.5.15-A): SetTimer(62) 는 15.6 ms 눈금 때문에 62.5 ms 와 78 ms 가 섞였다 → 고해상도 틱 스레드(AnimTicker)가 이 메시지를 보낸다
+    private const uint WM_GREETTICK = 0x8000 + 66;
+    private static readonly AnimTicker _ticker = new(WM_GREETTICK);
     private static int Frames = 19;   // 인사 그림 장 수(mascot_greet.txt)
 
     // ---- 상태
@@ -51,16 +54,21 @@ internal static unsafe class LockWidget
     private static bool _hover, _tracking, _pressed;
     private static bool _hoverDone;   // 마우스를 올려 시작한 인사가 한 바퀴 끝났다(올린 채로 있으면 서 있는다 — 다시 올리면 또 한 번, 0.3.123)
     // 넓어질 때의 야옹(공개판, 2026-10-08 사용자: 마스터 비밀번호를 넣도록 넓어지면 입을 벌리고 야옹): 하고 나면 정면으로 서서 잠시 쉰다(아래).
-    // 좁아지면 다시 할 수 있다. 입 그림이 없으면(MeowN = 0) 예전처럼 넓은 동안 둘러보기를 되풀이한다
+    // 좁아지면 다시 할 수 있다. 입 그림이 없으면(이어진 동작이 비면) 예전처럼 넓은 동안 둘러보기를 되풀이한다
     // 2026-10-08 사용자: 한 번 하고 가만히 있으니 단조롭다 → 넓은 동안 한 동작이 끝나면 3.5~7초 쉬었다가 다음 동작(야옹 ↔ 둘러보기를 번갈아,
     // 가끔 같은 동작을 한 번 더). 쉬는 동안은 타이머 하나(한 번)만 — 그리기 없음
-    private static bool _meowDone;
-    private static bool _wideLook;               // 넓은 동안 지금 동작이 둘러보기(아니면 야옹)
+    // 0.5.15-A(2026-10-09 사용자 "b>f>g>e"): 넓은 동안 쉬었다가 하는 동작에 작은 동작을 더했다 — 천천히 눈 깜빡임 · 작은 혀 메롱 · 이어진 동작(야옹·둘러보기).
+    // 처음 넓어질 때는 늘 이어진 동작(야옹부터). 귀 내리기는 마스터 비밀번호가 틀렸을 때만(Sad). 꼬리는 그림이 제대로 나오지 않아 뺐다
+    private static bool _meowDone;               // 넓은 동안 지금 동작이 끝나 쉬는 중
+    private static int[] _act = Array.Empty<int>();   // 넓은 동안 지금 동작(걸음 → 띠의 장)
+    private static bool _sad;                    // 지금 동작이 귀 내리기(틀린 마스터)
+    private static int _lastAct = -1, _actCount, _repeat;
     private static readonly Random _restRng = new();
     private static bool Wide => _eTo > 0;
-    private static bool Meowing => Wide && MascotGreet.MeowN > 0;
-    /// <summary>지금 야옹을 그리는가(넓음 · 입 그림 있음 · 이번 동작이 둘러보기가 아님).</summary>
-    private static bool MeowAct => Meowing && !_wideLook;
+    /// <summary>넓은 동안 동작을 하는가(입 그림이 있어 이어진 동작이 있을 때). 없으면 예전처럼 둘러보기를 되풀이한다.</summary>
+    private static bool Meowing => Wide && MascotGreet.Chain.Length > 0;
+    /// <summary>시험 전용(ONEKEY_TEST=1 + ONEKEY_TEST_LOCK_SEQ=1): 동작을 정해진 차례로(이어진 동작 → 깜빡임 → 메롱 → 귀) 짧게 쉬며 되풀이하고 틱마다 기록한다(lockseq.ps1).</summary>
+    internal static readonly bool SeqTest = Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_LOCK_SEQ") == "1";
     private static int _pressedPart;             // 1 = −, 2 = ×, 3 = 화살표, 6 = 위젯 모드
 
     /// <summary>
@@ -425,10 +433,49 @@ internal static unsafe class LockWidget
 
     private static long _clickAt;
 
-    /// <summary>지금 그릴 인사 띠의 칸: 야옹 중이면 띠 뒤쪽(LookN 부터), 아니면 둘러보기. 0 = 정면.</summary>
-    private static int GreetCell() => _frame <= 0 ? 0
-        : Meowing && MascotGreet.Chain.Length > 0 ? Math.Min(Frames - 1, MascotGreet.Chain[_frame % MascotGreet.Chain.Length])   // 넓음: 이어진 동작
-        : MeowAct ? Math.Min(Frames - 1, MascotGreet.LookN + _frame) : Math.Min(Frames - 1, _frame);
+    /// <summary>지금 동작의 걸음 차례: 넓은 동안(또는 귀 내리기)은 지금 동작, 아니면 둘러보기.</summary>
+    private static int[] Seq() => (Meowing || _sad) && _act.Length > 0 ? _act : MascotGreet.Look;
+
+    /// <summary>지금 그릴 인사 띠의 칸(0 = 정면).</summary>
+    private static int GreetCell()
+    {
+        var seq = Seq();
+        return _frame <= 0 || seq.Length == 0 ? 0 : Math.Clamp(seq[_frame % seq.Length], 0, Frames - 1);
+    }
+
+    /// <summary>쉰 뒤 넓은 동안의 다음 동작. 처음은 늘 이어진 동작(야옹부터), 그 뒤 깜빡임 5 · 메롱 3 · 이어진 동작 2 의 비율(같은 동작은 두 번까지만 잇달아).</summary>
+    private static int[] NextAct()
+    {
+        var all = new[] { MascotGreet.Chain, MascotGreet.Blink, MascotGreet.Blep, MascotGreet.Ears };
+        int pick;
+        if (SeqTest) pick = _actCount % 4;
+        else if (_actCount == 0) pick = 0;
+        else
+        {
+            int[] weight = { 2, 5, 3, 0 };
+            int sum = 0;
+            for (int i = 0; i < 4; i++) { if (all[i].Length == 0 || (i == _lastAct && _repeat >= 1)) weight[i] = 0; sum += weight[i]; }
+            pick = 0;
+            if (sum > 0) { int r = _restRng.Next(sum); for (int i = 0; i < 4; i++) { if (r < weight[i]) { pick = i; break; } r -= weight[i]; } }
+        }
+        if (all[pick].Length == 0) pick = 0;
+        _repeat = pick == _lastAct ? _repeat + 1 : 0;
+        _lastAct = pick; _actCount++;
+        _sad = pick == 3;
+        LogActStart(pick, all[pick]);
+        return all[pick];
+    }
+
+    /// <summary>마스터 비밀번호가 틀렸다(부르는 쪽이 알림 창을 띄우기 바로 전): 귀를 내렸다 올린다. 귀 그림이 없거나 위젯이 없으면 아무것도 하지 않는다.</summary>
+    public static void Sad()
+    {
+        if (_hwnd == 0 || MascotGreet.Ears.Length == 0 || Native.IsIconic(_hwnd)) return;
+        Native.KillTimer(_hwnd, TimerRest);
+        _act = MascotGreet.Ears; _sad = true; _meowDone = false; _frame = 0;
+        _repeat = _lastAct == 3 ? _repeat + 1 : 0; _lastAct = 3;
+        LogActStart(3, _act);
+        Recalc();
+    }
 
     private static void Recalc()
     {
@@ -442,13 +489,58 @@ internal static unsafe class LockWidget
         {
             _eFrom = _e; _eTo = target; _animStart = Environment.TickCount64;
             Native.SetTimer(_hwnd, TimerAnim, 15, 0);
-            _frame = 0;   // 둘러보기 ↔ 야옹: 처음부터
-            if (target <= 0) { _meowDone = false; _wideLook = false; Native.KillTimer(_hwnd, TimerRest); }
+            _frame = 0;   // 둘러보기 ↔ 넓은 동안의 동작: 처음부터
+            if (target <= 0) { _meowDone = false; _sad = false; _act = Array.Empty<int>(); _actCount = 0; _lastAct = -1; Native.KillTimer(_hwnd, TimerRest); }
+            else if (!_sad) { _actCount = 0; _meowDone = false; _act = NextAct(); }
         }
-        bool greet = visible && !minimized && (Meowing ? !_meowDone : _eTo > 0 || (_hover && !_hoverDone));
+        bool greet = visible && !minimized && (Meowing || _sad ? !_meowDone : _eTo > 0 || (_hover && !_hoverDone));
         if (visible && !minimized) Native.SetTimer(_hwnd, TimerBackdrop, BackdropMs, 0); else Native.KillTimer(_hwnd, TimerBackdrop);
-        if (greet) Native.SetTimer(_hwnd, TimerGreet, GreetMs, 0);
-        else { Native.KillTimer(_hwnd, TimerGreet); if (_frame != 0) { _frame = 0; Render(); } }
+        if (greet) { if (!_ticker.Running) { _tickAt = 0; _ticker.Start(_hwnd, GreetMs); } }
+        else { _ticker.Stop(); if (_frame != 0) { _frame = 0; Render(); } }
+    }
+
+    /// <summary>인사 틱 하나 = 한 장(늦은 틱은 한 장 늦을 뿐 몰아서 그리지 않는다 — AnimTicker).</summary>
+    private static void GreetTick()
+    {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        var seq = Seq();
+        _frame = (_frame + 1) % Math.Max(1, seq.Length);
+        if (_frame == 0 && (Meowing || _sad))
+        {
+            // 한 동작이 끝났다: 정면으로 서서 쉬고, 잠시 뒤 다음 동작
+            _meowDone = true; _sad = false; Recalc();
+            Native.SetTimer(_hwnd, TimerRest, (uint)(SeqTest ? 600 : _restRng.Next(2500, 5000)), 0);
+        }
+        else if (_frame == 0 && _eTo <= 0 && _hover) { _hoverDone = true; Recalc(); }   // 마우스로 시작한 인사는 한 바퀴만
+        Render();
+        LogTick(t0);
+    }
+
+    // ---- 시험 기록(SeqTest — 작업 표시줄 고양이 catseq 와 비슷한 줄: "clipstart <이름> steps N cells a,b,..." / "tick dt X work Y cell C step S act A")
+    private static readonly string? LogPath = SeqTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_LOCK_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-lock-timing.log") : null;
+    private static readonly List<string> _log = new();
+    private static long _tickAt;
+    private static readonly string[] ActNames = { "chain", "blink", "blep", "ears" };
+    private static void LogActStart(int pick, int[] seq)
+    {
+        if (LogPath is null) return;
+        _log.Add($"{DateTime.Now:HH:mm:ss.fff} clipstart {ActNames[pick]} steps {seq.Length} cells {string.Join(",", seq)}");
+        _tickAt = 0;
+    }
+    private static void LogTick(long t0)
+    {
+        if (LogPath is null) return;
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double dt = _tickAt == 0 ? 0 : (t0 - _tickAt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, work = (now - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        _tickAt = t0;
+        _log.Add($"{DateTime.Now:HH:mm:ss.fff} tick dt {dt:0.00} work {work:0.00} cell {GreetCell()} step {_frame} act {(Meowing || _meowDone || _sad ? ActNames[Math.Max(0, _lastAct)] : "look")}");
+        if (_log.Count >= 200) FlushTestLog();
+    }
+    private static void FlushTestLog()
+    {
+        if (LogPath is null || _log.Count == 0) return;
+        try { File.AppendAllLines(LogPath, _log); } catch { }
+        _log.Clear();
     }
 
     private static void TickAnim()
@@ -638,6 +730,7 @@ internal static unsafe class LockWidget
         string key = $"{dw}x{dh}|{dark}|{_sprite}";
         if (key != _shadowKey) { _shadowCache.Clear(); _shadowKey = key; }
         int cell = GreetCell();
+        if (cell >= MascotGreet.ClipStart) cell = 0;   // 작은 동작(깜빡임·메롱·귀)은 정면의 그늘 — 장마다 흐림을 새로 계산하지 않게(0.5.15-A)
         if (!_shadowCache.TryGetValue(cell, out float[]? blur))
         {
             var px = new uint[dw * dh];
@@ -1146,27 +1239,19 @@ internal static unsafe class LockWidget
                     break;
                 case WM_RECALC:
                     Recalc(); return 0;
+                case WM_GREETTICK:
+                    if ((int)wParam == _ticker.Gen) GreetTick();
+                    _ticker.Done();
+                    return 0;
                 case Native.WM_TIMER:
                     if (wParam == (nint)TimerAnim) TickAnim();
-                    else if (wParam == (nint)TimerGreet)
-                    {
-                        _frame = (_frame + 1) % (Meowing && MascotGreet.Chain.Length > 0 ? MascotGreet.Chain.Length : MeowAct ? MascotGreet.MeowN : Math.Max(1, MascotGreet.LookN));
-                        if (_frame == 0 && Meowing)
-                        {
-                            // 한 동작이 끝났다: 정면으로 서서 쉬고, 잠시 뒤 다음 동작
-                            _meowDone = true; Recalc();
-                            Native.SetTimer(hwnd, TimerRest, (uint)(MascotGreet.Chain.Length > 0 ? _restRng.Next(2500, 4500) : _restRng.Next(3500, 7000)), 0);
-                        }
-                        else if (_frame == 0 && _eTo <= 0 && _hover) { _hoverDone = true; Recalc(); }   // 마우스로 시작한 인사는 한 바퀴만
-                        Render();
-                    }
                     else if (wParam == (nint)TimerBackdrop) { if (_e < 0.05 && CheckBackdrop()) Render(); }
                     else if (wParam == (nint)TimerRest)
                     {
                         Native.KillTimer(hwnd, TimerRest);
                         if (Meowing && Native.IsWindowVisible(hwnd) && !Native.IsIconic(hwnd))
                         {
-                            if (MascotGreet.Chain.Length == 0) _wideLook = _restRng.Next(4) == 0 ? _wideLook : !_wideLook;   // 이어진 동작이 없을 때만: 대개 번갈아, 네 번에 한 번은 같은 동작을 한 번 더
+                            _act = NextAct();
                             _meowDone = false; _frame = 0;
                             Recalc();
                         }
@@ -1181,8 +1266,8 @@ internal static unsafe class LockWidget
                     if (wParam == 1 /* SIZE_MINIMIZED */)
                     {
                         // 최소화 중에는 넓어지기·인사 타이머를 모두 멈춘다(R-W5). 복원하면 Recalc 가 지금 상태로 다시.
-                        Native.KillTimer(hwnd, TimerAnim); Native.KillTimer(hwnd, TimerGreet); Native.KillTimer(hwnd, TimerBackdrop); Native.KillTimer(hwnd, TimerRest);
-                        _e = _eFrom = _eTo = 0; _frame = 0; _meowDone = false; _wideLook = false;
+                        Native.KillTimer(hwnd, TimerAnim); _ticker.Stop(); Native.KillTimer(hwnd, TimerBackdrop); Native.KillTimer(hwnd, TimerRest);
+                        _e = _eFrom = _eTo = 0; _frame = 0; _meowDone = false; _sad = false; _act = Array.Empty<int>(); _actCount = 0; _lastAct = -1;
                         // 버튼을 누른 채 최소화되면(Win+D 등) 그 누름은 취소: 숨은 위젯에서 손을 떼 제출·종료 묻기가 일어나지 않게(Codex R148-2)
                         if (_pressed) { _pressed = false; _pressedPart = 0; Native.ReleaseCapture(); }
                     }
@@ -1222,7 +1307,8 @@ internal static unsafe class LockWidget
                     if ((wParam & 0xFFF0) == 0xF060 /* SC_CLOSE */) { Notify(2); return 0; }   // Alt+F4 도 × 와 같게
                     break;
                 case Native.WM_DESTROY:
-                    Native.KillTimer(hwnd, TimerAnim); Native.KillTimer(hwnd, TimerGreet); Native.KillTimer(hwnd, TimerBackdrop); Native.KillTimer(hwnd, TimerRest);
+                    Native.KillTimer(hwnd, TimerAnim); _ticker.Stop(); Native.KillTimer(hwnd, TimerBackdrop); Native.KillTimer(hwnd, TimerRest);
+                    FlushTestLog();
                     break;
             }
         }
