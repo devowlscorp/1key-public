@@ -24,8 +24,8 @@ internal sealed unsafe partial class App
         _kbdShown = (native, caps);
         Native.SetText(_kbdIme, native == 1 ? T.LockKbdNative : T.LockKbdEnglish);
         Native.SetText(_kbdCaps, caps == 1 ? T.LockCapsOn : T.LockCapsOff);
-        _staticStyle[_kbdIme] = (Theme.BgBrush, native == 1 ? Theme.DangerText : Theme.SecondaryText);
-        _staticStyle[_kbdCaps] = (Theme.BgBrush, caps == 1 ? Theme.DangerText : Theme.SecondaryText);
+        _staticStyle[_kbdIme] = (Theme.BgBrush, native == 1 ? Theme.DangerText : Metal.Ref(Metal.InkNote(Theme.IsDark)));
+        _staticStyle[_kbdCaps] = (Theme.BgBrush, caps == 1 ? Theme.DangerText : Metal.Ref(Metal.InkNote(Theme.IsDark)));
         Native.InvalidateRect(_kbdIme, 0, true); Native.InvalidateRect(_kbdCaps, 0, true);
     }
 
@@ -70,55 +70,72 @@ internal sealed unsafe partial class App
 
     private void BuildLock()
     {
-        Label("v" + Version, WinW - Margin - 90, 8, 90, 18, Theme.FontSmall, Theme.SecondaryText, false, Native.SS_RIGHT);   // 바탕 위 작은 글자: 옅은 색은 밝은 테마 빛 번짐에서 4.5:1 미만(--selftest-background, R166-C1 3)
-        int y = 136;
+        // 새 디자인(2026-10-08, 잠금 위젯 시안 Lock-light/dark.dc.html 과 같은 말): 큰 둥근 단추(고양이 윤곽 + 자물쇠) · 말풍선 판(제목·안내) ·
+        // 금속 테의 둥근 입력 알약(한/영·Caps 는 알약 안 오른쪽) · 강조색 [잠금 해제] 알약 · 오른쪽 위 버전.
+        _page.Metal = Theme.MetalPage = true;
+        uint sub = Metal.Ref(Metal.InkLabel(Theme.IsDark)), ink = Metal.Ref(Metal.Ink(Theme.IsDark));
+        Label("v" + Version, WinW - Margin - 90, 8, 90, 18, Theme.Sized(11, false), sub, false, Native.SS_RIGHT);
+        _page.Hero = (WinW / 2, 34, 76);
+        int y = 128;
         if (_cfg.Unsupported)
         {
             // T9: 더 새 1Key 가 저장한 형식. 열지도, 고치지도, 새 마스터를 만들지도 않는다. 할 수 있는 것은 종료뿐이다.
-            Label(T.LockUnsupportedTitle, 0, y, WinW, 28, Theme.FontTitle, Theme.ControlText, false, Native.SS_CENTER);
+            Label(T.LockUnsupportedTitle, 0, y, WinW, 28, Theme.FontTitle, ink, false, Native.SS_CENTER);
             Label(T.LockUnsupportedBody(Version, _cfg.UnsupportedReason ?? ""),
-                  Margin, y + 36, CardW, 64, Theme.FontSmall, Theme.SecondaryText, false, Native.SS_CENTER, vcenter: false);
-            Button(IdUnsupportedExit, T.CommonExit, Btn.Prominent, 100, y + 112, 220, 34, isDefault: true);
+                  Margin, y + 36, CardW, 64, Theme.FontSmall, sub, false, Native.SS_CENTER, vcenter: false);
+            BarPill(IdUnsupportedExit, T.CommonExit, Btn.Prominent, 100, y + 112, 220, isDefault: true);
             _page.DefaultButton = IdUnsupportedExit;
-            _page.Height = y + 112 + 34 + Margin + 16;
+            _page.Height = y + 112 + MetalUi.PillMainH + Margin + 16;
             return;
         }
-        Label(_createMode ? T.LockCreateTitle : T.LockLockedTitle, 0, y, WinW, 28, Theme.FontTitle, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        Label(_createMode ? T.LockCreateSub : T.LockLockedSub,
-              0, y + 30, WinW, 18, Theme.FontSmall, Theme.SecondaryText, false, Native.SS_CENTER);
+        string t1 = _createMode ? T.LockCreateTitle : T.LockLockedTitle, t2 = _createMode ? T.LockCreateSub : T.LockLockedSub;
+        nint f1 = Theme.Sized(14.5, true), f2 = Theme.Sized(12, false);
+        int bw = Math.Min(WinW - 2 * Margin, Math.Max(LabelW(f1, t1), LabelW(f2, t2)) + 48), bx = (WinW - bw) / 2;
+        _page.Bubble = (bx, y, bw, 64);
+        Label(t1, bx + 8, y + 11, bw - 16, 24, f1, ink, true, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
+        Label(t2, bx + 8, y + 34, bw - 16, 20, f2, sub, true, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
 
-        int fx = 100, fw = 220, fy = y + 66;
+        // 입력 알약: 테 포함 폭 320(가운데), 둥근 파인 칸 48. 첫 칸 오른쪽 안에 한/영·Caps(시안 10px)
+        const int PillW = 320, WellH = 48, KbW = 62;
+        int px = (WinW - PillW) / 2, wx = px + 5, ww = PillW - 10;
+        int fy = y + 64 + 20;
         // 첫 설정은 두 칸 모두 점만 보이게 되므로 칸 위에 고정 라벨을 둔다 (Codex QA-03). 잠금 해제는 칸이 하나라 자리표시자로 충분하다.
         const int LabelH = 18;
-        if (_createMode) { Label(T.LockLabelMaster, fx, fy - 4, fw, LabelH, Theme.FontSmall, Theme.SecondaryText, false); fy += LabelH; }
+        nint lf = Theme.Sized(11.5, false);
+        if (_createMode) { Label(T.LockLabelMaster, wx + 16, fy, ww - 32, LabelH, lf, sub, false); fy += LabelH + 6; }
         int fy1 = fy;
-        nint e1 = Field(IdLockPw1, fx, fy, fw, 32, Native.ES_PASSWORD, center: true, onCard: false);
+        nint e1 = Field(IdLockPw1, wx, fy + 5, ww, WellH, Native.ES_PASSWORD, onCard: false, leftPad: 8, rightPad: KbW);
+        _page.PillFields.Add(_page.Fields.Count - 1);
         Native.SetCueBanner(e1, _createMode ? T.LockCueNew : T.LockLabelMaster);
+        fy += WellH + 10;
         if (_createMode)
         {
-            fy += 40;
-            Label(T.LockLabelAgain, fx, fy - 4, fw, LabelH, Theme.FontSmall, Theme.SecondaryText, false); fy += LabelH;
-            nint e2 = Field(IdLockPw2, fx, fy, fw, 32, Native.ES_PASSWORD, center: true, onCard: false);
+            fy += 10;
+            Label(T.LockLabelAgain, wx + 16, fy, ww - 32, LabelH, lf, sub, false); fy += LabelH + 6;
+            nint e2 = Field(IdLockPw2, wx, fy + 5, ww, WellH, Native.ES_PASSWORD, onCard: false, leftPad: 8);
+            _page.PillFields.Add(_page.Fields.Count - 1);
             Native.SetCueBanner(e2, T.LockLabelAgain);
+            fy += WellH + 10;
         }
         // 키보드 상태(2026-10-03 사용자): 첫 칸 오른쪽에 작은 글씨 두 줄(보조 정보 — "영문" / "Caps 꺼짐"). 마스터 비밀번호는 영문·숫자·특수문자만
         // 쓰므로 칸에 들어가면 영문·CapsLock 끔으로 바꾸고(KbdToEnglish), 사용자가 다시 바꾸면 경고색으로 보인다(TimerKbd 0.25초).
-        int kx = fx + fw + 8, kw = WinW - kx - 8;
-        _kbdIme = Label("", kx, fy1, kw, 16, Theme.FontSmall, Theme.SecondaryText, false, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
-        _kbdCaps = Label("", kx, fy1 + 16, kw, 16, Theme.FontSmall, Theme.SecondaryText, false, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        nint kf = Theme.Sized(10, false);
+        int kx = wx + ww - KbW - 14, kw = KbW;
+        _kbdIme = Label("", kx, fy1 + 5 + WellH / 2 - 14, kw, 14, kf, Metal.Ref(Metal.InkNote(Theme.IsDark)), false, Native.SS_RIGHT | Native.SS_ENDELLIPSIS);
+        _kbdCaps = Label("", kx, fy1 + 5 + WellH / 2, kw, 14, kf, Metal.Ref(Metal.InkNote(Theme.IsDark)), false, Native.SS_RIGHT | Native.SS_ENDELLIPSIS);
         Native.SetWindowLongPtrW(_kbdIme, -12 /* GWLP_ID */, IdLockKbdIme); Native.SetWindowLongPtrW(_kbdCaps, -12, IdLockKbdCaps);   // 시험이 글을 읽는다
         _kbdShown = (-1, -1);
         UpdateKbd();
         Native.SetTimer(_hwnd, TimerKbd, 250, 0);
-        fy += 44;
-        Button(IdLockBtn, _createMode ? T.LockStart : T.LockUnlock, Btn.Prominent, fx, fy, fw, 34, isDefault: true);
+        fy += 14;
+        BarPill(IdLockBtn, _createMode ? T.LockStart : T.LockUnlock, Btn.Prominent, 100, fy, 220, isDefault: true);
         _page.DefaultButton = IdLockBtn;
 
-        fy += 52;
+        fy += MetalUi.PillMainH + 16;
         // 잠금 해제 화면의 ×·− 설명 줄은 뺐다(2026-10-04 사용자: 불필요). 처음 설정의 안내만 남긴다
         if (_createMode)
         {
-            Label(T.LockCreateNote, 0, fy, WinW, 18, Theme.FontSmall, Theme.SecondaryText, false, Native.SS_CENTER);   // 흐린 3단계 회색은 대비 부족 (QA-01)
+            Label(T.LockCreateNote, 0, fy, WinW, 18, Theme.Sized(11.5, false), sub, false, Native.SS_CENTER);   // 흐린 3단계 회색은 대비 부족 (QA-01)
             fy += 18;
         }
         _page.Height = fy + Margin;

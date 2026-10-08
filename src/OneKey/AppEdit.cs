@@ -37,91 +37,108 @@ internal sealed unsafe partial class App
         Slot s = _cfg.Slots[_editSlot];
         bool isNew = !SlotInUse(s);
 
-        // 상단 막대
-        Button(IdEBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
+        // 새 디자인(2026-10-08, 설정 화면과 같은 말): 머리줄 ‹ · 가운데 이름 · [?], 판 안에 금속 조각 셋(이름·용도·입력 / 단축키·Enter·방식 / 연결 스위치),
+        // 줄 높이 44 + 구분선, 이름 13.5px 굵게, 입력칸은 파인 홈(높이 30), 칸 옆 단추는 작은 둥근 단추. 아래 막대 [테스트] [삭제] … [취소] [저장] 큰 알약.
         string newTitle = _editForm == FormLogin ? T.AddLogin : _editForm == FormMulti ? T.AddMulti : T.AddPassword;   // 새 항목은 고른 양식 이름
-        Label(isNew ? newTitle : s.DisplayName(_editSlot), 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS, userText: true);
-        HelpButton();
+        int y = MetalHeader(IdEBack, isNew ? newTitle : s.DisplayName(_editSlot));
+        int dialTop = y;
+        y += DialPadX;
 
         // 2026-10-05 사용자 B안: 한 줄을 차지할 필요 없는 것은 버튼으로, 묶음 제목·칸 아래 설명은 없앤다(설명은 [도움말]).
         // 넣는 곳·Enter 는 나란한 버튼(Dropdown.Seg), [+ 입력 추가]는 마지막 입력 줄의 + 버튼, 고급은 한 줄로 접어 둔다.
-        int col = LabelCol(86, 150, T.EditName, T.EditContent, T.EditCombo, T.EditMethod, T.EditMode, T.EditEnterLabel);   // 이름표 열: 언어마다 길이가 달라 잰다
-        int labelX = Margin + Row.PadX, valueX = labelX + col, valueW = CardW - (valueX - Margin) - Row.PadX, labelW = col - 6;
-        int y = 60;
+        const int RH = MetalUi.SetRowH, FH = 30, Gap = 10;
+        int cx = DialX + DialPadX, cw = DialW - 2 * DialPadX, labelX = cx + Row.PadX, rx = cx + cw - Row.PadX;
+        nint nameFont = Theme.Sized(13.5, true);
+        uint ink = Metal.Ref(Metal.Ink(Theme.IsDark));
+        bool loginForm = _editForm == FormLogin && _editInputs == 2;
+        var labels = new List<string> { T.EditName, T.EditContent, T.EditCombo, T.EditMethod, T.EditMode, T.EditEnterLabel };
+        for (int k = 0; k < _editInputs; k++) labels.Add(loginForm ? (k == 0 ? T.EditLoginId : T.EditLoginPw) : _editInputs > 1 ? T.EditInput(k + 1) : T.EditContent);
+        int col = Math.Clamp(labels.Max(t => LabelW(nameFont, t)) + 14, 80, 150);   // 이름표 열: 언어마다 길이가 달라 잰다
+        int valueX = labelX + col, valueW = rx - valueX, labelW = col - 6;
+        void Name(string t, int at) => Label(t, labelX, at, labelW, RH, nameFont, ink, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        void Sep(int at) => _page.Separators.Add((labelX, at, rx - labelX));
         int top = y;
-        Label(T.EditName, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
-        Field(IdEName, valueX, y + (RowH - FieldH) / 2, valueW, FieldH);
-        Separator(y + RowH - 1); y += RowH;
+        Name(T.EditName, y);
+        Field(IdEName, valueX, y + (RH - FH) / 2, valueW, FH);
+        Sep(y + RH); y += RH + 1;
         // 용도: 고른 쪽에 따라 아래 입력마다 [연결] 줄이 생기거나 없어진다(연결이 필요한지 사용자가 따로 판단하지 않게)
-        Label(T.EditMode, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
-        Make(Dropdown.ClassName, "", Native.WS_TABSTOP | Dropdown.Seg, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, IdEMode);
-        Separator(y + RowH - 1); y += RowH;
+        Name(T.EditMode, y);
+        Make(Dropdown.ClassName, "", Native.WS_TABSTOP | Dropdown.Seg, valueX, y + (RH - 34) / 2, valueW, 34, IdEMode);
+        Sep(y + RH); y += RH + 1;
         bool multi = _editInputs > 1;
         // 연결 쪽이면 [연결]/[해제]는 그 입력의 행 오른쪽 끝, 연결한 칸 설명은 그 입력 아래 한 줄(넘치면 …, 마우스를 올리면 전체).
         // 2026-10-02 사용자: 버튼은 입력과 같은 행으로, 설명은 간략히 한 줄로.
-        const int linkBtnW = 64;
+        nint pillFont = Theme.Sized(12, true);
+        int linkBtnW = Math.Max(LabelW(pillFont, T.EditSiteLink), LabelW(pillFont, T.EditSiteUnlink)) + 28;
         int smallH = (int)Math.Ceiling(Native.TextHeight(_hwnd, Theme.FontSmall) * 96.0 / _dpi);
         // 양식(2026-10-06 사용자): 문구 = 한 칸(+ 없음), 로그인 = ID(가리지 않음)·PW(가림, 눈 단추) 두 칸 고정, 연속 입력 = 예전 화면(+·×)
-        bool login = _editForm == FormLogin && _editInputs == 2;
+        bool login = loginForm;
+        const int IconW = 32;
         for (int k = 0; k < _editInputs; k++)
         {
-            if (k > 0) Separator(y - 1);
+            if (k > 0) { Sep(y); y += 1; }
             string label = login ? (k == 0 ? T.EditLoginId : T.EditLoginPw) : multi ? T.EditInput(k + 1) : T.EditContent;
-            Label(label, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
+            Name(label, y);
             bool rowBtn = _editLinkMode && (k == 0 || _editPerInput || _editInputs != 2);   // 입력 2개는 [연결] 한 번(입력 1 행)으로 짝까지
             bool addBtn = _editForm == FormMulti && k == _editInputs - 1 && _editInputs < Slot.MaxInputs;   // 입력 추가: 연속 입력 양식만, 마지막 입력 줄 끝의 +
-            int fieldW = valueW - 36 - (addBtn ? 32 : 0) - (rowBtn ? linkBtnW + 8 : 0);
+            bool noIcon = login && k == 0;   // 로그인의 ID 줄에는 눈 단추가 없다 — 그 자리까지 칸을 넓힌다
+            int fieldW = valueW - (noIcon ? 0 : IconW + 4) - (addBtn ? IconW : 0) - (rowBtn ? linkBtnW + 6 : 0);
             bool hide = !(login && k == 0);   // 로그인의 ID 는 그냥 보인다
-            Field(InTextId(k), valueX, y + (RowH - FieldH) / 2, fieldW, FieldH, hide ? Native.ES_PASSWORD : 0);
-            if (login) { if (k == 1) Button(IdEShow, IcEye, Btn.Icon, valueX + fieldW + 8, y + (RowH - 28) / 2, 28, 28, onCard: true); }   // PW 만 보이기/숨기기
-            else if (k == 0) Button(IdEShow, IcEye, Btn.Icon, valueX + fieldW + 8, y + (RowH - 28) / 2, 28, 28, onCard: true);   // 모든 입력을 함께 보이기/숨기기
-            else Button(InDelId(k), IcClear, Btn.Icon, valueX + fieldW + 8, y + (RowH - 28) / 2, 28, 28, onCard: true);
-            if (addBtn) Tip(Button(IdEInAdd, IcAdd, Btn.Icon, valueX + fieldW + 8 + 32, y + (RowH - 28) / 2, 28, 28, onCard: true), T.EditAddInputTip);
-            if (rowBtn) Button(SiteBtnId(k), T.EditSiteLink, Btn.Bordered, valueX + valueW - linkBtnW, y + (RowH - FieldH) / 2, linkBtnW, FieldH, onCard: true);
-            y += RowH;
+            Field(InTextId(k), valueX, y + (RH - FH) / 2, fieldW, FH, hide ? Native.ES_PASSWORD : 0);
+            int ix = valueX + fieldW + 4, iy = y + (RH - IconW) / 2;
+            if (login) { if (k == 1) Button(IdEShow, IcEye, Btn.Icon, ix, iy, IconW, IconW, onCard: true); }   // PW 만 보이기/숨기기
+            else if (k == 0) Button(IdEShow, IcEye, Btn.Icon, ix, iy, IconW, IconW, onCard: true);   // 모든 입력을 함께 보이기/숨기기
+            else Button(InDelId(k), IcClear, Btn.Icon, ix, iy, IconW, IconW, onCard: true);
+            if (addBtn) Tip(Button(IdEInAdd, IcAdd, Btn.Icon, ix + IconW, iy, IconW, IconW, onCard: true), T.EditAddInputTip);
+            if (rowBtn) SmallPill(SiteBtnId(k), T.EditSiteLink, rx - linkBtnW, y, linkBtnW);
+            y += RH;
             if (!_editLinkMode) continue;
             nint siteText = Make("STATIC", "", Native.SS_LEFT | Native.SS_NOPREFIX | Native.SS_ENDELLIPSIS | 0x0100 /* SS_NOTIFY: 설명 풍선 */,
                                  valueX, y - 6, valueW, smallH + 2, SiteTextId(k), 0, Theme.FontSmall);
-            if (siteText != 0) _staticStyle[siteText] = (Theme.CardBrush, Theme.SecondaryText);
+            if (siteText != 0) _staticStyle[siteText] = (Theme.CardBrush, Metal.Ref(Metal.InkNote(Theme.IsDark)));
             y += smallH + 4;
         }
-        Card(top, y - top);
-        y += 16;
+        _page.Cards.Add((cx, top, cw, y - top));
+        y += Gap;
 
         top = y;
-        Label(T.EditCombo, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
-        Make(HotkeyBox.ClassName, "", Native.WS_TABSTOP, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, IdEHotkey);
-        Separator(y + RowH - 1); y += RowH;
+        Name(T.EditCombo, y);
+        Make(HotkeyBox.ClassName, "", Native.WS_TABSTOP, valueX, y + (RH - FH) / 2, valueW, FH, IdEHotkey);
+        Sep(y + RH); y += RH + 1;
         // Enter 전송: 안함 / 전송 / 브라우저 제외 전송 — 예전 두 스위치(그리고 "Enter 를 켜야만 고를 수 있는" 숨은 규칙)를 한 줄로
-        Label(T.EditEnterLabel, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Make(Dropdown.ClassName, "", Native.WS_TABSTOP | Dropdown.Seg, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, IdEEnter);
-        Separator(y + RowH - 1); y += RowH;
+        Name(T.EditEnterLabel, y);
+        Make(Dropdown.ClassName, "", Native.WS_TABSTOP | Dropdown.Seg, valueX, y + (RH - 34) / 2, valueW, 34, IdEEnter);
+        Sep(y + RH); y += RH + 1;
         // 입력 방식: 접는 "고급 설정" 묶음 없이 이 카드의 한 줄(2026-10-05 사용자: 하나뿐인데 묶음이 필요한가, "기본값"은 뭔가)
-        Label(T.EditMethod, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Make(Dropdown.ClassName, "", Native.WS_TABSTOP, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, IdEMethod);
-        y += RowH;
-        Card(top, y - top);
+        Name(T.EditMethod, y);
+        Make(Dropdown.ClassName, "", Native.WS_TABSTOP, valueX, y + (RH - 34) / 2, rx + 6 - valueX, 34, IdEMethod);
+        y += RH;
+        _page.Cards.Add((cx, top, cw, y - top));
         if (_editClipNote) y = Note(IdEMethodNote, y, T.EditNoteClipboard);   // 클립보드 붙여넣기를 고른 동안만(고르거나 바꾸면 화면을 다시 만든다)
-        y += 16;
 
         // 사이트·앱 연결 항목에서만 쓰는 스위치: 그 항목일 때만 보인다
         if (_editLinkMode)
         {
+            y += Gap;
             top = y;
+            nint Switch(int id, string text, int at) => Make(Toggle.ClassName, text, Toggle.StyleTrailing | Native.WS_TABSTOP, labelX, at, rx - labelX, RH, id, 0, nameFont);
             // 칸을 화면에서 직접 클릭해 커서 넣기: 새 항목은 꺼짐. 켜도 Nexacro·판별 불가 화면에서는 하지 않는다(오착 경고는 설명 풍선)
-            if (_editInputs == 2) { Tip(ToggleRow(IdEPerInput, T.EditPerInput, y, false), T.EditPerInputTip); y += RowH; }
-            Tip(ToggleRow(IdEAllowClick, T.EditAllowClick, y, true), T.EditAllowClickTip); y += RowH;
-            Card(top, y - top);
-            y += 16;
+            if (_editInputs == 2) { Tip(Switch(IdEPerInput, T.EditPerInput, y), T.EditPerInputTip); Sep(y + RH); y += RH + 1; }
+            Tip(Switch(IdEAllowClick, T.EditAllowClick, y), T.EditAllowClickTip); y += RH;
+            _page.Cards.Add((cx, top, cw, y - top));
         }
+        y += DialPadX;
+        _page.Dials.Add((DialX, dialTop, DialW, y - dialTop));
         _page.BarTop = y;   // 여기부터 아래 고정 막대 (T5)
-        y += 20;
-        Button(IdETest, T.CommonTest, Btn.Bordered, Margin, y, 72, 34);
-        if (!isNew) Button(IdEDelete, T.CommonDelete, Btn.DangerBordered, Margin + 80, y, 64, 34);
-        Button(IdECancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdESave, T.CommonSave, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        int testW = BarPillW(T.CommonTest), delW = BarPillW(T.CommonDelete), saveW = BarPillW(T.CommonSave, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdETest, T.CommonTest, Btn.PillMain, 18, y, testW);
+        if (!isNew) BarPill(IdEDelete, T.CommonDelete, Btn.DangerBordered, 18 + testW + 8, y, delW);
+        int sx = WinW - 22 - saveW;
+        BarPill(IdECancel, T.CommonCancel, Btn.PillMain, sx - 8 - cancelW, y, cancelW);
+        BarPill(IdESave, T.CommonSave, Btn.Prominent, sx, y, saveW, isDefault: true);
         _page.DefaultButton = IdESave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
 
         // 값 채우기
         Native.SetText(C(IdEName), s.Name);

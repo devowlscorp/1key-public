@@ -1,6 +1,6 @@
 # Multi-language (0.2.54, user decision 2026-09-30: ko / en / zh-Hans / ja / vi first).
 # I01 "follow Windows" with an English Windows (ONEKEY_TEST_LANG=en): the first-run lock screen is English ([Get started]).
-# I02 after creating the master the list is English ([+ Add], [Help]; "shortcut" dropped 0.2.161, user); the header has lang= (empty = follow Windows).
+# I02 after creating the master the list is English ([+ Add], [?] help knob since 0.5.2; "shortcut" dropped 0.2.161, user); the header has lang= (empty = follow Windows).
 # I03 settings > Display > Language: choosing Japanese previews it at once (settings title and [Advanced settings] row in
 #     Japanese) and the DirectWrite policy switches to the system Japanese font (lang=3, system font found).
 # I04 [Cancel] drops the preview: back to the English list, header still lang= (nothing saved).
@@ -64,7 +64,7 @@ function Quit() { [void][IU]::PostMessageW($m, 0x8005, [IntPtr]::Zero, [IntPtr]:
 $jaSettings = U '\u8a2d\u5b9a'                                   # set: "settings" (list.settings, ja)
 $jaAdvanced = U '\u958b\u304f'                                   # set.btnOpen (ja) - the [Open] button on the advanced settings row
 $zhAdvanced = U '\u6253\u5f00'                                   # set.btnOpen (zh-Hans)
-$viAdd = '+  ' + (U 'Th\u00eam')                          # list.add (vi), header button since 0.2.161
+$viAdd = '+ ' + (U 'Th\u00eam')                           # list.add (vi); one space since 0.5.2 (the [+ Add] pill)
 $viUnlock = U 'M\u1edf kh\u00f3a'                                # lock.unlock (vi)
 $viHelpTitle = U 'Tr\u1ee3 gi\u00fap \u00b7 Danh s\u00e1ch ph\u00edm t\u1eaft'   # help.listTitle (vi)
 $mixed = U '\uacb0\uc7ac \u7ed3\u7b97 \u6c7a\u6e08 Thanh to\u00e1n'   # a dummy name in four scripts
@@ -84,7 +84,7 @@ try {
   SetText 101 "Master1234"; SetText 102 "Master1234"; Click 103; Answer (Box) 1
   Click 220; Key 2005 0x24; Click 2012 3500
   Confirm-AutoLockOff $cfg
-  Check I02 "+  Add|Help||" ((Text 203) + "|" + (Text 250) + "|" + (HeaderLang) + "|") "English list; header lang= empty (follow Windows)"
+  Check I02 "+ Add|?||" ((Text 203) + "|" + (Text 250) + "|" + (HeaderLang) + "|") "English list; header lang= empty (follow Windows)"
 
   # an item with a mixed-script dummy name (glyph fallback: Pretendard has Hangul/Latin, not Han)
   Click 203; Click 4001; SetText 301 $mixed; SetText 302 "dummy-i18n"; Click 310 900; Answer (Box) 1
@@ -97,7 +97,7 @@ try {
 
   # ---- I04 [Cancel] drops the preview
   Click 241
-  Check I04 "+  Add|" ((Text 203) + "|" + (HeaderLang)) "[Cancel]: back to English, nothing saved"
+  Check I04 "+ Add|" ((Text 203) + "|" + (HeaderLang)) "[Cancel]: back to English, nothing saved"
 
   # ---- I05 preview Chinese (Simplified)
   Click 220

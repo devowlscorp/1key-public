@@ -10,18 +10,16 @@ internal sealed unsafe partial class App
 
     private void BuildAdvanced()
     {
-        Button(IdABack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.SetAdvanced, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        HelpButton();
+        int metalTop = MetalHeader(IdABack, T.SetAdvanced);   // 새 디자인 머리줄(‹ · 제목 · [?])
 
-        int labelX = Margin + Row.PadX, y = 52;
+        int labelX = Mx + Row.PadX, y = 58;   // 판 안쪽 위 여백(머리줄 아래 판이 50 에서 시작)
         Header(T.AdvSpeed, y); y += HeaderH;
         int top = y;
-        Label(T.AdvKeyDelay, labelX, y, CardW - 2 * Row.PadX - 80 - 8, RowH - 1, _font, Theme.ControlText, true);
-        Field(IdADelay, Margin + CardW - Row.PadX - 80, y + (RowH - FieldH) / 2, 80, FieldH, Native.ES_NUMBER);
+        Label(T.AdvKeyDelay, labelX, y, Mw - 2 * Row.PadX - 80 - 8, RowH - 1, _font, Theme.ControlText, true);
+        Field(IdADelay, Mx + Mw - Row.PadX - 80, y + (RowH - FieldH) / 2, 80, FieldH, Native.ES_NUMBER);
         Separator(y + RowH - 1); y += RowH;
-        Label(T.AdvPreDelay, labelX, y, CardW - 2 * Row.PadX - 80 - 8, RowH, _font, Theme.ControlText, true);
-        Field(IdAPre, Margin + CardW - Row.PadX - 80, y + (RowH - FieldH) / 2, 80, FieldH, Native.ES_NUMBER);
+        Label(T.AdvPreDelay, labelX, y, Mw - 2 * Row.PadX - 80 - 8, RowH, _font, Theme.ControlText, true);
+        Field(IdAPre, Mx + Mw - Row.PadX - 80, y + (RowH - FieldH) / 2, 80, FieldH, Native.ES_NUMBER);
         y += RowH;
         Card(top, y - top);
         y = Footer(T.AdvFooter, y);
@@ -41,12 +39,14 @@ internal sealed unsafe partial class App
         Card(top, y - top);
         y = Footer(T.AdvUsageFooter, y);
 
+        MetalDial(metalTop, ref y);
         _page.BarTop = y;
-        y += 20;
-        Button(IdACancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdASave, T.CommonSave, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        int saveW = BarPillW(T.CommonSave, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdACancel, T.CommonCancel, Btn.PillMain, WinW - 22 - saveW - 8 - cancelW, y, cancelW);
+        BarPill(IdASave, T.CommonSave, Btn.Prominent, WinW - 22 - saveW, y, saveW, isDefault: true);
         _page.DefaultButton = IdASave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
 
         Native.SetText(C(IdADelay), _cfg.KeyDelayMs.ToString());
         Native.SetText(C(IdAPre), _cfg.PreDelayMs.ToString());
@@ -56,10 +56,10 @@ internal sealed unsafe partial class App
 
     private void UsageRow(string name, int id, int y, bool sep)
     {
-        int labelX = Margin + Row.PadX, valueW = 140;
-        Label(name, labelX, y, CardW - 2 * Row.PadX - valueW - 8, RowH - (sep ? 1 : 0), _font, Theme.ControlText, true);
-        nint v = Make("STATIC", "", Native.SS_RIGHT | Native.SS_CENTERIMAGE | Native.SS_NOPREFIX, Margin + CardW - Row.PadX - valueW, y, valueW, RowH - (sep ? 1 : 0), id, 0, _font);
-        if (v != 0) _staticStyle[v] = (Theme.CardBrush, Theme.SecondaryText);
+        int labelX = Mx + Row.PadX, valueW = 140;
+        Label(name, labelX, y, Mw - 2 * Row.PadX - valueW - 8, RowH - (sep ? 1 : 0), _font, Theme.ControlText, true);
+        nint v = Make("STATIC", "", Native.SS_RIGHT | Native.SS_CENTERIMAGE | Native.SS_NOPREFIX, Mx + Mw - Row.PadX - valueW, y, valueW, RowH - (sep ? 1 : 0), id, 0, _page.Metal ? Theme.Sized(13, false) : _font);
+        if (v != 0) _staticStyle[v] = (Theme.CardBrush, _page.Metal ? Metal.Ref(Metal.InkNote(Theme.IsDark)) : Theme.SecondaryText);
         if (sep) Separator(y + RowH - 1);
     }
 
@@ -106,13 +106,11 @@ internal sealed unsafe partial class App
 
     private void BuildMaster()
     {
-        Button(IdMBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.SetChangeMaster, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        HelpButton();
+        int metalTop = MetalHeader(IdMBack, T.SetChangeMaster);   // 새 디자인 머리줄(‹ · 제목 · [?])
 
         // 칸 이름만 읽어도 알게(2026-10-05 사용자) — 묶음 제목 없음
         int col = LabelCol(116, 210, T.PwMasterCurrent, T.PwNewMasterEnter, T.PwNewMasterConfirm);   // 이름표 열: 언어마다 길이가 달라 잰다
-        int labelX = Margin + Row.PadX, valueX = labelX + col, valueW = CardW - (valueX - Margin) - Row.PadX, labelW = valueX - labelX - 8, y = 60;   // 이름표가 입력칸 상자(둥근 모서리)를 덮지 않도록
+        int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = valueX - labelX - 8, y = 60;   // 이름표가 입력칸 상자(둥근 모서리)를 덮지 않도록
         int top = y;
         Label(T.PwMasterCurrent, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
         Field(IdMCur, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
@@ -131,12 +129,14 @@ internal sealed unsafe partial class App
         y = MatchNote(IdMMatch, y);   // 확인 칸까지 치면 일치 여부(2026-10-05 사용자)
         y = Footer(T.MasterFooter, y);
 
+        MetalDial(metalTop, ref y);
         _page.BarTop = y;
-        y += 20;
-        Button(IdMCancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdMSave, T.CommonChange, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        int saveW = BarPillW(T.CommonChange, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdMCancel, T.CommonCancel, Btn.PillMain, WinW - 22 - saveW - 8 - cancelW, y, cancelW);
+        BarPill(IdMSave, T.CommonChange, Btn.Prominent, WinW - 22 - saveW, y, saveW, isDefault: true);
         _page.DefaultButton = IdMSave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
     }
 
     private void SaveMaster()

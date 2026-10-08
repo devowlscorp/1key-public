@@ -49,10 +49,17 @@ internal static unsafe class Theme
     public static uint TileFill, TileInk;   // 목록 행 아이콘 원
     public static uint DangerFill;      // 위험 버튼 채움(.dan)
     public static uint RingGap;         // 기본 버튼 이중 선의 안쪽 틈
-    public static uint GradTop, GradMid, GradBottom, GlowA, GlowB;
+    public static uint GradTop, GradMid, GradBottom, GradEnd, GlowA, GlowB;
+    /// <summary>
+    /// 새 디자인(2026-10-08 사용자 — 시계 사진과 Balmuda 앱 시안을 참고한 금속 질감): 목록 행 = 파인 판(카드) 위에 올라앉은 조각(Plate),
+    /// 창 바탕 위 단추 = 볼록 단추(Knob: 위 밝음 → 아래 어두움 + 아래 1px 그늘).
+    /// </summary>
+    public static uint PlateFill, PlateHot, KnobTop, KnobBottom;
     public static double GlowAAlpha, GlowBAlpha;
     /// <summary>창 바탕 그라데이션의 주인(본창). 자식 컨트롤은 이 창 기준 자기 위치로 붓 원점을 맞춰 같은 그림을 이어 그린다.</summary>
     public static nint BgOwner;
+    /// <summary>지금 화면을 새 디자인(금속 조각·판)으로 옮겼나. 화면을 만들 때 정하고(ClearPage 에서 끈다), 본창의 토글·버튼 등이 이 값으로 모양을 고른다(MetalUi.On).</summary>
+    public static bool MetalPage;
     /// <summary>모서리 반지름(논리 px): 카드 16, 입력칸 10 (B 확정안 3장). 버튼은 알약(높이의 절반).</summary>
     public const int CardRadius = 16, FieldRadius = 10;
     public static uint GroupText => SecondaryText;
@@ -104,16 +111,17 @@ internal static unsafe class Theme
         {
             // 어두움 = 차콜(2026-10-04 사용자: 남색 B 가 너무 밝다 — 눈이 편한 검은 회색 바탕, 단색 검정은 아님, A안 "남색 기운 조금").
             // 위에서 아래로 조금씩 밝아지는 그라데이션과 옅은 빛 번짐은 입체감을 위해 남긴다(사용자). 주 버튼은 흰색 대신 파랑 바탕 + 흰 글자.
-            GradTop = Rgb(0x0F, 0x11, 0x17); GradMid = Rgb(0x15, 0x17, 0x1F); GradBottom = Rgb(0x1D, 0x1C, 0x2A);
-            GlowA = Rgb(0x8C, 0x78, 0xFF); GlowAAlpha = 0.10;   // 오른쪽 위 옅은 보랏빛
-            GlowB = Rgb(0x50, 0xAA, 0xFF); GlowBAlpha = 0.05;   // 왼쪽 아래 옅은 하늘빛
+            // 새 디자인(2026-10-08): 흑연색 금속 몸체 — 왼쪽 위가 밝고 오른쪽 아래로 어두워진다. 빛 번짐은 없다
+            GradTop = Rgb(0x4C, 0x4D, 0x52); GradMid = Rgb(0x3C, 0x3D, 0x41); GradBottom = Rgb(0x2E, 0x2F, 0x32); GradEnd = Rgb(0x23, 0x24, 0x27);   // 시안 List-dark 그대로
+            GlowA = Rgb(0x8C, 0x78, 0xFF); GlowAAlpha = 0;
+            GlowB = Rgb(0x50, 0xAA, 0xFF); GlowBAlpha = 0;
             WindowBg = GradMid;
-            CardBg = Rgb(0x1C, 0x1F, 0x28);
-            ControlText = Rgb(0xE9, 0xEA, 0xF0);               // 순백보다 한 단계 낮춘 흰색(눈부심 줄임)
-            SecondaryText = Mix(CardBg, ControlText, 0.70);
+            CardBg = Rgb(0x28, 0x29, 0x2D);                    // 파인 판(시계판)
+            ControlText = Rgb(0xEC, 0xEC, 0xEE);
+            SecondaryText = Mix(CardBg, ControlText, 0.76);    // 몸체 왼쪽 위(가장 밝은 곳)에서도 4.5:1
             TertiaryText = Mix(CardBg, ControlText, 0.52);
             DisabledText = Mix(CardBg, ControlText, 0.40);
-            EditBg = Rgb(0x15, 0x17, 0x1E);
+            EditBg = Rgb(0x1E, 0x1F, 0x22);
             EditText = ControlText;
             CardBorder = Mix(CardBg, ControlText, 0.10);
             FieldBorder = Mix(EditBg, ControlText, 0.18);
@@ -130,21 +138,24 @@ internal static unsafe class Theme
             AccentInk = Rgb(0x9A, 0xAB, 0xFF);                 // 초점 선·슬라이더·아이콘
             AccentLabel = Rgb(0xA9, 0xB6, 0xFF);               // 강조 글자(.acc)
             RingGap = GradMid;                                 // 기본 버튼 이중 선의 안쪽 틈
+            PlateFill = Rgb(0x3A, 0x3B, 0x40); PlateHot = Rgb(0x43, 0x44, 0x4A);
+            KnobTop = Rgb(0x5C, 0x5D, 0x62); KnobBottom = Rgb(0x33, 0x34, 0x38);
         }
         else
         {
-            GradTop = Rgb(0xEE, 0xF1, 0xFF); GradMid = Rgb(0xE6, 0xEA, 0xFF); GradBottom = Rgb(0xEF, 0xE7, 0xFF);
-            GlowA = Rgb(0xFF, 0xC4, 0xAA); GlowAAlpha = 0.55;   // 오른쪽 위 살굿빛
-            GlowB = Rgb(0x96, 0xC8, 0xFF); GlowBAlpha = 0.45;   // 왼쪽 아래 하늘빛 (시안 .55 → 강조 글자 대비 4.5:1 위해 .45)
+            // 새 디자인(2026-10-08): 은색 무광 알루미늄 몸체 — 왼쪽 위 흰빛에서 오른쪽 아래 회색으로
+            GradTop = Rgb(0xFF, 0xFF, 0xFF); GradMid = Rgb(0xF3, 0xF3, 0xF3); GradBottom = Rgb(0xE6, 0xE6, 0xE7); GradEnd = Rgb(0xD8, 0xD8, 0xDA);   // 시안 Main 그대로
+            GlowA = Rgb(0xFF, 0xC4, 0xAA); GlowAAlpha = 0;
+            GlowB = Rgb(0x96, 0xC8, 0xFF); GlowBAlpha = 0;
             WindowBg = GradMid;
-            CardBg = Rgb(0xFB, 0xFC, 0xFF);
-            ControlText = Rgb(0x16, 0x1D, 0x45);
-            SecondaryText = Rgb(0x4C, 0x54, 0x78);
-            TertiaryText = Rgb(0x6B, 0x72, 0x94);
+            CardBg = Rgb(0xE5, 0xE5, 0xE6);                    // 파인 판(시계판)
+            ControlText = Rgb(0x1F, 0x1F, 0x22);
+            SecondaryText = Rgb(0x55, 0x55, 0x5A);
+            TertiaryText = Rgb(0x6E, 0x6E, 0x73);
             DisabledText = Mix(CardBg, ControlText, 0.40);
             EditBg = Rgb(0xFF, 0xFF, 0xFF);
             EditText = ControlText;
-            CardBorder = Rgb(0xE1, 0xE5, 0xF4);
+            CardBorder = Mix(CardBg, ControlText, 0.07);
             FieldBorder = Mix(EditBg, ControlText, 0.16);
             BorderColor = Mix(CardBg, ControlText, 0.08);
             SecFill = Mix(CardBg, ControlText, 0.07);
@@ -159,6 +170,8 @@ internal static unsafe class Theme
             AccentInk = Rgb(0x4A, 0x5B, 0xD6);
             AccentLabel = Rgb(0x3D, 0x4F, 0xCF);
             RingGap = Rgb(0xFF, 0xFF, 0xFF);
+            PlateFill = Rgb(0xFC, 0xFC, 0xFC); PlateHot = Mix(PlateFill, Accent, 0.07);
+            KnobTop = Rgb(0xFF, 0xFF, 0xFF); KnobBottom = Rgb(0xD9, 0xD9, 0xDB);
         }
 
         // 강조색은 Windows 설정을 따르지 않는다(확정안 4: 강조색은 파랑 그대로). 대비는 tools/design/contrast-b.ps1 로 잰다.
@@ -211,48 +224,60 @@ internal static unsafe class Theme
     /// <summary>창 맨 위에서 제목 표시줄 색으로 모으는 띠의 높이(논리 px).</summary>
     private const double TopBand = 48;
 
-    public static void BuildBackground(nint owner, int w, int h, uint dpi)
+    /// <summary>화면 바탕에 얹는 고정 장식(새 디자인: 목록의 파인 판·머리줄). dc 는 바탕 그림이 선택된 DC, s 는 같은 픽셀.</summary>
+    public delegate void PageOverlay(nint dc, Metal.Surf s);
+
+    private static uint[]? _body;
+    private static int _bodyW, _bodyH;
+    private static bool _bodyDark;
+    private static uint _bodyDpi;
+    private static string _pageKey = "";
+
+    /// <summary>
+    /// 본창 바탕 그림을 만든다: 몸체(그라데이션·안쪽 빛과 그늘, 크기·테마·배율이 같으면 다시 계산하지 않는다) 위에 화면의 고정 장식(overlay)을 얹어
+    /// <see cref="BgBrush"/> 를 그 무늬 붓으로 바꾼다. pageKey 가 같으면 그대로 두고 false. 새로 만들었으면 true(자식 컨트롤을 다시 그려야 한다).
+    /// 자식 컨트롤은 <see cref="AlignBg"/> 로 붓 원점을 맞춰 판·몸체의 그 자리 픽셀을 그대로 이어 그린다(새 디자인: 단색으로 지우면 판의 빛 번짐이 칸마다 끊긴다).
+    /// </summary>
+    public static bool BuildBackground(nint owner, int w, int h, uint dpi, string pageKey = "", PageOverlay? overlay = null)
     {
         BgOwner = owner;
-        if (w <= 0 || h <= 0) return;
-        if (_bgBitmap != 0 && _bgW == w && _bgH == h && _bgDark == IsDark) return;
+        if (w <= 0 || h <= 0) return false;
+        bool bodySame = _body is not null && _bodyW == w && _bodyH == h && _bodyDark == IsDark && _bodyDpi == dpi;
+        if (bodySame && _bgBitmap != 0 && _bgW == w && _bgH == h && _bgDark == IsDark && _pageKey == pageKey) return false;
+        if (!bodySame)
+        {
+            _body = new uint[w * h];
+            fixed (uint* b = _body) FillBackground(b, w, h, dpi);
+            _bodyW = w; _bodyH = h; _bodyDark = IsDark; _bodyDpi = dpi;
+        }
         var bih = new Fx.BITMAPINFOHEADER { biSize = (uint)sizeof(Fx.BITMAPINFOHEADER), biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
         nint bmp = Fx.CreateDIBSection(0, ref bih, 0, out nint bits, 0, 0);
-        if (bmp == 0 || bits == 0) { if (bmp != 0) Native.DeleteObject(bmp); return; }
-        FillBackground((uint*)bits, w, h, dpi);
+        if (bmp == 0 || bits == 0) { if (bmp != 0) Native.DeleteObject(bmp); return false; }
+        fixed (uint* b = _body) Buffer.MemoryCopy(b, (void*)bits, (long)w * h * 4, (long)w * h * 4);
+        if (overlay is not null)
+        {
+            nint mem = Native.CreateCompatibleDC(0);
+            nint old = Native.SelectObject(mem, bmp);
+            Native.SetBkMode(mem, Native.TRANSPARENT);
+            try { overlay(mem, new Metal.Surf((uint*)bits, w, h)); }
+            catch { }
+            Metal.GdiFlush();
+            Native.SelectObject(mem, old);
+            Native.DeleteDC(mem);
+        }
         nint brush = Native.CreatePatternBrush(bmp);
-        if (brush == 0) { Native.DeleteObject(bmp); return; }
+        if (brush == 0) { Native.DeleteObject(bmp); return false; }
         FreeBackground();
         if (BgBrush != 0) Native.DeleteObject(BgBrush);   // 단색 붓
-        BgBrush = brush; _bgBitmap = bmp; _bgW = w; _bgH = h; _bgDark = IsDark;
+        BgBrush = brush; _bgBitmap = bmp; _bgW = w; _bgH = h; _bgDark = IsDark; _pageKey = pageKey;
+        return true;
     }
 
     /// <summary>바탕 그림의 픽셀(BGRA)을 채운다. 본창 바탕과 대비 실측(--selftest-background)이 같은 함수를 쓴다.</summary>
     private static void FillBackground(uint* px, int w, int h, uint dpi)
     {
-        double a = 165 * Math.PI / 180, dx = Math.Sin(a), dy = -Math.Cos(a);
-        double len = Math.Abs(w * dx) + Math.Abs(h * dy);
-        // 빛 번짐: (가로 반지름, 세로 반지름, 중심 x, 중심 y, 끝 위치) — 비율. 시안 값 그대로.
-        (double rx, double ry, double cx, double cy, double stop) ga = IsDark ? (1.20, 0.55, 0.90, 0.0, 0.60) : (1.10, 0.55, 0.92, 0.0, 0.60);
-        (double rx, double ry, double cx, double cy, double stop) gb = IsDark ? (0.90, 0.45, 0.0, 1.0, 0.60) : (0.90, 0.50, 0.0, 1.0, 0.62);
-        double band = TopBand * dpi / 96.0;
-        for (int y = 0; y < h; y++)
-        {
-            for (int x = 0; x < w; x++)
-            {
-                double t = ((x + 0.5 - w / 2.0) * dx + (y + 0.5 - h / 2.0) * dy) / len + 0.5;
-                t = Math.Clamp(t, 0, 1);
-                uint c = t < 0.5 ? Mix(GradTop, GradMid, t * 2) : Mix(GradMid, GradBottom, (t - 0.5) * 2);
-                c = Glow(c, x, y, w, h, ga, GlowA, GlowAAlpha);
-                c = Glow(c, x, y, w, h, gb, GlowB, GlowBAlpha);
-                // 맨 위 띠: 제목 표시줄(단색 GradTop, ApplyTitleBar)과 이음매 없이 이어지게, 위쪽 TopBand 만큼은 GradTop 으로 부드럽게 모은다
-                // (2026-10-04 사용자: 제목 표시줄과 창이 자연스럽게 이어지게). 맨 위 줄 = GradTop 100%, TopBand 에서 0%. 그 아래는 시안 그대로.
-                if (y < band) { double f = 1 - (y + 0.5) / band; c = Mix(c, GradTop, f * f * (3 - 2 * f)); }
-                // DIB 는 BGRA, COLORREF 는 0x00BBGGRR
-                px[y * w + x] = 0xFF000000u | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
-            }
-        }
-        // 어두운 바탕의 별 8개(시안 .stars)는 뺐다(2026-10-04 사용자: 차콜 바탕에서 먼지처럼 보임, 0.2.171)
+        // 새 디자인(2026-10-08): 시안의 창 몸체(152° 네 색 + 안쪽 빛·그늘 셋)를 같은 식으로. 빛 번짐(Glow*)은 쓰지 않는다
+        Metal.Body(new Metal.Surf(px, w, h), dpi / 96.0, IsDark, TopBand * dpi / 96.0);
     }
 
     /// <summary>
@@ -339,6 +364,7 @@ internal static unsafe class Theme
     /// <summary>DPI 에 맞는 글꼴을 만든다. 이전 글꼴은 지운다.</summary>
     public static void CreateFonts(uint dpi)
     {
+        FreeSized();
         foreach (nint f in new[] { FontBody, FontStrong, FontSmall, FontSmallStrong, FontTitle, FontIcon, FontIconSmall, FontIconTiny })
             if (f != 0) Native.DeleteObject(f);
 
@@ -366,8 +392,34 @@ internal static unsafe class Theme
         FontIconSmall   = Native.MakeFont("Segoe Fluent Icons", Px(12), Native.FW_NORMAL);
         // 편집 중 칸 모서리의 18px 동그라미 연필: 14px 의 반(2026-10-05 사용자: 연필이 동그라미 밖으로 나옴)
         FontIconTiny    = Native.MakeFont("Segoe Fluent Icons", Px(7), Native.FW_NORMAL);
+        _fontDpi = dpi; _fontFace = face;
         Dw.SetDpi(dpi);   // DirectWrite 형식도 같은 크기로 다시 (GDI 글꼴은 대체 경로와 입력칸이 쓴다)
         Dw.SetLanguage(L.Current);   // 그리고 같은 언어의 글꼴 정책으로
+    }
+
+    private static readonly Dictionary<(int Tenths, bool Strong), nint> _sized = new();
+    private static uint _fontDpi = 96;
+    private static string _fontFace = "Malgun Gothic";
+
+    /// <summary>
+    /// 새 디자인의 글자 크기(논리 px, 소수 가능)와 굵기의 글꼴. GDI 글꼴을 만들어 DirectWrite 에도 같은 크기·굵기로 알린다(<see cref="Dw.RegisterSized"/>).
+    /// 같은 값은 한 번만 만든다. 배율·언어가 바뀌면 CreateFonts 가 모두 지운다.
+    /// </summary>
+    public static nint Sized(double logical, bool strong)
+    {
+        var key = ((int)Math.Round(logical * 10), strong);
+        if (_sized.TryGetValue(key, out nint f)) return f;
+        float px = (float)(logical * _fontDpi / 96.0);
+        f = Native.MakeFont(_fontFace, (int)Math.Round(px), strong ? Native.FW_SEMIBOLD : Native.FW_NORMAL);
+        if (f != 0) { _sized[key] = f; Dw.RegisterSized(f, px, strong); }
+        return f;
+    }
+
+    private static void FreeSized()
+    {
+        foreach (nint f in _sized.Values) Native.DeleteObject(f);
+        _sized.Clear();
+        Dw.ForgetSized();
     }
 
     private static int ReadAppsUseLightTheme()
@@ -428,7 +480,7 @@ internal static unsafe class Theme
         Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(int));
         // 제목 표시줄을 창 바탕의 맨 위 색으로(2026-10-03 사용자 결정, Windows 11 22000+; 그 전 Windows 는 무시하고 기본 색).
         // 그라데이션은 못 그리므로 단색. 글자는 본문 글자색.
-        uint caption = GradTop, text = ControlText;
+        uint caption = GradTop, text = Metal.Ref(IsDark ? 0xB0B0B0u : 0x5F5F5Fu);   // 시안의 제목 줄 "1Key" 글자색
         Native.DwmSetWindowAttribute(hwnd, 35 /* DWMWA_CAPTION_COLOR */, &caption, sizeof(uint));
         Native.DwmSetWindowAttribute(hwnd, 36 /* DWMWA_TEXT_COLOR */, &text, sizeof(uint));
         if (_pFlushMenuThemes != 0)

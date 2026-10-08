@@ -242,35 +242,53 @@ internal sealed unsafe partial class App
 
     private void BuildAddKind()
     {
-        Button(IdAkBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.AddTitle, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        int y = 52, top = y;
+        // 새 디자인(2026-10-08, 시안 Add-light/dark.dc.html): 머리줄 ‹ · 가운데 제목 · [?], 판 안에 "넣을 글" 조각 셋과 "바로 실행" 조각 셋(높이 62, 사이 8).
+        // 조각 = 둥근 표식(넣는 글은 강조색 Aa·ID·+, 바로 실행은 갈색 아이콘) + 이름 + 설명 + ›. 두 묶음(2026-10-06 사용자 — 동료가 어렵다고 함)은 그대로.
+        int y = MetalHeader(IdAkBack, T.AddTitle);
+        int dialTop = y;
+        y += DialPadX;
+        int cx = DialX + DialPadX, cw = DialW - 2 * DialPadX;
+        nint labelFont = Theme.Sized(11.5, false);
+        uint labelInk = Metal.Ref(Metal.InkLabel(Theme.IsDark));
+        nint Choice(int id, string title, string sub, string mark, int at)
+        {
+            nint r = Make(Row.ClassName, title, Row.Choice | Native.WS_TABSTOP, cx - MetalUi.TileMarginX, at - MetalUi.TileMarginTop,
+                          cw + 2 * MetalUi.TileMarginX, MetalUi.ChoiceH + MetalUi.TileMarginTop + MetalUi.TileMarginBottom, id);
+            if (r != 0) Row.Set(r, title, sub, mark);
+            return r;
+        }
         bool slotsFull = Enumerable.Range(0, Config.SlotCount).All(i => SlotInUse(_cfg.Slots[i]));
         bool launchFull = LaunchStore.Items.Count >= LaunchStore.Max;
-        // 두 묶음(2026-10-06 사용자 — 동료가 어렵다고 함): 넣을 문구 세 양식 / 바로가기 세 종류
-        nint p = ListRow(IdAkPassword, T.AddPassword, T.AddPasswordSub, IcTyping, Row.First | Row.Chevron, y); y += RowH + 8;
-        nint lg = ListRow(IdAkLogin, T.AddLogin, T.AddLoginSub, IcLogin, Row.Chevron, y); y += RowH + 8;
-        nint mu = ListRow(IdAkMulti, T.AddMulti, T.AddMultiSub, IcMulti, Row.Last | Row.Chevron, y); y += RowH;
+        const int Step = MetalUi.ChoiceH + MetalUi.ChoiceGap;
+
+        Label(T.AddGroupText, cx + 6, y, cw - 12, 21, labelFont, labelInk, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        y += 21 + MetalUi.ChoiceGap;
+        nint p = Choice(IdAkPassword, T.AddPassword, T.AddPasswordSub, "Aa", y); y += Step;
+        nint lg = Choice(IdAkLogin, T.AddLogin, T.AddLoginSub, "ID", y); y += Step;
+        nint mu = Choice(IdAkMulti, T.AddMulti, T.AddMultiSub, "+", y); y += MetalUi.ChoiceH;
         if (slotsFull) foreach (nint h in new[] { p, lg, mu }) if (h != 0) Native.EnableWindow(h, false);
-        Card(top, y - top);
-        y += 16; top = y;
-        nint g = ListRow(IdAkProgram, T.AddProgram, T.AddProgramSub, IcApp, Row.First | Row.Chevron, y); y += RowH + 8;
-        nint f = ListRow(IdAkFolder, T.AddFolder, T.AddFolderSub, IcFolder, Row.Chevron, y); y += RowH + 8;
-        nint wsite = ListRow(IdAkWeb, T.AddWeb, T.AddWebSub, IcSite, Row.Last | Row.Chevron, y); y += RowH;
+
+        y += MetalUi.ChoiceGap;
+        Label(T.SetLaunchSection, cx + 6, y + 6, cw - 12, 21, labelFont, labelInk, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        y += 27 + MetalUi.ChoiceGap;
+        nint g = Choice(IdAkProgram, T.AddProgram, T.AddProgramSub, "\uF5B0", y); y += Step;   // PlaySolid(시안 ▶)
+        nint f = Choice(IdAkFolder, T.AddFolder, T.AddFolderSub, IcFolder, y); y += Step;
+        nint wsite = Choice(IdAkWeb, T.AddWeb, T.AddWebSub, IcSite, y); y += MetalUi.ChoiceH;
         if (LaunchStore.ReadOnly || launchFull)
         {
             if (g != 0) Native.EnableWindow(g, false);
             if (f != 0) Native.EnableWindow(f, false);
             if (wsite != 0) Native.EnableWindow(wsite, false);
         }
-        Card(top, y - top);
+        y += DialPadX;
+        _page.Dials.Add((DialX, dialTop, DialW, y - dialTop));
         if (LaunchStore.ReadOnly)
         {
             y = Footer(LaunchStore.ReadOnlyReason!, y);
             if (LaunchStore.CanReset) { Button(IdStripReset, T.LaunchReset, Btn.DangerBordered, Margin, y + 4, Math.Min(CardW, LabelW(_font, T.LaunchReset) + 32), 32); y += 40; }
         }
         else if (launchFull) y = Footer(T.AddFull, y);
-        _page.Height = y + 20;
+        _page.Height = y + 14;
     }
 
     /// <summary>[프로그램]: 설치된 프로그램 목록(시작 메뉴) 또는 [찾아보기](2026-10-04 사용자).</summary>
@@ -490,16 +508,16 @@ internal sealed unsafe partial class App
 
     private void BuildPickProgram()
     {
-        Button(IdPkBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.PickTitle, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
+        int metalTop = MetalHeader(IdPkBack, T.PickTitle, help: false);   // 새 디자인 머리줄(‹ · 제목)
         if (_pickAll is null && _pickLoadNo == 0) StartPickLoad();
         // 2026-10-05 사용자: 검색 칸 옆 [찾아보기…]가 "검색하고 누르는 버튼"처럼 보였다 → 검색은 설치된 프로그램 묶음의 칸(폭 전체, 돋보기),
         // 파일에서 직접 고르기는 아래에 따로 고정한 한 줄(BuildPickRows 끝)
-        int y = 52;
+        int y = 58;   // 판 안쪽 위 여백
+        _pickDialTop = metalTop;
         Header(T.PickInstalled, y); y += HeaderH;
-        Field(IdPkSearch, Margin, y, CardW, FieldH, onCard: false, leftPad: 18);
+        Field(IdPkSearch, Mx, y, Mw, FieldH, onCard: false, leftPad: 18);
         // \uB3CB\uBCF4\uAE30: \uCE78 \uD14C\uB450\uB9AC(\uC704\u00B7\uC544\uB798 1px)\uB97C \uB36E\uC9C0 \uC54A\uAC8C \uC548\uCABD\uC5D0, \uBC14\uD0D5\uC740 \uCE78 \uC548\uCABD \uC0C9(\uBC14\uD0D5 \uC704 \uCE78 = \uCE74\uB4DC \uC0C9)\uACFC \uAC19\uAC8C(2026-10-05 \uC0AC\uC6A9\uC790: \uD14C\uB450\uB9AC\uAC00 \uC798\uB9BC)
-        Label("\uE721", Margin + 6, y + 3, 20, FieldH - 6, Theme.FontIcon, Theme.SecondaryText, true, Native.SS_CENTER);   // Search
+        Label("\uE721", Mx + 6, y + 3, 20, FieldH - 6, Theme.FontIcon, Theme.SecondaryText, true, Native.SS_CENTER);   // Search
         Native.SetCueBanner(C(IdPkSearch), T.PickSearch);
         Native.SetText(C(IdPkSearch), _pickFilter);
         y += FieldH + 10;
@@ -513,7 +531,7 @@ internal sealed unsafe partial class App
     }
 
     private Page.Marks _pickKeep;
-    private int _pickRowsY;
+    private int _pickRowsY, _pickDialTop;
 
     /// <summary>
     /// 검색 결과(검색 칸과 "파일에서 직접 고르기" 아래): 작업 표시줄에 고정된 앱을 먼저, 그다음 모든 앱.
@@ -541,7 +559,15 @@ internal sealed unsafe partial class App
                 if (_pickPartial) y = Footer(T.PickPartial, y);
             }
         }
-        _page.Height = y + 20;
+        if (_page.Metal)
+        {
+            // 새 디자인: 판은 검색 결과 끝까지(검색어가 바뀌어 행만 다시 만들 때도 다시 잰다)
+            _page.Dials.Clear();
+            y += DialPadBottom;
+            _page.Dials.Add((DialX, _pickDialTop, DialW, y - _pickDialTop));
+            _page.Height = y + 14;
+        }
+        else _page.Height = y + 20;
     }
 
     private int PickCard(List<PickEntry> list, int k0, int y)
@@ -707,12 +733,11 @@ internal sealed unsafe partial class App
         if (_launchEdit!.IsUrl) { BuildWebEdit(); return; }
         LaunchItem e = _launchEdit!;
         bool isNew = _launchEditIndex < 0;
-        Button(IdLeBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(isNew ? (e.IsFolder ? T.AddFolder : T.AddProgram) : e.Name, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS, userText: true);
+        int metalTop = MetalHeader(IdLeBack, isNew ? (e.IsFolder ? T.AddFolder : T.AddProgram) : e.Name, help: false);   // 새 디자인 머리줄(‹ · 제목)
 
         int col = LabelCol(86, 150, T.LaunchName, T.LaunchTarget, T.EditCombo, T.LaunchArgs, T.LaunchDir, T.LaunchIcon);
-        int labelX = Margin + Row.PadX, valueX = labelX + col, valueW = CardW - (valueX - Margin) - Row.PadX, labelW = col - 6;
-        int y = 52, top = y;
+        int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = col - 6;
+        int y = 60, top = y;   // 판 안쪽 위 여백
         Label(T.LaunchName, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
         Field(IdLeName, valueX, y + (RowH - FieldH) / 2, valueW, FieldH);
         Separator(y + RowH - 1); y += RowH;
@@ -763,20 +788,22 @@ internal sealed unsafe partial class App
         {
             // 순서: 띠에서 앞/뒤로. 누르면 바로 옮겨 저장한다(띠의 [편집] 중에는 칸을 끌어 놓아도 된다 — OnTileDrop).
             int n = LaunchStore.Items.Count;
-            nint l = Button(IdLeLeft, T.LaunchMoveLeft, Btn.Bordered, Margin, y, 88, 32);
-            nint r = Button(IdLeRight, T.LaunchMoveRight, Btn.Bordered, Margin + 96, y, 88, 32);
+            nint l = Button(IdLeLeft, T.LaunchMoveLeft, Btn.Bordered, Mx, y, 88, 32);
+            nint r = Button(IdLeRight, T.LaunchMoveRight, Btn.Bordered, Mx + 96, y, 88, 32);
             if (l != 0 && NeighborInRow(_launchEditIndex, -1) < 0) Native.EnableWindow(l, false);
             if (r != 0 && NeighborInRow(_launchEditIndex, +1) < 0) Native.EnableWindow(r, false);
             y += 32 + 12;
         }
 
+        MetalDial(metalTop, ref y);
         _page.BarTop = y;
-        y += 20;
-        if (!isNew) Button(IdLeDelete, T.LaunchDelete, Btn.DangerBordered, Margin, y, 64, 34);
-        Button(IdLeCancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdLeSave, T.CommonSave, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        if (!isNew) BarPill(IdLeDelete, T.LaunchDelete, Btn.DangerBordered, 18, y, BarPillW(T.LaunchDelete));
+        int saveW = BarPillW(T.CommonSave, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdLeCancel, T.CommonCancel, Btn.PillMain, WinW - 22 - saveW - 8 - cancelW, y, cancelW);
+        BarPill(IdLeSave, T.CommonSave, Btn.Prominent, WinW - 22 - saveW, y, saveW, isDefault: true);
         _page.DefaultButton = IdLeSave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
 
         Native.SetText(C(IdLeName), e.Name);
         Native.SendMessageW(C(IdLeName), Native.EM_LIMITTEXT, LaunchStore.NameMax, 0);
@@ -1009,15 +1036,19 @@ internal sealed unsafe partial class App
     /// 두 줄을 카드 상자 하나로 묶고, 상자 오른쪽 위 모서리에 걸친 둥근 연필 버튼이 [편집](2026-10-05 사용자). 칸이 상자보다 많으면
     /// 줄마다 따로 가로로 스크롤한다(휠·가로 휠·아래 가는 막대·← →). 읽기 전용이면 이유 한 줄. 끝난 y.
     /// </summary>
+    /// <summary>바로 실행 띠 상자의 왼쪽·폭: 새 디자인 목록은 아래 판과 같은 폭(DialX·DialW), 아니면 예전 카드 자리.</summary>
+    private int StripX => _page.Metal ? DialX : Margin;
+    private int StripW => _page.Metal ? DialW : CardW;
+
     private int BuildLaunchStrip(int y)
     {
         _stripRows.Clear(); _stripBadge = null;
         if (LaunchStore.ReadOnly)
         {
             int resetW = LaunchStore.CanReset ? Math.Min(160, LabelW(_font, T.LaunchReset) + 32) : 0;
-            nint n = Make("STATIC", LaunchStore.ReadOnlyReason!, Native.SS_LEFT | Native.SS_NOPREFIX, Margin, y, CardW - (resetW > 0 ? resetW + 8 : 0), 50, IdStripNote, 0, Theme.FontSmall);
+            nint n = Make("STATIC", LaunchStore.ReadOnlyReason!, Native.SS_LEFT | Native.SS_NOPREFIX, StripX, y, StripW - (resetW > 0 ? resetW + 8 : 0), 50, IdStripNote, 0, Theme.FontSmall);
             if (n != 0) _staticStyle[n] = (Theme.BgBrush, Theme.SecondaryText);
-            if (resetW > 0) Button(IdStripReset, T.LaunchReset, Btn.DangerBordered, Margin + CardW - resetW, y + 9, resetW, 32);
+            if (resetW > 0) Button(IdStripReset, T.LaunchReset, Btn.DangerBordered, StripX + StripW - resetW, y + 9, resetW, 32);
             return y + 56;
         }
         var progs = new List<int>(); var folders = new List<int>(); var webs = new List<int>();
@@ -1028,8 +1059,8 @@ internal sealed unsafe partial class App
         // 줄의 칸 폭은 같게: 한 줄만 이름을 보여도 모든 줄이 넓은 칸이어야 위아래 아이콘이 같은 열에 선다(2026-10-05 사용자 — 52 와 68 이 섞여 어긋났다)
         int tw = (progs.Count > 0 && progNames) || (folders.Count > 0 && folderNames) || (webs.Count > 0 && webNames) ? TileW : IconTileW;
         int top = y + BadgeOut;                                   // 연필 버튼이 상자 위로 BadgeOut 만큼 나온다
-        int right = Margin + CardW;
-        int viewL = Margin + StripPadX, viewR = right - StripPadX;   // 좌우 여백을 작게(0.3.25 사용자)
+        int right = StripX + StripW;
+        int viewL = StripX + StripPadX, viewR = right - StripPadX;   // 좌우 여백을 작게(0.3.25 사용자)
         // 연필 버튼은 4분의 3이 상자 안(0.3.26 사용자: 버튼의 오른쪽 위 75% 지점이 모서리) — 첫 줄은 그 버튼 왼쪽 앞에서 칸이 끝난다(아이콘을 덮지 않게)
         int badgeL = right - BadgeD + BadgeOut;
         var firstRow = progs.Count > 0 ? progs : folders.Count > 0 ? folders : webs;
@@ -1037,14 +1068,14 @@ internal sealed unsafe partial class App
         // 넘치는 줄이 있으면 양 끝에 ‹ › 자리를 따로 비운다 — 꺾쇠가 아이콘을 가리지 않게(2026-10-05 사용자). 두 줄 모두 같은 자리를 비워 열이 맞게
         int widest = Math.Max(progs.Count, Math.Max(folders.Count, webs.Count)) * (tw + TileGap) - TileGap;
         // 넘치면 꺾쇠를 상자 양 끝에 바짝(테두리 안 1px), 칸은 그 안쪽부터(0.3.25 사용자)
-        if (widest > viewR - viewL || RowW(firstRow) > badgeL - 1 - viewL) { viewL = Margin + 1 + ChevW + 2; viewR = right - 1 - ChevW - 2; }
+        if (widest > viewR - viewL || RowW(firstRow) > badgeL - 1 - viewL) { viewL = StripX + 1 + ChevW + 2; viewR = right - 1 - ChevW - 2; }
         int topR = Math.Min(viewR, badgeL - 1);   // 첫 줄의 오른쪽 끝
         int ry = top + StripPad;
         if (progs.Count > 0) ry = StripRow(progs, 0, ry, progNames, tw, viewL, topR) + 2;
         if (folders.Count > 0) ry = StripRow(folders, 1, ry, folderNames, tw, viewL, progs.Count > 0 ? viewR : topR) + 2;
         if (webs.Count > 0) ry = StripRow(webs, 2, ry, webNames, tw, viewL, progs.Count > 0 || folders.Count > 0 ? viewR : topR) + 2;
         int bottom = ry - 2 + StripPad;
-        Card(top, bottom - top);
+        _page.Cards.Add((StripX, top, StripW, bottom - top));
         nint b = Button(IdStripEdit, _stripEdit ? T.LaunchEditDone : T.LaunchEdit, Btn.Badge | (_stripEdit ? Btn.Expanded : 0), right - BadgeD + BadgeOut, y, BadgeD, BadgeD);
         if (b != 0)
         {
@@ -1504,7 +1535,7 @@ internal static unsafe class Tile
     private static void Paint(nint hwnd)
     {
         _data.TryGetValue(hwnd, out Data? d);
-        bool onCard = d?.OnCard == true;
+        bool onCard = d?.OnCard == true && !MetalUi.On(hwnd);   // 새 디자인 화면: 조각도 바탕 그림에 있다
         Ctl.Paint(hwnd, onCard ? Theme.CardBrush : Theme.BgBrush, (dc, w, h) =>
         {
             nint st = Ctl.State(hwnd);

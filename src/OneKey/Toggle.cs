@@ -180,6 +180,15 @@ internal static unsafe class Toggle
 
     private static void Paint(nint hwnd)
     {
+        if (MetalUi.On(hwnd))
+        {
+            // 새 디자인(설정 화면): 스위치 42×24 금속 모양. 줄 아래 구분선은 바탕 그림에 있다(이 창이 그 자리를 그대로 깐다)
+            nint ms = State(hwnd);
+            bool en = Native.IsWindowEnabled(hwnd);
+            MetalUi.PaintToggle(hwnd, Native.GetWindowLongPtrW(hwnd, OffFont), (ms & StChecked) != 0, (ms & StHot) != 0 && en, (ms & StPressed) != 0 && en, en,
+                                Ctl.HasFocusRing(hwnd), ((long)Native.GetWindowLongPtrW(hwnd, Native.GWL_STYLE) & StyleTrailing) != 0);
+            return;
+        }
         nint printDc = Ctl.PrintDc;   // WM_PRINTCLIENT 면 그 DC 에
         Native.PAINTSTRUCT ps = default;
         nint hdc = printDc != 0 ? printDc : Native.BeginPaint(hwnd, out ps);

@@ -31,7 +31,7 @@ namespace OneKey;
 /// </summary>
 internal static unsafe class Dw
 {
-    public enum Role { None, Body, Strong, Small, SmallStrong, Title }
+    public enum Role { None, Body, Strong, Small, SmallStrong, Title, Sized }
 
     /// <summary>GDI DT_* 와 같은 값(그 뜻을 DirectWrite 줄임표로 옮긴다): 경로 줄임(마지막 \ 뒤를 남김), 낱말 줄임.</summary>
     public const uint DT_PATH_ELLIPSIS = 0x4000, DT_WORD_ELLIPSIS = 0x40000;
@@ -49,6 +49,10 @@ internal static unsafe class Dw
     private static Policy _policy;
     private static int _failFrames, _depth;
     private static int _pxBody = 13, _pxSmall = 12, _pxTitle = 24;
+    /// <summary>새 디자인의 크기를 정한 글꼴(Theme.Sized): GDI 글꼴 → (물리 px, 굵게).</summary>
+    private static readonly Dictionary<nint, (float Px, bool Strong)> _sizedFonts = new();
+    public static void RegisterSized(nint font, float px, bool strong) => _sizedFonts[font] = (px, strong);
+    public static void ForgetSized() => _sizedFonts.Clear();
     private static readonly Dictionary<(Role, int), nint> _formats = new();
     private static readonly Dictionary<nint, nint> _signs = new();   // 형식 → 말줄임 기호
     private static bool _onceFailed;
@@ -244,13 +248,16 @@ internal static unsafe class Dw
         : font == Theme.FontSmall ? Role.Small
         : font == Theme.FontSmallStrong ? Role.SmallStrong
         : font == Theme.FontTitle ? Role.Title
+        : _sizedFonts.ContainsKey(font) ? Role.Sized
         : Role.None;   // 아이콘 글꼴 등은 GDI
 
-    private static nint Format(Role role)
+    private static nint Format(Role role, nint font)
     {
-        int px = role switch { Role.Small or Role.SmallStrong => _pxSmall, Role.Title => _pxTitle, _ => _pxBody };
+        (float Px, bool Strong) sz = role == Role.Sized && _sizedFonts.TryGetValue(font, out var z) ? z : (0f, false);
+        float fpx = role switch { Role.Small or Role.SmallStrong => _pxSmall, Role.Title => _pxTitle, Role.Sized => sz.Px, _ => _pxBody };
+        int px = role == Role.Sized ? (int)Math.Round(fpx * 10) * 2 + (sz.Strong ? 1 : 0) : (int)fpx;   // 열쇠: 크기를 정한 글꼴은 0.1px 단위 + 굵기
         if (_formats.TryGetValue((role, px), out nint f)) return f;
-        int weight = role is Role.Strong or Role.SmallStrong ? _policy.Strong : _policy.Normal;
+        int weight = role is Role.Strong or Role.SmallStrong || (role == Role.Sized && sz.Strong) ? _policy.Strong : _policy.Normal;
         // 큰 제목도 본문과 같은 글꼴·굵기(400)로 쓴다(2026-10-03 사용자 결정: 제목만 맑은 고딕 Semilight 라 글꼴이 섞여 보였다 → Pretendard Regular).
         // 시안의 얇은 300 은 내장 Pretendard 에 없는 굵기라 버린다. 일본어·중국어는 그 언어의 시스템 글꼴 400.
         string family = _policy.Family; nint coll = _policy.Collection;
@@ -258,7 +265,7 @@ internal static unsafe class Dw
         int hr;
         fixed (char* fam = family) fixed (char* loc = _policy.Locale)
             hr = ((delegate* unmanaged[Stdcall]<nint, char*, nint, int, int, int, float, char*, nint*, int>)V(_dw)[15])
-                (_dw, fam, coll, weight, 0, 5, px, loc, &fmt);
+                (_dw, fam, coll, weight, 0, 5, fpx, loc, &fmt);
         if (hr < 0) return 0;
         _formats[(role, px)] = fmt;
         return fmt;
@@ -274,9 +281,9 @@ internal static unsafe class Dw
     }
 
     /// <summary>재기와 그리기가 함께 쓰는 유일한 레이아웃 생성 함수. DT_* 뜻을 DirectWrite 설정으로 옮긴다.</summary>
-    private static nint MakeLayout(string text, Role role, float width, float height, uint dt)
+    private static nint MakeLayout(string text, Role role, nint font, float width, float height, uint dt)
     {
-        nint fmt = Format(role);
+        nint fmt = Format(role, font);
         if (fmt == 0) return 0;
         nint layout;
         int hr;
@@ -313,7 +320,7 @@ internal static unsafe class Dw
         if (s.Length == 0 || r <= l || b <= t) return true;
         if (_depth >= 2) return false;   // 공용 + 임시 하나까지. 그보다 깊은 중첩은 그 그리기만 GDI 로
 
-        nint layout = MakeLayout(s, role, r - l, b - t, dt);
+        nint layout = MakeLayout(s, role, font, r - l, b - t, dt);
         if (layout == 0) { FrameFailed(); return false; }
         bool nested = _depth > 0;
         nint rt = 0, brush = 0;
@@ -363,7 +370,7 @@ internal static unsafe class Dw
         Role role = RoleOf(font);
         if (role == Role.None) return null;
         if (s.Length == 0) return 0;
-        nint layout = MakeLayout(s, role, 100000, 100000, Native.DT_SINGLELINE);
+        nint layout = MakeLayout(s, role, font, 100000, 100000, Native.DT_SINGLELINE);
         if (layout == 0) return null;
         try
         {
@@ -382,7 +389,7 @@ internal static unsafe class Dw
         Role role = RoleOf(font);
         if (role == Role.None) return null;
         if (s.Length == 0) return (0, 0);
-        nint layout = MakeLayout(s, role, Math.Max(1, maxWidth), 100000, Native.DT_WORDBREAK);
+        nint layout = MakeLayout(s, role, font, Math.Max(1, maxWidth), 100000, Native.DT_WORDBREAK);
         if (layout == 0) return null;
         try
         {

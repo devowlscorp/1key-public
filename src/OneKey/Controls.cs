@@ -227,6 +227,13 @@ internal static unsafe class Btn
     private const string FillKey = "\uE8D7";   // Segoe Fluent Icons: Permissions(열쇠)
     private const string BackChevron = "\uE76B";   // Segoe Fluent Icons: ChevronLeft
     public const uint OnCard = 0x10, Default = 0x20;
+    /// <summary>
+    /// 새 디자인(2026-10-08 금속 질감, <see cref="MetalUi"/>): 13 머리줄의 둥근 단추(지름 30, 글자가 아이콘 글리프면 아이콘) ·
+    /// 14 판 위 조각의 [입력](조각 오른쪽 끝을 이어 그리고 그 위에 알약) · 15 [+ 추가] 알약. 창은 그늘이 들어갈 만큼 단추보다 크다.
+    /// </summary>
+    public const uint Knob = 13, PillInput = 14, PillMain = 15;
+    /// <summary>Borderless 와 함께: 글 링크(설정 ›) — 시안의 회색 글 + 꺾쇠.</summary>
+    public const uint Link = 0x40;
     public const int Radius = 6;
 
     public static void Register(nint hInst) => Ctl.RegisterClass(hInst, ClassName, &WndProc, 16);
@@ -253,6 +260,7 @@ internal static unsafe class Btn
     {
         uint style = Ctl.Style(hwnd);
         uint kind = style & KindMask;
+        if (kind is Knob or PillInput or PillMain || (kind == Borderless && (style & Link) != 0) || (kind is Bordered or Prominent or DangerBordered or Icon && MetalUi.On(hwnd))) { MetalUi.PaintButton(hwnd, style, kind); return; }
         bool onCard = (style & OnCard) != 0;
         // 목록 행의 짝 버튼이면 줄이 강조될 때 버튼 둘레도 같은 색으로(줄 강조가 버튼 칸에서 끊기지 않게)
         bool band = onCard && Ctl.Partner.ContainsKey(hwnd) && Ctl.BandHot(hwnd);
@@ -418,8 +426,12 @@ internal static unsafe class Row
     /// <summary>EditHint 의 글. 언어에 따라 바꾼다.</summary>
     public static string EditHintText => T.RowEditHint;
     public const int Height = 42, PadX = 14, IconBox = 28, CardRadius = Theme.CardRadius;
+    /// <summary>새 디자인: 판 위 조각(목록 항목) · 판 안의 자동 잠금 칸(누르면 설정). 그리기는 <see cref="MetalUi"/>.</summary>
+    public const uint Tile = 0x400, LockInfo = 0x800;
+    /// <summary>새 디자인 화면의 고르기 조각(추가 메뉴): 왼쪽 둥근 표식(Icon — 아이콘 글리프면 아이콘, 아니면 짧은 글) + 이름 + 설명 + ›. 창은 그늘 자리만큼 크다.</summary>
+    public const uint Choice = 0x1000;
 
-    private sealed class Data { public string Subtitle = ""; public string Icon = ""; }
+    private sealed class Data { public string Subtitle = ""; public string Icon = ""; public string Mod = ""; public string Key = ""; }
     private static readonly Dictionary<nint, Data> _data = new();
 
     public static void Register(nint hInst) => Ctl.RegisterClass(hInst, ClassName, &WndProc, 16);
@@ -427,6 +439,17 @@ internal static unsafe class Row
     public static void Set(nint hwnd, string title, string subtitle, string icon)
     {
         _data[hwnd] = new Data { Subtitle = subtitle, Icon = icon };
+        Native.SetText(hwnd, title);
+        Native.InvalidateRect(hwnd, 0, false);
+    }
+
+    /// <summary>
+    /// 조각(<see cref="Tile"/>): 이름(창 글), 위 작은 글(종류·넣는 방법), 단축키 칸(조합 작게 · 키 크게).
+    /// 자동 잠금 칸(<see cref="LockInfo"/>): mod = 이름표, key = 큰 숫자, subtitle = 단위.
+    /// </summary>
+    public static void SetPlate(nint hwnd, string title, string subtitle, string mod, string key)
+    {
+        _data[hwnd] = new Data { Subtitle = subtitle, Mod = mod, Key = key };
         Native.SetText(hwnd, title);
         Native.InvalidateRect(hwnd, 0, false);
     }
@@ -461,6 +484,9 @@ internal static unsafe class Row
     {
         uint style = Ctl.Style(hwnd);
         _data.TryGetValue(hwnd, out Data? d); d ??= new Data();
+        if ((style & (Tile | LockInfo)) != 0) { MetalUi.PaintRow(hwnd, style, d.Subtitle, d.Mod, d.Key); return; }
+        if ((style & Choice) != 0 && MetalUi.On(hwnd)) { MetalUi.PaintChoice(hwnd, d.Subtitle, d.Icon); return; }
+        if (MetalUi.On(hwnd)) { MetalUi.PaintPlainRow(hwnd, style, d.Subtitle, d.Icon); return; }   // 새 디자인 화면: 조각 위 행
         // 행은 카드 위에 놓이므로, 바탕색으로 지운 뒤 카드 모양(첫/마지막 행이면 모서리 둥글게)을 직접 그린다.
         Ctl.Paint(hwnd, Theme.BgBrush, (dc, w, h) =>
         {
@@ -639,6 +665,7 @@ internal static unsafe class HotkeyBox
 
     private static void Paint(nint hwnd)
     {
+        if (MetalUi.On(hwnd)) { (uint mm, uint mv) = Get(hwnd); MetalUi.PaintHotkey(hwnd, Text(mm, mv), Native.GetFocus() == hwnd ? T.HkPress : T.HkNone); return; }
         Ctl.Paint(hwnd, Theme.CardBrush, (dc, w, h) =>
         {
             bool focus = Native.GetFocus() == hwnd;
@@ -723,13 +750,26 @@ internal static unsafe class Slider
                     if (!Native.IsWindowEnabled(hwnd)) return 0;
                     Native.SetFocus(hwnd); Native.SetCapture(hwnd);
                     Ctl.SetState(hwnd, Ctl.State(hwnd) | Ctl.StPressed);
+                    if (MetalUi.On(hwnd))
+                    {
+                        // 새 디자인: ‹ › 를 누르면 한 단계, 아래 점을 누르거나 끌면 그 단계
+                        int to = MetalUi.StepHit(hwnd, Native.LoWord(lParam), Native.HiWord(lParam), Count(hwnd), Get(hwnd), false);
+                        if (to >= 0) Move(hwnd, to, true);
+                        Native.InvalidateRect(hwnd, 0, false);
+                        return 0;
+                    }
                     Move(hwnd, IndexAt(hwnd, Native.LoWord(lParam)), true);
                     return 0;
                 case Native.WM_MOUSEMOVE:
-                    if ((Ctl.State(hwnd) & Ctl.StPressed) != 0) { Move(hwnd, IndexAt(hwnd, Native.LoWord(lParam)), true); return 0; }
+                    if ((Ctl.State(hwnd) & Ctl.StPressed) != 0)
+                    {
+                        if (MetalUi.On(hwnd)) { int to = MetalUi.StepHit(hwnd, (short)Native.LoWord(lParam), (short)Native.HiWord(lParam), Count(hwnd), Get(hwnd), true); if (to >= 0) Move(hwnd, to, true); }
+                        else Move(hwnd, IndexAt(hwnd, Native.LoWord(lParam)), true);
+                        return 0;
+                    }
                     break;   // 호버 추적은 공통 처리로
                 case Native.WM_LBUTTONUP:
-                    if ((Ctl.State(hwnd) & Ctl.StPressed) != 0) { Native.ReleaseCapture(); Ctl.SetState(hwnd, Ctl.State(hwnd) & ~Ctl.StPressed); Native.InvalidateRect(hwnd, 0, false); }
+                    if ((Ctl.State(hwnd) & Ctl.StPressed) != 0) { Native.ReleaseCapture(); Ctl.SetState(hwnd, Ctl.State(hwnd) & ~Ctl.StPressed); MetalUi.StepRelease(); Native.InvalidateRect(hwnd, 0, false); }
                     return 0;
                 case Native.WM_KEYDOWN:
                 {
@@ -753,6 +793,7 @@ internal static unsafe class Slider
 
     private static void Paint(nint hwnd)
     {
+        if (MetalUi.On(hwnd)) { MetalUi.PaintStepper(hwnd, _labels.TryGetValue(hwnd, out string[]? ml) ? ml : Array.Empty<string>(), Get(hwnd)); return; }
         Ctl.Paint(hwnd, Theme.CardBrush, (dc, w, h) =>
         {
             int S(int v) => Ctl.S(hwnd, v);
@@ -848,6 +889,7 @@ internal static unsafe class Dropdown
     private static int[] SegEdges(nint h, int w)
     {
         string[] items = _items.TryGetValue(h, out string[]? it) ? it : Array.Empty<string>();
+        if (MetalUi.On(h)) return MetalUi.SegEdges(h, items, w).Select(e => (int)Math.Round(e)).ToArray();   // 새 디자인: 그리는 칸과 같은 경계
         int n = Math.Max(1, items.Length);
         var edges = new int[n + 1];
         nint dc = Native.GetDC(h);
@@ -932,6 +974,7 @@ internal static unsafe class Dropdown
 
     private static void Paint(nint hwnd)
     {
+        if (MetalUi.On(hwnd)) { MetalUi.PaintDropdown(hwnd, _items.TryGetValue(hwnd, out string[]? mi) && mi.Length > 0 ? mi[Math.Clamp(Get(hwnd), 0, mi.Length - 1)] : ""); return; }
         Ctl.Paint(hwnd, Theme.CardBrush, (dc, w, h) =>
         {
             int S(int v) => Ctl.S(hwnd, v);
@@ -952,6 +995,7 @@ internal static unsafe class Dropdown
 
     private static void PaintSeg(nint hwnd)
     {
+        if (MetalUi.On(hwnd)) { MetalUi.PaintSeg(hwnd, _items.TryGetValue(hwnd, out string[]? mi) ? mi : Array.Empty<string>(), Get(hwnd)); return; }
         Ctl.Paint(hwnd, Theme.CardBrush, (dc, w, h) =>
         {
             int S(int v) => Ctl.S(hwnd, v);

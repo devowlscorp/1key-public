@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.4.6";
+    public const string Version = "0.5.11";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -65,7 +65,7 @@ internal sealed unsafe partial class App
     // 화면 위 [도움말] 과 선택에 따라 바뀌는 짧은 안내 (2026-09-29 사용자 결정, Codex 개선안 C)
     private const uint VK_F1 = 0x70;
     private const int IdHelp = 250, IdEEnterNote = 320, IdEMethodNote = 321, IdSLockNote = 2021, IdSAdminNote = 2022;
-    private const int MaxVisibleRows = 8, MinVisibleRows = 3;
+    private const int MaxVisibleRows = 8, MinVisibleRows = 2;   // 0.5.3: 판 위 조각(66)이 예전 행(42)보다 높아 1366×768·144dpi 에서 3행이면 창이 작업 영역을 넘었다(layout LY-144-1)
     // 편집 화면
     private const int IdEName = 301, IdEPw = 302, IdEShow = 303, IdEHotkey = 304, IdEEnter = 305, IdEMethod = 306, IdENoEnterBrowser = 312;
     // 편집 화면의 사이트 채우기: 연결 상태 글 · [연결]/[해제] · 안내 (2026-09-30 사용자 결정)
@@ -117,6 +117,21 @@ internal sealed unsafe partial class App
     {
         public readonly List<nint> Controls = new();
         public readonly List<(int X, int Y, int W, int H)> Cards = new();
+        /// <summary>새 디자인의 파인 판(시계판, 논리 px). 바탕 그림에 그린다(Theme.BuildBackground 의 overlay).</summary>
+        public readonly List<(int X, int Y, int W, int H)> Dials = new();
+        /// <summary>목록 머리줄(고양이 윤곽 + 제목 + 버전)을 바탕 그림에 그릴지, 그 글이 넘지 않을 오른쪽 끝(논리 px).</summary>
+        public bool ListHeader;
+        public int HeaderRight;
+        /// <summary>새 디자인으로 옮긴 화면: 카드(Cards)·구분선(Separators)을 금속 조각으로 바탕 그림에 그리고, 컨트롤도 금속 모양(Theme.MetalPage).</summary>
+        public bool Metal;
+        /// <summary>새 디자인 화면의 머리줄 제목(가운데, 17px 굵게 — 시안). TitleL·TitleR 사이에 놓인다(논리 px).</summary>
+        public string Title = "";
+        public int TitleL, TitleR;
+        /// <summary>새 디자인 잠금 화면의 둥근 입력 알약: Fields 의 번호. 바탕 그림에 금속 테(5px) + 둥근 파인 칸(잠금 위젯의 넓은 알약과 같은 모양)으로 그린다.</summary>
+        public readonly HashSet<int> PillFields = new();
+        /// <summary>새 디자인 잠금 화면의 말풍선 판(논리 px) · 큰 둥근 단추(가운데 x, 위 y, 지름).</summary>
+        public (int X, int Y, int W, int H)? Bubble;
+        public (int Cx, int Y, int D)? Hero;
         public readonly List<(int X, int Y, int W, int H, bool OnCard)> Fields = new();
         public readonly List<nint> FieldEdits = new();   // Fields 와 같은 순서의 입력칸(포커스면 강조 테두리)   // 입력 상자 (카드 위: 연회색 채움 / 바탕 위: 흰색 + 테두리)
         public readonly List<(int X, int Y, int W)> Separators = new();          // 카드 안 구분선
@@ -169,7 +184,7 @@ internal sealed unsafe partial class App
     private bool _quietHotkeyReport;    // SaveEdit 가 직접 결과를 보여 줄 때, 화면 전환 중의 자동 등록은 풍선을 띄우지 않는다
     private uint _msgTaskbarCreated;    // 탐색기가 다시 시작되면 트레이 아이콘을 다시 넣어야 한다
     private bool _iconHeroOwned;        // _iconHero 가 PrivateExtractIcons 로 얻은 것(해제 필요)인가
-    private int _visibleRows = MaxVisibleRows;   // 목록 카드의 행 수 (작업 영역에 맞춰 8 → 3, T5)
+    private int _visibleRows = MaxVisibleRows;   // 목록 카드의 행 수 (작업 영역에 맞춰 8 → 2, T5)
     private int _listRowsBuilt;                  // 마지막으로 만든 목록 행 수
     // 페이지 스크롤 (T5): 화면이 작업 영역보다 길 때. 모두 물리 px. _pageScrollMax 가 0 이면 스크롤 없음.
     private int _pageScroll, _pageScrollMax, _viewH, _barShift;

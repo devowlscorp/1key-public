@@ -1,4 +1,4 @@
-# 1Key
+# <img src="docs/images/icon.png" width="40" alt=""> 1Key
 
 비밀번호·자주 쓰는 문장을 단축키 한 번으로 입력해 주는 Windows 11용 작은 프로그램입니다.
 순수 Win32(C#, NativeAOT)로 만들어 런타임 설치 없이 exe 하나로 동작합니다.

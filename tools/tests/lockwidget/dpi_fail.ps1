@@ -36,7 +36,7 @@ try {
   Check DF01 "True|3" "$done|$(if ($done) { $q.ExitCode } else { 'timeout' })" "failure at the first render: exit 3, no widget"
   if (-not $q.HasExited) { Stop-Process -Id $q.Id -Force }
 
-  $q = Start-Process $Exe -ArgumentList "--lockwidget-demo","fail=40" -PassThru; Start-Sleep -Milliseconds 800
+  $q = Start-Process $Exe -ArgumentList "--lockwidget-demo","fail=20" -PassThru; Start-Sleep -Milliseconds 800
   $seen = @([T7]::All([uint32]$q.Id, "OneKeyLockWidget")).Count
   # since 0.2.146 the widget opens narrow (no greeting renders): "start typing" with a posted End key so it widens and renders
   $host1 = @([T7]::All([uint32]$q.Id, "OneKeyLockInput"))[0]

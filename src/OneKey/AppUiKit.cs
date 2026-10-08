@@ -29,12 +29,35 @@ internal sealed unsafe partial class App
     /// userText: 사용자가 넣은 문자열(항목 이름)이면 true. & 를 단축키 밑줄 표시로 바꾸지 않고 그대로 보인다(SS_NOPREFIX).
     private nint Label(string text, int x, int y, int w, int h, nint font, uint color, bool onCard, uint align = Native.SS_LEFT, bool vcenter = true, bool userText = false)
     {
+        if (_page.Metal)
+        {
+            // 새 디자인 화면: 조각 안 이름표(본문 글꼴)는 13.5px 굵게 · 시안 글자색, 보조 글은 시안의 작은 설명 색
+            if (font == _font) { font = Theme.Sized(13.5, true); if (color == Theme.ControlText) color = Metal.Ref(Metal.Ink(Theme.IsDark)); }
+            if (color == Theme.SecondaryText) color = Metal.Ref(Metal.InkNote(Theme.IsDark));
+        }
         nint s = Make("STATIC", text, align | (vcenter ? Native.SS_CENTERIMAGE : 0) | (userText ? Native.SS_NOPREFIX : 0), x, y, w, h, 0, 0, font);
         if (s != 0) _staticStyle[s] = (onCard ? Theme.CardBrush : Theme.BgBrush, color);
         return s;
     }
 
-    private void Header(string text, int y) => Label(text, Margin + 16, y, CardW - 32, HeaderH - 4, Theme.FontSmallStrong, Theme.SecondaryText, false);
+    private void Header(string text, int y)
+    {
+        // 새 디자인: 판 안 묶음 이름(추가 메뉴의 "넣을 글"과 같다 — 11.5px, 이름표 색)
+        if (_page.Metal) Label(text, Mx + 6, y + 2, Mw - 12, HeaderH - 4, Theme.Sized(11.5, false), Metal.Ref(Metal.InkLabel(Theme.IsDark)), false, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        else Label(text, Margin + 16, y, CardW - 32, HeaderH - 4, Theme.FontSmallStrong, Theme.SecondaryText, false);
+    }
+
+    /// <summary>카드의 왼쪽·폭(논리 px): 새 디자인 화면은 판(DialX) 안쪽 조각 자리, 아니면 예전 카드 자리.</summary>
+    private int Mx => _page.Metal ? DialX + DialPadX : Margin;
+    private int Mw => _page.Metal ? DialW - 2 * DialPadX : CardW;
+
+    /// <summary>새 디자인 화면의 판: 머리줄 아래(top)부터 지금 y 까지 판을 두르고(아래 안쪽 여백 12) y 를 판 아래로 옮긴다.</summary>
+    private void MetalDial(int top, ref int y)
+    {
+        if (!_page.Metal) return;
+        y += DialPadBottom;
+        _page.Dials.Add((DialX, top, DialW, y - top));
+    }
 
     /// <summary>카드 아래 회색 설명문. lines 줄 높이를 잡는다.</summary>
     /// <summary>
@@ -114,6 +137,35 @@ internal sealed unsafe partial class App
         Native.InvalidateRect(h, 0, true);
     }
 
+    /// <summary>
+    /// 새 디자인 화면의 머리줄(시안): 왼쪽 ‹ 둥근 단추(backId, 화면 읽기 이름 = 뒤로) · 가운데 제목(바탕 그림, 17px 굵게) · 오른쪽 [?](help 면).
+    /// 양옆 여백 20. 이 화면을 새 디자인으로 표시한다(_page.Metal). 판이 시작할 y(머리줄 아래 12)를 돌려준다.
+    /// </summary>
+    private int MetalHeader(int backId, string title, bool help = true)
+    {
+        _page.Metal = Theme.MetalPage = true;
+        int y = 8;
+        int kw = MetalUi.KnobD + 2 * MetalUi.KnobPadX, kh = MetalUi.KnobD + MetalUi.KnobPadTop + MetalUi.KnobPadBottom, ky = y - MetalUi.KnobPadTop;
+        nint back = Button(backId, "\uE76B", Btn.Knob, 20 - MetalUi.KnobPadX, ky, kw, kh);   // ChevronLeft
+        if (back != 0) Tip(back, T.CommonBack);
+        if (help)
+        {
+            nint h = Button(IdHelp, "?", Btn.Knob, WinW - 20 - MetalUi.KnobD - MetalUi.KnobPadX, ky, kw, kh);
+            if (h != 0) { CtlAcc.SetName(h, T.CommonHelp); Tip(h, T.CommonHelp); }
+        }
+        // 제목은 실제 STATIC(화면 읽기 프로그램이 읽고, 항목 이름의 & 는 그대로 — SS_NOPREFIX). 바탕은 바탕 그림을 이어 그린다
+        int tl = 20 + MetalUi.KnobD + 8, tr = WinW - 20 - MetalUi.KnobD - 8;
+        Label(title, tl, y, tr - tl, MetalUi.KnobD, Theme.Sized(17, true), Metal.Ref(Metal.Ink(Theme.IsDark)), false, Native.SS_CENTER | Native.SS_ENDELLIPSIS, userText: true);
+        return y + MetalUi.KnobD + 12;
+    }
+
+    /// <summary>새 디자인 아래 막대의 큰 알약 버튼(높이 36, 창은 그늘 자리만큼 크다). kind = PillMain([취소]·[테스트]) · Prominent([저장]) · DangerBordered([삭제]).</summary>
+    private nint BarPill(int id, string text, uint kind, int x, int y, int w, bool isDefault = false)
+        => Button(id, text, kind, x - MetalUi.PillPadX, y - MetalUi.PillPadTop, w + 2 * MetalUi.PillPadX, MetalUi.PillMainH + MetalUi.PillPadTop + MetalUi.PillPadBottom, isDefault: isDefault);
+
+    /// <summary>아래 막대 알약의 폭: 글 폭 + 40(최소 min).</summary>
+    private int BarPillW(string text, int min = 64) => Math.Max(min, LabelW(Theme.Sized(13, true), text) + 40);
+
     /// <summary>화면 위 오른쪽의 [도움말] (← 뒤로 막대가 있는 화면).</summary>
     private void HelpButton() => Button(IdHelp, T.CommonHelp, Btn.Borderless, WinW - Margin - 72, 12, 72, 32);   // 윗줄은 목록 화면([+ 추가]·아이콘 버튼)과 같은 자리(2026-10-05 사용자: 들어가면 버튼이 옮겨 가 보임)
 
@@ -129,7 +181,7 @@ internal sealed unsafe partial class App
     }
 
     /// <summary>카드 왼쪽 이름표 열의 폭(논리 px): 가장 긴 이름표 + 여백을 min~max 로. 언어마다 이름표 길이가 달라 고정 폭이면 잘린다(다국어).</summary>
-    private int LabelCol(int min, int max, params string[] labels) => Math.Clamp(labels.Max(s => LabelW(_font, s)) + 14, min, max);   // 오른쪽 여백은 본문 스크롤 막대 자리
+    private int LabelCol(int min, int max, params string[] labels) => Math.Clamp(labels.Max(s => LabelW(_page.Metal ? Theme.Sized(13.5, true) : _font, s)) + 14, min, max);   // 오른쪽 여백은 본문 스크롤 막대 자리
 
     /// <summary>지금 화면의 도움말을 연다. 모달이라 입력 중인 값·초안은 그대로이고, 닫으면 누르기 전 칸으로 포커스가 돌아간다.
     /// 잠금 화면에서는 잠금을 풀지 않고 볼 수 있는 정보(버전·글꼴 라이선스)를 연다. 목록 도움말과 정보에는 [라이선스 보기]가 있다.</summary>
@@ -150,6 +202,7 @@ internal sealed unsafe partial class App
         (string title, string body)? h = _cur switch
         {
             Screen.List => (Help.ListTitle, Help.List),
+            Screen.AddKind => (Help.ListTitle, Help.List),   // 새 디자인 머리줄의 [?](시안): 추가할 것들의 설명은 목록 도움말에 있다
             Screen.Edit => (Help.EditTitle, Help.Edit),
             Screen.Settings => (Help.SettingsTitle, Help.Settings),
             Screen.Advanced => (Help.AdvancedTitle, Help.Advanced),
@@ -215,19 +268,23 @@ internal sealed unsafe partial class App
         }
     }
 
-    private void Card(int y, int h) => _page.Cards.Add((Margin, y, CardW, h));
+    private void Card(int y, int h) => _page.Cards.Add((Mx, y, Mw, h));
 
-    private void Separator(int y) => _page.Separators.Add((Margin + Row.PadX, y, CardW - Row.PadX));
+    private void Separator(int y)
+    {
+        if (_page.Metal) _page.Separators.Add((Mx + Row.PadX, y, Mw - 2 * Row.PadX));   // 새 디자인: 양옆 14 안쪽(시안)
+        else _page.Separators.Add((Margin + Row.PadX, y, CardW - Row.PadX));
+    }
 
     /// <summary>입력칸. (x,y,w,h) 는 보이는 상자. 실제 EDIT 는 글자 높이로 상자 가운데에 놓인다.</summary>
-    private nint Field(int id, int x, int y, int w, int h, uint extra = 0, bool center = false, bool onCard = true, int leftPad = 0)
+    private nint Field(int id, int x, int y, int w, int h, uint extra = 0, bool center = false, bool onCard = true, int leftPad = 0, int rightPad = 0)
     {
         int t = Math.Max(1, Scale(1));
-        int bh = Scale(h), ih = Math.Min(_textH, bh - 2 * t), pad = Scale(10), lp = Scale(leftPad);   // leftPad: 상자 왼쪽 안에 아이콘 자리
+        int bh = Scale(h), ih = Math.Min(_textH, bh - 2 * t), pad = Scale(10), lp = Scale(leftPad), rp = Scale(rightPad);   // leftPad: 상자 왼쪽 안에 아이콘 자리, rightPad: 오른쪽 안 글 자리
         uint style = Native.ES_AUTOHSCROLL | Native.WS_TABSTOP | extra | Native.WS_CHILD | Native.WS_VISIBLE | (center ? 1u : 0u);
         nint e;
         fixed (char* pc = "EDIT") fixed (char* pt = "")
-            e = Native.CreateWindowExW(0, pc, pt, style, Scale(x) + pad + lp, Scale(y) + (bh - ih) / 2, Scale(w) - 2 * pad - lp, ih, _hwnd, id, _hInst, 0);
+            e = Native.CreateWindowExW(0, pc, pt, style, Scale(x) + pad + lp, Scale(y) + (bh - ih) / 2, Scale(w) - 2 * pad - lp - rp, ih, _hwnd, id, _hInst, 0);
         if (e == 0) return 0;
         Native.SendMessageW(e, Native.WM_SETFONT, _font, 1);
         Theme.ApplyControl(e, "EDIT");
@@ -235,7 +292,7 @@ internal sealed unsafe partial class App
         _page.Fields.Add((x, y, w, h, onCard));
         _page.FieldEdits.Add(e);
         _page.Layout.Add((e, x, y, w, h, true));
-        _page.Placed.Add((e, Scale(x) + pad + lp, Scale(y) + (bh - ih) / 2, Scale(w) - 2 * pad - lp, ih, _page.BarTop > 0 && y >= _page.BarTop));
+        _page.Placed.Add((e, Scale(x) + pad + lp, Scale(y) + (bh - ih) / 2, Scale(w) - 2 * pad - lp - rp, ih, _page.BarTop > 0 && y >= _page.BarTop));
         _edits.Add(e);
         if (!onCard) _editsOnBg.Add(e);
         _controls[id] = e;
@@ -273,14 +330,14 @@ internal sealed unsafe partial class App
 
     private nint ListRow(int id, string title, string subtitle, string icon, uint flags, int y)
     {
-        nint r = Make(Row.ClassName, title, flags | Native.WS_TABSTOP, Margin, y, CardW, RowH, id);
+        nint r = Make(Row.ClassName, title, flags | Native.WS_TABSTOP, Mx, y, Mw, RowH, id);
         if (r != 0) Row.Set(r, title, subtitle, icon);
         return r;
     }
 
     private nint ToggleRow(int id, string text, int y, bool last)
     {
-        nint t = Make(Toggle.ClassName, text, Toggle.StyleTrailing | (last ? 0 : Toggle.StyleSeparator) | Native.WS_TABSTOP, Margin + Row.PadX, y, CardW - Row.PadX * 2, RowH, id);
+        nint t = Make(Toggle.ClassName, text, Toggle.StyleTrailing | (last ? 0 : Toggle.StyleSeparator) | Native.WS_TABSTOP, Mx + Row.PadX, y, Mw - Row.PadX * 2, RowH, id, 0, _page.Metal ? Theme.Sized(13.5, true) : 0);
         if (!last) Separator(y + RowH - 1);   // 컨트롤 오른쪽 바깥 14px 구간은 부모가 이어 그린다
         return t;
     }
@@ -296,6 +353,7 @@ internal sealed unsafe partial class App
         var stale = _controls.Where(kv => _page.Controls.Contains(kv.Value)).Select(kv => kv.Key).ToList();
         foreach (int k in stale) _controls.Remove(k);
         _page = new Page();
+        Theme.MetalPage = false;   // 새 디자인 화면이면 그 화면을 만드는 쪽이 다시 켠다
     }
 
     private void DestroyPageControl(nint h)
@@ -369,7 +427,7 @@ internal sealed unsafe partial class App
                 if (_page.Height > avail && _listRowsBuilt >= _visibleRows)
                 {
                     // 넘치는 만큼 한 번에 줄여 다시 만든다 (행마다 다시 만들면 설정을 펼친 화면에서 느리다)
-                    int drop = (_page.Height - avail + RowH - 1) / RowH;
+                    int drop = (_page.Height - avail + ListRowH - 1) / ListRowH;   // 목록 행은 판 위 조각 높이
                     int rows = Math.Max(MinVisibleRows, _visibleRows - drop);
                     if (rows < _visibleRows) { _visibleRows = rows; ClearPage(); BuildList(); }
                 }
@@ -390,6 +448,7 @@ internal sealed unsafe partial class App
         if (animate && prevH > 0 && prevH != height && Fx.Animations) StartHeightAnimation(prevH, height);
         else { Native.KillTimer(_hwnd, TimerAnim); ResizeClient(height); }   // 진행 중이던 애니메이션이 새 화면 높이를 덮어쓰지 않도록
         Native.SetText(_hwnd, AppTitle + (Unlocked ? "" : "  " + T.CommonLockedSuffix));   // 작업 표시줄에도 같은 글자가 보이므로 버전은 창 안에 둔다
+        ComposeBackground();   // 새 디자인: 판·머리줄이 든 바탕 그림을 자식보다 먼저(자식은 그 그림을 이어 그린다)
         Native.RedrawWindow(_hwnd, 0, 0, Native.RDW_INVALIDATE | Native.RDW_ERASE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
         FocusFirst();
         UpdateSiteWatch();   // 사이트 채우기: 잠금 해제·저장·삭제·잠금 뒤 감시를 켜거나 끈다

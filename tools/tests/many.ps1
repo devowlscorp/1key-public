@@ -130,7 +130,8 @@ try {
   Check MC01 3 (VisibleSlotRows) "filter 'Slot 1' shows 3 rows"
   Check MC02 $true ((Has 1009) -and (Has 1010) -and (Has 1011)) "filtered rows are slots 9,10,11 (Slot 10..12)"
   $btnRightFit = [U]::Right([U]::GetDlgItem($m, 1109))
-  Check MC03 $true ($btnRightFit -gt $btnRightScrolled) "no scroll track when everything fits (input button moves right: $btnRightFit > $btnRightScrolled)"
+  # since 0.5.2 the scroll track sits in the dial's right padding: rows keep their width whether or not the list scrolls
+  Check MC03 $true ($btnRightFit -ge $btnRightScrolled) "rows keep their width when everything fits (input button right: $btnRightFit >= $btnRightScrolled)"
   Check MC04 $true (Has 230) "search field survives the rebuild"
   Check MH01 $true ((EditText 231) -match "^12\D+3\D*$") ("count shows 12 total / 3 shown: '" + (EditText 231) + "'")
   Check MH02 $true (Has 232) "clear button present while searching"

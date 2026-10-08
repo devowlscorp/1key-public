@@ -74,6 +74,7 @@ lock.payloadInvalid	마스터 비밀번호는 맞지만 저장된 내용이 형�
 lock.wrongMaster	마스터 비밀번호가 올바르지 않습니다.\n(비밀번호가 맞는데도 계속 이 안내가 나오면 설정 파일이 손상되었거나 다른 프로그램이 바꾼 것입니다.)	The master password is incorrect.\n(If this keeps appearing even though the password is right, the settings file is damaged or was changed by another program.)	主密码不正确。\n（如果密码正确却一直出现此提示，说明设置文件已损坏或被其他程序修改。）	マスター パスワードが正しくありません。\n（正しいのにこの案内が続く場合は、設定ファイルが壊れているか、ほかのプログラムに変更されています。）	Mật khẩu chính không đúng.\n(Nếu mật khẩu đúng mà thông báo này vẫn xuất hiện, tệp cài đặt đã bị hỏng hoặc bị chương trình khác thay đổi.)
 # 목록
 list.title	단축키	Shortcuts	快捷键	ショートカット	Phím tắt
+list.heading	내 항목	My items	我的项目	マイ項目	Mục của tôi
 list.search	이름이나 단축키로 찾기	Search by name or shortcut	按名称或快捷键查找	名前やショートカットで検索	Tìm theo tên hoặc phím tắt
 list.count	{total}개 중 {shown}개	{shown} of {total}	{shown} / {total}	{total} 件中 {shown} 件	{shown} / {total}
 list.clearSearch	검색 지우기	Clear search	清除搜索	検索をクリア	Xóa tìm kiếm
@@ -135,6 +136,8 @@ set.lockOffShort	안 함	Off	关闭	オフ	Tắt
 set.minutes	{n}분	{n} min	{n} 分钟	{n} 分	{n} phút
 set.lockNoteOff	자리를 비울 때는 직접 잠가 주세요(목록 위 잠금 버튼).	Lock it yourself when you step away (lock button above the list).	离开座位时请手动锁定（列表上方的锁定按钮）。	席を離れるときは手動でロックしてください（一覧の上のロック ボタン）。	Hãy tự khóa khi rời chỗ (nút khóa phía trên danh sách).
 set.lockNoteOn	키보드와 마우스를 쓰지 않은 시간 기준으로 잠깁니다.	Locks after this long without keyboard or mouse input.	按未使用键盘和鼠标的时长自动锁定。	キーボードとマウスを使わなかった時間を基準にロックします。	Tự khóa sau khoảng thời gian không dùng bàn phím và chuột.
+set.lockAfter	마지막으로 쓴 뒤	after last use	最后一次使用后	最後に使ってから	sau lần dùng cuối
+set.lockManual	직접 잠그기	lock it yourself	手动锁定	手動でロック	tự khóa thủ công
 set.adminNote	1Key 를 시작할 때마다(Windows 시작 때 포함) Windows 권한 확인 창이 뜹니다.	Windows will ask for permission each time 1Key starts, including when Windows starts.	每次启动 1Key（包括随 Windows 启动时）都会弹出 Windows 权限确认窗口。	1Key を起動するたびに（Windows の起動時を含む）Windows の権限確認ウィンドウが表示されます。	Windows sẽ hỏi cấp quyền mỗi khi 1Key khởi động, kể cả khi khởi động cùng Windows.
 set.leaveConfirm	변경된 설정이 있습니다. 저장하지 않으면 적용되지 않습니다.\n변경을 취소할까요?	You have changed settings. They will not apply unless you save.\nDiscard the changes?	设置已更改。不保存则不会生效。\n要放弃更改吗？	変更した設定があります。保存しないと適用されません。\n変更を取り消しますか?	Bạn đã thay đổi cài đặt. Nếu không lưu, thay đổi sẽ không được áp dụng.\nHủy các thay đổi?
 set.confirmNeedsMod	입력 전송 키에 Ctrl / Alt / Shift / Win 중 하나 이상을 함께 지정해 주세요.	Include at least one of Ctrl / Alt / Shift / Win in the send-input key.	输入发送键需至少包含 Ctrl / Alt / Shift / Win 之一。	入力送信キーには Ctrl / Alt / Shift / Win のいずれかを含めてください。	Phím gửi nhập phải có ít nhất một trong Ctrl / Alt / Shift / Win.
@@ -468,6 +471,7 @@ launch.itemOverLimit	30개를 넘은 항목	item beyond the limit of 30	超过 3
 launch.itemUnsupported	이 판에서 지원하지 않는 종류	kind not supported in this version	此版本不支持的类型	この版では対応していない種類	loại không được hỗ trợ trong phiên bản này
 launch.networkExe	네트워크 위치의 프로그램은 지원하지 않습니다	programs on a network location are not supported	不支持网络位置上的程序	ネットワーク上のプログラムには対応していません	không hỗ trợ chương trình ở vị trí mạng
 add.title	무엇을 추가할까요?	What do you want to add?	要添加什么？	何を追加しますか？	Bạn muốn thêm gì?
+add.groupText	넣을 글	Text to type	要输入的文字	入力する文言	Văn bản để nhập
 add.password	자주 사용하는 문구	Frequently used text	常用文字	よく使う文言	Văn bản hay dùng
 add.passwordSub	한 칸에 넣을 내용 하나(비밀번호·문장)	One entry for one field (a password or a sentence)	填入一个输入框的一项内容（密码或句子）	1 つの欄に入れる内容（パスワード・文）	Một nội dung cho một ô (mật khẩu hoặc câu)
 add.login	사이트·앱 로그인	Site / app login	网站·应用登录	サイト・アプリのログイン	Đăng nhập trang web / ứng dụng

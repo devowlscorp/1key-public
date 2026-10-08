@@ -59,6 +59,8 @@ function Quit1Key() { [void][SR]::PostMessageW($m, 0x8005, [IntPtr]::Zero, [IntP
 try {
   Stop-TestInstances $suffix
   $env:ONEKEY_TEST = "1"; $env:ONEKEY_CONFIG_DIR = $cfg; $env:ONEKEY_INSTANCE_SUFFIX = $suffix; $env:ONEKEY_TEST_WORKAREA = $TallScreen
+  # since 0.3.105 test mode treats the running exe as the installed copy (switch enabled); point the install path elsewhere so the switch is the read-only one again
+  $env:ONEKEY_TEST_INSTALL_PATH = "C:\1Key-settingsro-not-installed\1Key.exe"
   Start1Key
   SetText ([SR]::GetDlgItem($m,101)) "Master1234"; SetText ([SR]::GetDlgItem($m,102)) "Master1234"; Click 103
   # auto-lock off (system idle time would lock the test instance on an idle PC)
@@ -93,5 +95,5 @@ try {
   Check SR03 "1|$(1 - [int]$startmin0)" "$(HeaderVal 'autostart')|$(HeaderVal 'startmin')" "saving another setting keeps autostart=1 (startmin $startmin0 -> changed)"
   Quit1Key
 } catch { Add-Failure ("exception: " + $_) }
-finally { Stop-TestInstances $suffix }
+finally { Stop-TestInstances $suffix; Remove-Item Env:ONEKEY_TEST_INSTALL_PATH -ErrorAction Ignore }
 Complete-Checks

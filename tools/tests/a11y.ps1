@@ -131,7 +131,7 @@ try {
   [void][AX]::Act($h1); Start-Sleep -Milliseconds 700
   $st1b = [AX]::State($h1); $r1 = New-Object AX+RECT; [void][AX]::GetWindowRect($b, [ref]$r1)
   $open = [AX]::Find([uint32]$p.Id, "OneKeyDialog") -ne [IntPtr]::Zero
-  Check AX05 "True|True|True|True|True" "$(($st0 -band 0x200) -ne 0)|$(($st1 -band 0x400) -ne 0)|$(($st1b -band 0x200) -ne 0)|$(($r1.B - $r1.T) -gt ($r0.B - $r0.T))|$open" "help: first section expanded, second collapsed; its default action expands it, the window grows, the box stays open"
+  Check AX05 "True|True|True|True|True" "$(($st0 -band 0x200) -ne 0)|$(($st1 -band 0x400) -ne 0)|$(($st1b -band 0x200) -ne 0)|$(($r1.B - $r1.T) -ne ($r0.B - $r0.T))|$open" "help: first section expanded, second collapsed; its default action expands it, the window is re-fitted (one section open at a time since 2026-10-05, so it may also shrink), the box stays open"
   if ($b -ne [IntPtr]::Zero) { [void][AX]::PostMessageW($b, 0x0111, [IntPtr]1, [IntPtr]::Zero); Start-Sleep -Milliseconds 500 }
   # ---- AX07..AX10 (RW-3 and action checks) - back to the list first (AX05 left the edit screen open)
   Click 311; Start-Sleep -Milliseconds 500; if (-not (Has 203)) { Click 309; Start-Sleep -Milliseconds 500 }

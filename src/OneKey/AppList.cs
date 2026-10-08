@@ -11,29 +11,37 @@ internal sealed unsafe partial class App
     // 단축키만 있고 비밀번호가 없는 슬롯은 "비어 있음"으로 본다 (예전 버전 기본값이 Ctrl+Alt+1~3 이라서).
     private static bool SlotInUse(Slot s) => s.Name.Length > 0 || s.HasPassword;
 
+    /// <summary>
+    /// 새 디자인(2026-10-08, 시안 Main.dc.html): 판(DialX·DialW, 안쪽 여백 위 14 · 옆 12 · 아래 12) 안에 자동 잠금 칸(78)과 조각(높이 58 · 사이 8).
+    /// ListRowH 는 조각 한 줄의 간격(58 + 8) — 화면에 맞춰 줄 수를 줄일 때(ShowScreen)도 쓴다.
+    /// </summary>
+    private const int ListRowH = MetalUi.TileH + MetalUi.TileGap;
+    private const int DialX = 14, DialW = WinW - 2 * DialX, DialPadTop = 14, DialPadX = 12, DialPadBottom = 12, LockInfoH = 78;
+    private const int IdListAutoLock = 2017;
+
+    /// <summary>항목의 종류(편집 화면 양식): 자주 사용하는 문구 / 사이트·앱 로그인 / 연속된 문구 입력.</summary>
+    private static string SlotKind(Slot s) => s.Form switch { 1 => T.AddPassword, 2 => T.AddLogin, _ => T.AddMulti };
+
     private void BuildList()
     {
-        int y = 12;
-        // 왼쪽 위: [+ 단축키 추가](2026-10-04 사용자: "단축키" 제목 글자는 필요 없고, 그 자리에 추가 버튼이 효율적 — 목록 아래 추가 행은 없앰).
-        // 버튼 id 는 예전 추가 행과 같은 IdRowAdd(하네스·포커스 규약). 99개가 다 차면 비활성 + 아래에 "모두 사용 중" 안내.
-        var usedNow = 0;
-        for (int i = 0; i < Config.SlotCount; i++) if (SlotInUse(_cfg.Slots[i])) usedNow++;
-        string addText = "+  " + T.ListAdd;
-        int addW = Math.Min(190, LabelW(Theme.FontStrong, addText) + 32);   // 언어마다 길이가 달라 잰다(오른쪽 [도움말]과 겹치지 않게 한도)
-        nint addBtn = Button(IdRowAdd, addText, Btn.Tinted, Margin, y, addW, 32);
-        if (addBtn != 0) Native.SendMessageW(addBtn, Native.WM_SETFONT, Theme.FontStrong, 1);
-        if (usedNow >= Config.SlotCount && addBtn != 0) Native.EnableWindow(addBtn, false);
-        Label("v" + Version, Margin + addW + 8, y + 4, 60, 28, Theme.FontSmall, Theme.SecondaryText, false);   // 같은 이유로 보조 글자 색
-        // 오른쪽 위: [최소화] [잠금] [종료] 아이콘 버튼 (흰 상자 + 테두리라 버튼으로 읽힌다). 툴팁으로 이름을 보여 준다.
-        Tip(Button(IdListExit, IcPower, Btn.IconBordered, WinW - Margin - 32, y, 32, 32), T.CommonExit);
-        Tip(Button(IdListLock, IcLock, Btn.IconBordered, WinW - Margin - 32 - 8 - 32, y, 32, 32), T.CommonLock);
-        // 위젯 모드(2026-10-06 사용자)를 켰으면 (−) 대신 위젯(타일) 아이콘: 누르면 트레이로(마스코트가 작업 표시줄 위에)
-        Tip(Button(IdListMin, WidgetButton ? IcWidget : IcTray, Btn.IconBordered, WinW - Margin - 32 - 8 - 32 - 8 - 32, y, 32, 32), WidgetButton ? T.ListWidgetMode : T.CommonMinimize);
-        Button(IdHelp, T.CommonHelp, Btn.Borderless, WinW - Margin - 32 - 8 - 32 - 8 - 32 - 4 - 64, y, 64, 32);
-        y += 44;
+        // 머리줄(시안): 왼쪽 고양이 윤곽 + "내 항목" + 버전(바탕 그림에 그린다 — PageOverlay), 오른쪽 둥근 단추 [?] [위젯·최소화] [잠금] [종료].
+        // 시안에 없는 [위젯·최소화]는 기능이 있어 넣었다. 단추 사이 10, 오른쪽 여백 22. 창은 그늘 자리만큼 단추보다 크다.
+        int y = 8;
+        int kw = MetalUi.KnobD + 2 * MetalUi.KnobPadX, kh = MetalUi.KnobD + MetalUi.KnobPadTop + MetalUi.KnobPadBottom, ky = y - MetalUi.KnobPadTop;
+        int kx = WinW - 22 - MetalUi.KnobD;
+        Tip(Button(IdListExit, IcPower, Btn.Knob, kx - MetalUi.KnobPadX, ky, kw, kh), T.CommonExit); kx -= MetalUi.KnobD + 10;
+        Tip(Button(IdListLock, IcLock, Btn.Knob, kx - MetalUi.KnobPadX, ky, kw, kh), T.CommonLock); kx -= MetalUi.KnobD + 10;
+        // 위젯 모드(2026-10-06 사용자)를 켰으면 (−) 대신 위젯 아이콘: 누르면 트레이로(마스코트가 작업 표시줄 위에)
+        Tip(Button(IdListMin, WidgetButton ? IcWidget : IcTray, Btn.Knob, kx - MetalUi.KnobPadX, ky, kw, kh), WidgetButton ? T.ListWidgetMode : T.CommonMinimize); kx -= MetalUi.KnobD + 10;
+        nint help = Button(IdHelp, "?", Btn.Knob, kx - MetalUi.KnobPadX, ky, kw, kh);
+        if (help != 0) { CtlAcc.SetName(help, T.CommonHelp); Tip(help, T.CommonHelp); }
+        _page.HeaderRight = kx - 8;
+        _page.ListHeader = true;
+        _page.Metal = Theme.MetalPage = true;   // 새 디자인: 바로 실행 띠 상자·검색 칸도 금속 조각·파인 홈으로(바탕 그림)
+        y += MetalUi.KnobD + 14;
         y = BuildLaunchStrip(y);   // 프로그램·폴더 아이콘 띠(항목이 있을 때만)
 
-        // 등록된 단축키
+        // 등록된 항목
         var used = new List<int>();
         for (int i = 0; i < Config.SlotCount; i++) if (SlotInUse(_cfg.Slots[i])) used.Add(i);
         bool canAdd = used.Count < Config.SlotCount;
@@ -46,185 +54,223 @@ internal sealed unsafe partial class App
             bool filtering = _listFilter.Length > 0;
             if (filtering) shown = used.Where(i => MatchesFilter(_cfg.Slots[i], i, _listFilter)).ToList();
             const int countW = 84, clearW = 28;
-            Field(IdListFilter, Margin, y, filtering ? CardW - countW - clearW - 8 : CardW, FieldH, onCard: false);
+            Field(IdListFilter, StripX, y, filtering ? StripW - countW - clearW - 8 : StripW, FieldH, onCard: false);
             Native.SetCueBanner(C(IdListFilter), T.ListSearch);
             Native.SetText(C(IdListFilter), _listFilter);
             if (filtering)
             {
                 nint cnt = Make("STATIC", T.ListCount(used.Count, shown.Count), Native.SS_RIGHT | Native.SS_CENTERIMAGE | Native.SS_NOPREFIX,
-                                Margin + CardW - countW - clearW - 4, y, countW, FieldH, IdListCount, 0, Theme.FontSmall);
+                                StripX + StripW - countW - clearW - 4, y, countW, FieldH, IdListCount, 0, Theme.FontSmall);
                 if (cnt != 0) _staticStyle[cnt] = (Theme.BgBrush, Theme.SecondaryText);
-                Tip(Button(IdListClear, IcClear, Btn.Icon, Margin + CardW - clearW, y, clearW, FieldH), T.ListClearSearch);
+                Tip(Button(IdListClear, IcClear, Btn.Icon, StripX + StripW - clearW, y, clearW, FieldH), T.ListClearSearch);
             }
             y += FieldH + 8;
         }
 
-        // 목록 카드: 최대 _visibleRows 행만 만들고(가상 목록), 나머지는 휠·스크롤 막대로 넘긴다.
-        int top = y;
+        // 판: 맨 위 자동 잠금 칸(시안의 큰 숫자). 누르면 설정 화면의 자동 잠금으로 간다 — 목록에서 바로 바꾸면 "바꾸고 [저장]" 규칙이 깨져 스위치 대신 꺾쇠
+        int dialTop = y;
+        y += DialPadTop;
+        int mins = _cfg.AutoLockMinutes;
+        string num = mins > 0 ? mins.ToString() : T.SetLockOffShort;
+        string unit = mins > 0 ? T.SetMinutes(mins).Replace(num, "").Trim() : "";
+        nint li = Make(Row.ClassName, T.SetAutolock + " " + (mins > 0 ? T.SetMinutes(mins) : T.SetLockOffShort), Row.LockInfo | Native.WS_TABSTOP,
+                       DialX + DialPadX, y, DialW - 2 * DialPadX, LockInfoH, IdListAutoLock);
+        if (li != 0) { Row.SetPlate(li, T.SetAutolock + " " + (mins > 0 ? T.SetMinutes(mins) : T.SetLockOffShort), unit, T.SetAutolock, num); Tip(li, T.ListSettings); }
+        y += LockInfoH;
+
+        // 조각: 최대 _visibleRows 개만 만들고(가상 목록), 나머지는 휠·스크롤 막대로 넘긴다.
         bool scroll = shown.Count > _visibleRows;
         _listScrollMax = Math.Max(0, shown.Count - _visibleRows);
         _listTop = Math.Clamp(_listTop, 0, _listScrollMax);
-        int rowW = scroll ? CardW - ScrollW : CardW;
         int first = scroll ? _listTop : 0, count = Math.Min(_visibleRows, shown.Count - first);
         if (used.Count > 0 && shown.Count == 0)
         {
-            Label(T.ListNoMatch, Margin + Row.PadX, y, CardW - 2 * Row.PadX, RowH, _font, Theme.SecondaryText, true);
+            Label(T.ListNoMatch, DialX + DialPadX + 8, y, DialW - 2 * DialPadX - 16, RowH, _font, Theme.SecondaryText, false, userText: false);
             y += RowH;
         }
         _listRowsBuilt = Math.Max(0, count);
+        int tileX = DialX + DialPadX, tileW = DialW - 2 * DialPadX;
+        // [입력] 창: 조각의 오른쪽 끝(알약 + 오른쪽 여백 10 + 왼쪽 틈 8 + 그늘 3). 행 창은 그 앞까지
+        int zoneW = LabelW(Theme.Sized(12, true), T.CommonInput) + 24 + 10 + 8 + MetalUi.TileMarginX;
+        int listTop = y;
         for (int k = 0; k < count; k++)
         {
             int i = shown[first + k];
             Slot s = _cfg.Slots[i];
-            // 부제: 이 항목을 넣는 방법. 단축키와 사이트 채우기 연결이 있으면 둘 다(사이트는 주소의 호스트만). 행마다 같던 열쇠 아이콘은
-            // 정보가 없는 되풀이라 뺐다(2026-09-30 사용자 제안). 연결만 있고 단축키가 없으면 "단축키 없음"을 되풀이하지 않는다.
+            // 위 작은 글: 종류 + 넣는 방법(Enter·등록 실패·사이트·프로그램). 단축키는 왼쪽 칸(조합 작게 · 키 크게)
             SiteLink? firstLink = s.Site ?? s.More.Select(x => x.Site).FirstOrDefault(x => x is not null);
             string? site = s.App is AppLink al ? (al.Usable ? T.ListSubApp(al.FileName) : T.ListSubAppRelink(al.FileName))
                          : firstLink is SiteLink sl ? (LinkedInputs(s) is null ? T.ListSubLinkIncomplete : T.ListSubSite(SiteHost(sl.Url))) : null;
-            string keys = !s.HasHotkey ? (site is null ? T.ListSubNoHotkey : "")
-                        : _hotkeyFailed[i] ? s.HotkeyText() + "  ·  " + T.ListSubRegFailed
-                        : s.HotkeyText() + (s.PressEnter ? "  ·  " + (s.NoEnterInBrowser ? T.ListSubEnterNoBrowser : T.ListSubEnter) : "");
-            string sub = !s.HasPassword ? T.ListSubNoContent
-                       : site is null ? keys
-                       : keys.Length == 0 ? site : keys + "  ·  " + site;
-            // 행을 누르면 편집 화면. 오른쪽 [입력]을 누르면 본창이 내려가고 화면 위에 입력 칩이 뜬다(D안, 최종수정안 T11):
-            // 사용자가 넣을 칸을 클릭한 뒤 칩의 [입력]이나 확정 키를 누른 그 순간의 칸에 넣는다. 행 자체는 입력하지 않는다.
-            // 행은 버튼 자리만큼 좁게 만들고(오른쪽 직각), 버튼은 카드 위에 따로 놓는다. 탭 순서: 행 → 그 행의 [입력].
-            int inputArea = InputBtnW + Row.PadX + 8;
-            uint flags = Row.SquareRight | Row.EditHint | (k == 0 ? Row.First : 0u) | (k == count - 1 ? Row.Last : 0u);
-            nint r = Make(Row.ClassName, s.DisplayName(i), flags | Native.WS_TABSTOP, Margin, y, rowW - inputArea, RowH, IdRowSlot + i);
-            // 아이콘으로 넣는 방식을 구분한다(2026-10-01 사용자 요청): 웹 페이지에 연결한 항목은 지구본, 커서 자리에 넣는 항목은 키보드.
-            // (예전 열쇠 아이콘은 모든 행에 같아 뺐다. 이제는 행마다 뜻이 다르다.)
-            if (r != 0) Row.Set(r, s.DisplayName(i), sub, s.App is not null ? IcApp : s.HasAnySite ? IcSite : IcTyping);
-            nint b = Button(IdRowInput + i, T.CommonInput, Btn.Tinted, Margin + rowW - Row.PadX - InputBtnW, y + (RowH - InputBtnH) / 2, InputBtnW, InputBtnH, onCard: true);
-            if (b != 0 && !s.HasPassword) Native.EnableWindow(b, false);   // 내용이 없는 항목은 넣을 것이 없다
-            if (r != 0 && b != 0)
+            string hk = s.HasHotkey ? s.HotkeyText() : "";
+            int cut = hk.Length > 1 && hk.EndsWith("+") ? hk.Length - 2 : hk.LastIndexOf('+');
+            string mod = cut > 0 ? hk[..cut] : "", key = cut > 0 ? hk[(cut + 1)..] : hk;
+            var extra = new List<string> { SlotKind(s) };
+            if (!s.HasPassword) extra.Add(T.ListSubNoContent);
+            else
             {
-                Ctl.Partner[r] = b; Ctl.Partner[b] = r;   // 행이나 버튼 어느 쪽에 마우스가 있어도 줄 전체 강조
-                _page.RowStrips.Add((r, Margin + rowW - inputArea, y, inputArea, RowH, k == 0, k == count - 1));
+                if (s.HasHotkey && _hotkeyFailed[i]) extra.Add(T.ListSubRegFailed);
+                else if (s.HasHotkey && s.PressEnter) extra.Add(s.NoEnterInBrowser ? T.ListSubEnterNoBrowser : T.ListSubEnter);
+                if (site is not null) extra.Add(site);
             }
-            if (k != count - 1) _page.Separators.Add((Margin + rowW - inputArea, y + RowH - 1, inputArea));   // 행의 구분선을 버튼 자리까지 잇는다
-            y += RowH;
+            string plateSub = string.Join("  ·  ", extra);
+            // 행을 누르면 편집 화면. 오른쪽 [입력]을 누르면 본창이 내려가고 화면 위에 입력 칩이 뜬다(D안, 최종수정안 T11).
+            // 탭 순서: 행 → 그 행의 [입력].
+            int wy = y - MetalUi.TileMarginTop, rx = tileX - MetalUi.TileMarginX, bx = tileX + tileW + MetalUi.TileMarginX - zoneW;
+            nint r = Make(Row.ClassName, s.DisplayName(i), Row.Tile | Row.SquareRight | Row.EditHint | Native.WS_TABSTOP, rx, wy, bx - rx, MetalUi.TileWinH, IdRowSlot + i);
+            if (r != 0) Row.SetPlate(r, s.DisplayName(i), plateSub, mod, key);
+            nint b = Button(IdRowInput + i, T.CommonInput, Btn.PillInput, bx, wy, zoneW, MetalUi.TileWinH);
+            if (b != 0 && !s.HasPassword) Native.EnableWindow(b, false);   // 내용이 없는 항목은 넣을 것이 없다
+            if (r != 0 && b != 0) { Ctl.Partner[r] = b; Ctl.Partner[b] = r; }   // 행이나 버튼 어느 쪽에 마우스가 있어도 조각 전체 강조
+            y += ListRowH;
         }
-        if (used.Count > 0) Card(top, y - top);
+        if (count > 0) y -= MetalUi.TileGap;
+        y += DialPadBottom;
+        _page.Dials.Add((DialX, dialTop, DialW, y - dialTop));
         if (scroll)
         {
-            int trackX = Margin + CardW - ScrollW + 3, trackY = top + 6, trackH = count * RowH - 12;
+            // 판 오른쪽 안쪽 여백의 가는 스크롤 막대
+            int trackX = DialX + DialW - 8, trackY = listTop + 4, trackH = count * ListRowH - MetalUi.TileGap - 8;
             int thumbH = Math.Max(24, trackH * _visibleRows / shown.Count);
             int thumbY = trackY + (trackH - thumbH) * _listTop / _listScrollMax;
             _page.ScrollTrack = (trackX, trackY, 4, trackH, thumbY, thumbH);
         }
 
-        // 단축키 추가는 왼쪽 위 버튼(2026-10-04). 한도에 닿았을 때만 이유를 목록 아래에 보인다.
         if (!canAdd)
         {
-            // 한도(99개)에 닿으면 추가 행이 사라진 이유를 같은 자리에 보인다 (Codex QA-08). 평소에는 없다.
+            // 한도(99개)에 닿으면 [+ 추가]가 꺼진 이유를 판 아래에 보인다 (Codex QA-08). 평소에는 없다.
             y += 8;
-            int fullTop = y;
             nint full = Make("STATIC", T.ListFull(Config.SlotCount),
-                             Native.SS_LEFT | Native.SS_CENTERIMAGE | Native.SS_NOPREFIX | Native.SS_ENDELLIPSIS, Margin + Row.PadX, y, CardW - 2 * Row.PadX, RowH, IdListFull, 0, Theme.FontSmall);
-            if (full != 0) _staticStyle[full] = (Theme.CardBrush, Theme.SecondaryText);
+                             Native.SS_LEFT | Native.SS_CENTERIMAGE | Native.SS_NOPREFIX | Native.SS_ENDELLIPSIS, Margin + 6, y, CardW - 12, RowH, IdListFull, 0, Theme.FontSmall);
+            if (full != 0) _staticStyle[full] = (Theme.BgBrush, Theme.SecondaryText);
             y += RowH;
-            Card(fullTop, RowH);
         }
-        // 항목이 있으면 사용법을 되풀이하지 않는다(행의 [입력]·항목 누르기·[도움말]로 찾는다). 처음에만 시작 안내.
+        // 항목이 없을 때만 시작 안내
         if (used.Count == 0)
             y = Footer(T.ListIntro, y);
 
-        // 설정: 누르면 설정 전용 화면으로 간다(2026-09-29 사용자 결정). 예전에는 목록 아래에 펼쳤는데, 설정이 늘어
-        // 1920×1080 에서도 항목 몇 개만 있으면 넘쳐 항목 수에 따라 펼침/전용 화면이 바뀌었다. 동작을 한 가지로 고정한다.
-        y += 12;
-        int top2 = y;
+        // 아래 줄(시안): 왼쪽 [+ 추가] 알약, 오른쪽 "설정 ›" 글 링크. 버튼 id 는 예전 그대로(IdRowAdd · IdRowSettings — 하네스·포커스 규약)
+        int by = y + 14;
+        string addText = "+ " + T.ListAdd;
+        int addW = LabelW(Theme.Sized(13, true), addText) + 36;
+        nint addBtn = Button(IdRowAdd, addText, Btn.PillMain, 22 - MetalUi.PillPadX, by - MetalUi.PillPadTop, addW + 2 * MetalUi.PillPadX, MetalUi.PillMainH + MetalUi.PillPadTop + MetalUi.PillPadBottom);
+        if (!canAdd && addBtn != 0) Native.EnableWindow(addBtn, false);
         var draft = _settingsDraft;
         bool draftDirty = draft is { } d0 && SettingsDiffer(d0);
-        ListRow(IdRowSettings, T.ListSettings, draftDirty ? T.ListSettingsDirty : T.ListSettingsSummary, "",
-                Row.First | Row.Last | Row.InlineSubtitle | Row.Chevron, y); y += RowH;
-        Card(top2, y - top2);
-
-        // 하단. 위쪽은 제목 행(44) 때문에 무게가 있으므로, 아래 여백을 좌우(16)보다 조금 넉넉히 둬야 균형이 맞아 보인다.
-        _page.Height = y + 20;
+        string setText = draftDirty ? T.ListSettings + " \u00B7 " + T.ListSettingsDirty : T.ListSettings;
+        int setW = Math.Min(WinW - 44 - addW - 16, LabelW(Theme.Sized(13, false), setText + " \u203A") + 24);
+        nint set = Button(IdRowSettings, setText, Btn.Borderless | Btn.Link, WinW - 22 + 12 - setW, by + 2, setW, 32);
+        if (set != 0 && !draftDirty) Tip(set, T.ListSettingsSummary);
+        _page.Height = by + MetalUi.PillMainH + 16;
     }
 
     /// <summary>
     /// 설정 본문. 2026-10-05 사용자 B안: 묶음 제목·칸 아래 설명을 없애고(설명은 [도움말]·마우스를 올리면 나오는 풍선), 한 줄을 차지할 필요 없는 것은
     /// 버튼으로 모아 높이를 줄인다 — 카드 넷: 시작·권한 / 화면(테마는 나란한 버튼, 바로 실행 이름 표시는 한 줄에 둘) / 보안(자동 잠금 + 버튼들) / 넣기·도구.
-    /// 컨트롤 번호는 그대로(저장·시험이 같은 번호를 쓴다). 끝난 y 를 돌려준다.
+    /// 새 디자인(2026-10-08, 시안 Settings-light/dark.dc.html): 카드는 판(DialX) 안의 금속 조각(x 26 · 폭 368 · 사이 10), 줄 높이 44 + 구분선 1(양옆 14 안쪽),
+    /// 이름 13.5px 굵게. 자동 잠금은 ‹ 큰 숫자 › + 단계 점(Slider 의 새 모양). 시안의 칸 아래 설명 줄은 B안대로 풍선에 둔다(항목이 시안보다 많다).
+    /// 컨트롤 번호는 그대로(저장·시험이 같은 번호를 쓴다). 끝난 y(마지막 조각의 아래)를 돌려준다.
     /// </summary>
     private int BuildSettingsBody(int y)
     {
+        const int RH = MetalUi.SetRowH, Gap = 10;
+        int cx = DialX + DialPadX, cw = DialW - 2 * DialPadX, lx = cx + Row.PadX, rx = cx + cw - Row.PadX;
+        nint nameFont = Theme.Sized(13.5, true);
+        uint ink = Metal.Ref(Metal.Ink(Theme.IsDark));
         int top;
-        int col = LabelCol(96, 170, T.SetTheme, T.SetLanguage, T.SetConfirmKey, T.SetAutolock);
-        int lx = Margin + Row.PadX, vx = lx + col, vw = CardW - (vx - Margin) - Row.PadX;
+        void Sep(int at) => _page.Separators.Add((lx, at, rx - lx));
+        nint Switch(int id, string text, int x, int at, int w) => Make(Toggle.ClassName, text, Toggle.StyleTrailing | Native.WS_TABSTOP, x, at, w, RH, id, 0, nameFont);
+        void Name(string text, int at, int w) => Label(text, lx, at, w, RH, nameFont, ink, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        int half = (rx - lx - 16) / 2;
+        // 스위치 둘을 한 줄에: 두 이름이 반 칸에 다 들어갈 때만. 넘치면(영어·일본어·베트남어 등) 한 줄씩 — 이름이 잘리지 않게
+        bool Fits(string t)   // 그리는 방식(DirectWrite)으로 잰다 — GDI 로 재면 넉넉히 나와 한국어도 한 줄씩 갈라졌다
+        {
+            nint dc = Native.GetDC(_hwnd);
+            int pw = MetalUi.TextWidth(dc, 13.5, true, t);
+            Native.ReleaseDC(_hwnd, dc);
+            return pw * 96.0 / _dpi + 9 + MetalUi.SwitchW <= half;
+        }
+        int Pair(int at, int id1, string t1, int id2, string t2, bool last, out nint second)
+        {
+            if (Fits(t1) && Fits(t2)) { Switch(id1, t1, lx, at, half); second = Switch(id2, t2, rx - half, at, half); }
+            else { Switch(id1, t1, lx, at, rx - lx); Sep(at + RH); at += RH + 1; second = Switch(id2, t2, lx, at, rx - lx); }
+            if (last) return at + RH;
+            Sep(at + RH);
+            return at + RH + 1;
+        }
 
         // 시작·권한
-        y += 20;
         top = y;
         // 자동 실행(0.3.103 시험 A → 0.3.105 시험 B 내장형): 스위치는 실제 등록 상태를 보이고, 바꾸고 [저장]하면 1Key 안의 같은 PowerShell 명령을 연다.
         bool toolOk = Autostart.IsInstalledCopy;   // 시험 B(내장형): 설치 폴더의 도구 파일이 없어도 된다
-        Tip(ToggleRow(IdAutoStart, T.SetAutostart, y, false), !Autostart.IsInstalledCopy ? T.SetAutostartInstalledOnly : toolOk ? T.SetAutostartToolTip : T.SetAutostartToolMissing); y += RowH;
+        Tip(Switch(IdAutoStart, T.SetAutostart, lx, y, rx - lx), !Autostart.IsInstalledCopy ? T.SetAutostartInstalledOnly : toolOk ? T.SetAutostartToolTip : T.SetAutostartToolMissing);
         if (!toolOk) Native.EnableWindow(C(IdAutoStart), false);
+        Sep(y + RH); y += RH + 1;
         // 시작 시 트레이 · 트레이 시 위젯모드: 한 줄에 둘(2026-10-06 사용자 — 바로 실행 이름 표시 줄과 같은 모양)
-        int halfS = (CardW - Row.PadX * 2 - 16) / 2;
-        Make(Toggle.ClassName, T.SetStartMin, Toggle.StyleTrailing | Toggle.StyleSeparator | Native.WS_TABSTOP, Margin + Row.PadX, y, halfS, RowH, IdStartMin);
-        nint wk = Make(Toggle.ClassName, T.SetWalker, Toggle.StyleTrailing | Toggle.StyleSeparator | Native.WS_TABSTOP, Margin + Row.PadX + halfS + 16, y, halfS, RowH, IdWalker);
+        y = Pair(y, IdStartMin, T.SetStartMin, IdWalker, T.SetWalker, false, out nint wk);
         if (wk != 0) Tip(wk, T.SetWalkerTip);
-        Separator(y + RowH - 1); y += RowH;
-        Tip(ToggleRow(IdAdmin, T.SetAdmin, y, true), T.SetAdminNote); y += RowH;
-        Card(top, y - top);
+        Tip(Switch(IdAdmin, T.SetAdmin, lx, y, rx - lx), T.SetAdminNote); y += RH;
+        _page.Cards.Add((cx, top, cw, y - top));
         _settingsAdminNote = _settingsDraft?.Admin ?? _cfg.RequireAdmin;
 
-        // 화면: 테마(나란한 버튼) · 언어 · 바로 실행 띠의 이름 표시(한 줄에 둘)
-        y += 16;
+        // 화면: 테마(나란한 버튼, 오른쪽 끝에 글 폭만큼) · 언어(값 글 + 꺾쇠) · 바로 실행 띠의 이름 표시(한 줄에 둘)
+        y += Gap;
         top = y;
-        Label(T.SetTheme, lx, y, col - 6, RowH - 1, _font, Theme.ControlText, true);
-        Make(Dropdown.ClassName, "", Native.WS_TABSTOP | Dropdown.Seg, vx, y + (RowH - FieldH) / 2, vw, FieldH, IdTheme);
-        Separator(y + RowH - 1); y += RowH;
-        Label(T.SetLanguage, lx, y, col - 6, RowH - 1, _font, Theme.ControlText, true);
-        Make(Dropdown.ClassName, "", Native.WS_TABSTOP, vx, y + (RowH - FieldH) / 2, vw, FieldH, IdLang);
-        Separator(y + RowH - 1); y += RowH;
-        int half = (CardW - Row.PadX * 2 - 16) / 2;
-        Make(Toggle.ClassName, T.SetLaunchProgNames, Toggle.StyleTrailing | Native.WS_TABSTOP, Margin + Row.PadX, y, half, RowH, IdLaunchProgNames);
-        Make(Toggle.ClassName, T.SetLaunchFolderNames, Toggle.StyleTrailing | Native.WS_TABSTOP, Margin + Row.PadX + half + 16, y, half, RowH, IdLaunchFolderNames);
-        y += RowH;
-        Card(top, y - top);
+        int segW = Math.Min(MetalUi.SegWidth(_hwnd, ThemeNames), rx - lx - LabelW(nameFont, T.SetTheme) - 12);
+        Name(T.SetTheme, y, rx - lx - segW - 8);
+        Make(Dropdown.ClassName, "", Native.WS_TABSTOP | Dropdown.Seg, rx - segW, y + (RH - 34) / 2, segW, 34, IdTheme);
+        Sep(y + RH); y += RH + 1;
+        int langLabel = Math.Min(LabelW(nameFont, T.SetLanguage) + 12, (rx - lx) / 2);
+        Name(T.SetLanguage, y, langLabel);
+        Make(Dropdown.ClassName, "", Native.WS_TABSTOP, lx + langLabel, y + (RH - 34) / 2, rx + 6 - lx - langLabel, 34, IdLang);
+        Sep(y + RH); y += RH + 1;
+        y = Pair(y, IdLaunchProgNames, T.SetLaunchProgNames, IdLaunchFolderNames, T.SetLaunchFolderNames, true, out _);
+        _page.Cards.Add((cx, top, cw, y - top));
 
-        // 보안: 자동 잠금 + 마스터·백업 버튼
-        y += 16;
+        // 보안: 자동 잠금(이름 · ‹ 숫자 › · 단계 점) + 마스터·백업 버튼
+        y += Gap;
         top = y;
-        // 아래 구분선이 보이도록 글자·슬라이더를 행 높이보다 1px 짧게 둔다
-        Label(T.SetAutolock, Margin + Row.PadX, y, CardW - 2 * Row.PadX - 220 - 8, SliderRowH - 1, _font, Theme.ControlText, true);
-        Tip(Make(Slider.ClassName, "", Native.WS_TABSTOP, Margin + CardW - Row.PadX - 220, y, 220, SliderRowH - 1, IdAutoLock), T.SetLockNoteOn);
-        Separator(y + SliderRowH - 1);
-        y += SliderRowH;
+        Label(T.SetAutolock, lx, y + 6, rx - lx, 32, nameFont, ink, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        Tip(Make(Slider.ClassName, "", Native.WS_TABSTOP, lx, y + 38, rx - lx, MetalUi.StepH, IdAutoLock), T.SetLockNoteOn);
+        y += 38 + MetalUi.StepH;
+        Sep(y); y += 1;
         // 다른 줄과 같은 "왼쪽 이름 · 오른쪽 조작" 모양(2026-10-05 사용자 3안)
         y = LabeledButtons(T.LockLabelMaster, y, false, (IdRowMaster, T.SetBtnMaster));
         y = LabeledButtons(T.RestoreFileHeader, y, true, (IdRowBackup, T.SetBtnBackup), (IdRowRestore, T.SetBtnRestore));
-        Card(top, y - top);
+        _page.Cards.Add((cx, top, cw, y - top));
 
         // 목록에서 넣기(입력 칩의 확정 키) · 도구
-        y += 16;
+        y += Gap;
         top = y;
-        Label(T.SetConfirmKey, lx, y, col - 6, RowH - 1, _font, Theme.ControlText, true);
-        Tip(Make(HotkeyBox.ClassName, "", Native.WS_TABSTOP, vx, y + (RowH - FieldH) / 2, vw - 64 - 8, FieldH, IdConfirmKey), T.SetChipNote);
-        Button(IdConfirmReset, T.CommonDefault, Btn.Bordered, Margin + CardW - Row.PadX - 64, y + (RowH - FieldH) / 2, 64, FieldH, onCard: true);
-        Separator(y + RowH - 1); y += RowH;
+        int resetW = LabelW(Theme.Sized(12, true), T.CommonDefault) + 28;
+        int keyLabel = Math.Min(LabelW(nameFont, T.SetConfirmKey) + 12, (rx - lx) / 2);
+        Name(T.SetConfirmKey, y, keyLabel);
+        Tip(Make(HotkeyBox.ClassName, "", Native.WS_TABSTOP, lx + keyLabel, y + (RH - 30) / 2, rx - lx - keyLabel - resetW - 8, 30, IdConfirmKey), T.SetChipNote);
+        SmallPill(IdConfirmReset, T.CommonDefault, rx - resetW, y, resetW);
+        Sep(y + RH); y += RH + 1;
         y = LabeledButtons(T.SetRestartAdmin, y, false, (IdRowRestart, T.SetBtnRestart));
         y = LabeledButtons(T.SetAdvanced, y, true, (IdRowAdvanced, T.SetBtnOpen));
-        Card(top, y - top);
-        return y + 12;
+        _page.Cards.Add((cx, top, cw, y - top));
+        return y;
     }
 
-    /// <summary>카드 안 한 줄: 왼쪽 이름, 오른쪽 끝에 작은 버튼(들). last 면 아래 구분선 없음. 끝난 y.</summary>
+    /// <summary>조각 안의 작은 알약 버튼(높이 28, 줄 가운데). 창은 그늘 자리만큼 크다(MetalUi.Small*).</summary>
+    private nint SmallPill(int id, string text, int x, int rowY, int w)
+        => Button(id, text, Btn.Bordered, x - MetalUi.SmallPadX, rowY + (MetalUi.SetRowH - MetalUi.SmallPillH) / 2 - MetalUi.SmallPadTop,
+                  w + 2 * MetalUi.SmallPadX, MetalUi.SmallPillH + MetalUi.SmallPadTop + MetalUi.SmallPadBottom, onCard: true);
+
+    /// <summary>조각 안 한 줄(새 디자인 설정): 왼쪽 이름(13.5px 굵게), 오른쪽 끝에 작은 알약 버튼(들, 사이 6). last 면 아래 구분선 없음. 끝난 y.</summary>
     private int LabeledButtons(string label, int y, bool last, params (int Id, string Text)[] buttons)
     {
-        int right = Margin + CardW - Row.PadX, h = 30, x = right;
-        var widths = buttons.Select(b => LabelW(_font, b.Text) + 28).ToArray();
+        int cx = DialX + DialPadX, cw = DialW - 2 * DialPadX, lx = cx + Row.PadX, right = cx + cw - Row.PadX;
+        nint pf = Theme.Sized(12, true);
+        var widths = buttons.Select(b => LabelW(pf, b.Text) + 28).ToArray();
         int total = widths.Sum() + 6 * (buttons.Length - 1);
-        Label(label, Margin + Row.PadX, y, CardW - 2 * Row.PadX - total - 8, last ? RowH : RowH - 1, _font, Theme.ControlText, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
-        x = right - total;
-        for (int i = 0; i < buttons.Length; i++) { Button(buttons[i].Id, buttons[i].Text, Btn.Bordered, x, y + (RowH - h) / 2, widths[i], h, onCard: true); x += widths[i] + 6; }
-        if (!last) Separator(y + RowH - 1);
-        return y + RowH;
+        Label(label, lx, y, right - lx - total - 8, MetalUi.SetRowH, Theme.Sized(13.5, true), Metal.Ref(Metal.Ink(Theme.IsDark)), true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+        int x = right - total;
+        for (int i = 0; i < buttons.Length; i++) { SmallPill(buttons[i].Id, buttons[i].Text, x, y, widths[i]); x += widths[i] + 6; }
+        if (last) return y + MetalUi.SetRowH;
+        _page.Separators.Add((lx, y + MetalUi.SetRowH, right - lx));
+        return y + MetalUi.SetRowH + 1;
     }
 
     /// <summary>
@@ -253,16 +299,20 @@ internal sealed unsafe partial class App
     /// </summary>
     private void BuildSettingsScreen()
     {
-        Button(IdSBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.ListSettings, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        HelpButton();
-        int y = BuildSettingsBody(36);
+        // 새 디자인(시안): 머리줄 = 왼쪽 ‹ 둥근 단추(뒤로) · 가운데 "설정"(바탕 그림) · 오른쪽 [?] 둥근 단추
+        int y = MetalHeader(IdSBack, T.ListSettings);
+        int dialTop = y;
+        y = BuildSettingsBody(y + DialPadX) + DialPadX;
+        _page.Dials.Add((DialX, dialTop, DialW, y - dialTop));
         _page.BarTop = y;
-        y += 20;
-        Button(IdSCancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 96 - 8 - 72, y, 72, 34);
-        Button(IdSave, T.CommonSave, Btn.Prominent, WinW - Margin - 96, y, 96, 34, isDefault: true);
+        // [취소] [저장]: 오른쪽 여백 22, 사이 8 (시안). 창은 그늘 자리만큼 크다
+        y += 14;
+        int saveW = BarPillW(T.CommonSave, 72), cancelW = BarPillW(T.CommonCancel);
+        int sx = WinW - 22 - saveW;
+        BarPill(IdSCancel, T.CommonCancel, Btn.PillMain, sx - 8 - cancelW, y, cancelW);
+        BarPill(IdSave, T.CommonSave, Btn.Prominent, sx, y, saveW, isDefault: true);
         _page.DefaultButton = IdSave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
         FillSettings();
     }
 
@@ -421,8 +471,11 @@ internal sealed unsafe partial class App
         }
         // 파일에 들어간 뒤에만 설정을 바꾼다. 실패하면 화면의 값은 그대로 두고(초안), 설정은 이전 값으로 남는다.
         var keep = (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker);
+        // 자동 실행 스위치를 쓸 수 없으면(설치본이 아님) 저장된 값은 그대로 둔다 — 화면의 스위치는 실제 등록 상태만 보여 주므로 그 값으로 덮으면
+        // 다른 설정을 저장할 때 autostart=1 이 0 으로 바뀌었다(settingsro SR03, Codex R157-2 의 뜻)
+        bool autostartEditable = C(IdAutoStart) != 0 && Native.IsWindowEnabled(C(IdAutoStart));
         (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker)
-            = (v.AutoStart, v.StartMin, v.Admin, AutoLockChoices[v.LockIdx], v.ConfirmMods, v.ConfirmVk, v.ThemeIdx, LangCode(v.LangIdx), (v.ProgNames ? 1 : 0) | (v.FolderNames ? 2 : 0), v.Walker);
+            = (autostartEditable ? v.AutoStart : _cfg.AutoStart, v.StartMin, v.Admin, AutoLockChoices[v.LockIdx], v.ConfirmMods, v.ConfirmVk, v.ThemeIdx, LangCode(v.LangIdx), (v.ProgNames ? 1 : 0) | (v.FolderNames ? 2 : 0), v.Walker);
         if (!_cfg.Save())
         {
             (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker) = keep;

@@ -160,6 +160,61 @@ internal static unsafe class Gdiplus
         }
     }
 
+    /// <summary>
+    /// 새 디자인 머리줄의 고양이 머리 윤곽(시안 SVG 24×24: 귀 둘 + 볼 + 눈 두 점, 선 1.8)과 자동 잠금의 시계(원 r9 + 바늘).
+    /// size × size 칸, 한 색(COLORREF), 둥근 끝·이음.
+    /// </summary>
+    public static void DrawCatGlyph(nint hdc, float x, float y, float size, uint colorref)
+    {
+        nint g = Begin(hdc), path = 0, pen = 0;
+        try
+        {
+            float k = size / 24f;
+            float X(float v) => x + v * k;
+            float Y(float v) => y + v * k;
+            if (GdipCreatePath(0, out path) != 0) return;
+            GdipStartPathFigure(path);
+            GdipAddPathBezier(path, X(5), Y(20), X(4), Y(18), X(4), Y(14), X(5), Y(11));
+            GdipAddPathLine(path, X(5), Y(11), X(4), Y(4));
+            GdipAddPathLine(path, X(4), Y(4), X(9), Y(7));
+            GdipAddPathBezier(path, X(9), Y(7), X(11), Y(6), X(13), Y(6), X(15), Y(7));
+            GdipAddPathLine(path, X(15), Y(7), X(20), Y(4));
+            GdipAddPathLine(path, X(20), Y(4), X(19), Y(11));
+            GdipAddPathBezier(path, X(19), Y(11), X(20), Y(14), X(20), Y(18), X(19), Y(20));
+            GdipClosePathFigure(path);
+            GdipStartPathFigure(path); GdipAddPathLine(path, X(9.5f), Y(13.5f), X(9.5f), Y(14.5f));
+            GdipStartPathFigure(path); GdipAddPathLine(path, X(14.5f), Y(13.5f), X(14.5f), Y(14.5f));
+            if (GdipCreatePen1(Argb(colorref), Math.Max(1.2f, 1.8f * k), UnitPixel, out pen) != 0) return;
+            GdipSetPenLineJoin(pen, 2); GdipSetPenStartCap(pen, 2); GdipSetPenEndCap(pen, 2);
+            GdipDrawPath(g, pen, path);
+        }
+        finally
+        {
+            if (pen != 0) GdipDeletePen(pen);
+            if (path != 0) GdipDeletePath(path);
+            GdipDeleteGraphics(g);
+        }
+    }
+
+    public static void DrawClockGlyph(nint hdc, float x, float y, float size, uint colorref)
+    {
+        nint g = Begin(hdc), pen = 0;
+        try
+        {
+            float k = size / 24f;
+            if (GdipCreatePen1(Argb(colorref), Math.Max(1.1f, 2f * k), UnitPixel, out pen) != 0) return;
+            GdipSetPenLineJoin(pen, 2); GdipSetPenStartCap(pen, 2); GdipSetPenEndCap(pen, 2);
+            GdipDrawEllipse(g, pen, x + 3 * k, y + 3 * k, 18 * k, 18 * k);
+            GdipDrawLine(g, pen, x + 12 * k, y + 7 * k, x + 12 * k, y + 12 * k);
+            GdipDrawLine(g, pen, x + 12 * k, y + 12 * k, x + 15 * k, y + 14 * k);
+        }
+        finally
+        {
+            if (pen != 0) GdipDeletePen(pen);
+            GdipDeleteGraphics(g);
+        }
+    }
+
     [DllImport("gdiplus.dll")] private static extern int GdipCreateBitmapFromScan0(int w, int h, int stride, int format, byte* scan0, out nint bitmap);
     [DllImport("gdiplus.dll")] private static extern int GdipDisposeImage(nint image);
     [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectI(nint graphics, nint image, int x, int y, int w, int h);

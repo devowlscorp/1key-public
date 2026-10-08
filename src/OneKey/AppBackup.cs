@@ -26,12 +26,10 @@ internal sealed unsafe partial class App
 
     private void BuildBackupMake()
     {
-        Button(IdBkBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.SetBackupMake, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        HelpButton();
+        int metalTop = MetalHeader(IdBkBack, T.SetBackupMake);   // 새 디자인 머리줄(‹ · 제목 · [?])
         // 2026-10-05 사용자: 칸 이름만 읽어도 무엇을 넣는지 알게("현재 비밀번호"·"한 번 더"·긴 아래 설명 없앰, 설명은 도움말). 묶음 제목 없음
         int col = LabelCol(116, 210, T.PwMasterCurrent, T.PwBackupEnter, T.PwBackupConfirm);
-        int labelX = Margin + Row.PadX, valueX = labelX + col, valueW = CardW - (valueX - Margin) - Row.PadX, labelW = valueX - labelX - 8, y = 60;
+        int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = valueX - labelX - 8, y = 60;
         int top = y;
         Label(T.PwMasterCurrent, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
         Field(IdBkCur, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
@@ -48,12 +46,14 @@ internal sealed unsafe partial class App
         Card(top, y - top);
         y = MatchNote(IdBkMatch, y);   // 확인 칸까지 치면 일치 여부(2026-10-05 사용자)
         y += 8;
+        MetalDial(metalTop, ref y);
         _page.BarTop = y;
-        y += 20;
-        Button(IdBkCancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdBkSave, T.BackupMakeButton, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        int saveW = BarPillW(T.BackupMakeButton, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdBkCancel, T.CommonCancel, Btn.PillMain, WinW - 22 - saveW - 8 - cancelW, y, cancelW);
+        BarPill(IdBkSave, T.BackupMakeButton, Btn.Prominent, WinW - 22 - saveW, y, saveW, isDefault: true);
         _page.DefaultButton = IdBkSave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
     }
 
     /// <summary>설정 › 보안 › [백업 파일 만들기].</summary>
@@ -139,16 +139,14 @@ internal sealed unsafe partial class App
 
     private void BuildRestore()
     {
-        Button(IdRsBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(T.SetBackupRestore, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS);
-        HelpButton();
+        int metalTop = MetalHeader(IdRsBack, T.SetBackupRestore);   // 새 디자인 머리줄(‹ · 제목 · [?])
         int col = LabelCol(116, 210, T.PwBackupEnter, T.PwNewMasterEnter, T.PwNewMasterConfirm);
-        int labelX = Margin + Row.PadX, valueX = labelX + col, valueW = CardW - (valueX - Margin) - Row.PadX, labelW = valueX - labelX - 8, y = 52;
+        int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = valueX - labelX - 8, y = 58;   // 판 안쪽 위 여백
         Header(T.RestoreFileHeader, y); y += HeaderH;
         int top = y;
         string shown = _restorePath is null ? T.RestoreNoFile : Path.GetFileName(_restorePath);
-        Label(shown, labelX, y, CardW - 2 * Row.PadX - 96 - 8, RowH, _font, _restorePath is null ? Theme.SecondaryText : Theme.ControlText, true, Native.SS_ENDELLIPSIS);
-        Button(IdRsBrowse, T.RestoreBrowse, Btn.Bordered, Margin + CardW - Row.PadX - 96, y + (RowH - 30) / 2, 96, 30, onCard: true);
+        Label(shown, labelX, y, Mw - 2 * Row.PadX - 96 - 8, RowH, _font, _restorePath is null ? Theme.SecondaryText : Theme.ControlText, true, Native.SS_ENDELLIPSIS);
+        Button(IdRsBrowse, T.RestoreBrowse, Btn.Bordered, Mx + Mw - Row.PadX - 96, y + (RowH - 30) / 2, 96, 30, onCard: true);
         y += RowH;
         Card(top, y - top);
         y += 16;
@@ -171,12 +169,14 @@ internal sealed unsafe partial class App
             y = MatchNote(IdRsMatch, y);   // 확인 칸까지 치면 일치 여부(2026-10-05 사용자)
         }
         y += 8;
+        MetalDial(metalTop, ref y);
         _page.BarTop = y;
-        y += 20;
-        Button(IdRsCancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdRsSave, T.RestoreButton, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        int saveW = BarPillW(T.RestoreButton, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdRsCancel, T.CommonCancel, Btn.PillMain, WinW - 22 - saveW - 8 - cancelW, y, cancelW);
+        BarPill(IdRsSave, T.RestoreButton, Btn.Prominent, WinW - 22 - saveW, y, saveW, isDefault: true);
         _page.DefaultButton = IdRsSave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
     }
 
     /// <summary>

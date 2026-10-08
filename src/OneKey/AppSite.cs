@@ -30,7 +30,7 @@ internal sealed unsafe partial class App
             string text = SiteRowText(k);
             Native.SetText(t, text);
             SetTip(t, text);   // 한 줄로 줄여 보이므로 마우스를 올리면 전체
-            _staticStyle[t] = (Theme.CardBrush, Theme.SecondaryText);
+            _staticStyle[t] = (Theme.CardBrush, Theme.MetalPage ? Metal.Ref(Metal.InkNote(Theme.IsDark)) : Theme.SecondaryText);
             Native.InvalidateRect(t, 0, true);
             if (b == 0) continue;   // 짝 연결(입력 2개): 입력 2 줄에는 버튼이 없다
             Native.SetText(b, linked ? T.EditSiteUnlink : T.EditSiteLink);

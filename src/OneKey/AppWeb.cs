@@ -56,12 +56,11 @@ internal sealed unsafe partial class App
     {
         LaunchItem e = _launchEdit!;
         bool isNew = _launchEditIndex < 0;
-        Button(IdLeBack, T.CommonBack, Btn.Back, Margin, 12, 94, 32);
-        Label(isNew ? T.AddWeb : e.Name, 110, 12, WinW - 220, 32, Theme.FontStrong, Theme.ControlText, false, Native.SS_CENTER | Native.SS_ENDELLIPSIS, userText: true);
+        int metalTop = MetalHeader(IdLeBack, isNew ? T.AddWeb : e.Name, help: false);   // 새 디자인 머리줄(‹ · 제목)
 
         int col = LabelCol(86, 150, T.LaunchName, T.LaunchUrl, T.LaunchBrowser, T.LaunchIcon, T.LaunchColor, T.EditCombo);
-        int labelX = Margin + Row.PadX, valueX = labelX + col, valueW = CardW - (valueX - Margin) - Row.PadX, labelW = col - 6;
-        int y = 52, top = y;
+        int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = col - 6;
+        int y = 60, top = y;   // 판 안쪽 위 여백
         Label(T.LaunchName, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
         Field(IdLeName, valueX, y + (RowH - FieldH) / 2, valueW, FieldH);
         Separator(y + RowH - 1); y += RowH;
@@ -97,21 +96,23 @@ internal sealed unsafe partial class App
 
         if (!isNew)
         {
-            nint l = Button(IdLeLeft, T.LaunchMoveLeft, Btn.Bordered, Margin, y, 88, 32);
-            nint r = Button(IdLeRight, T.LaunchMoveRight, Btn.Bordered, Margin + 96, y, 88, 32);
+            nint l = Button(IdLeLeft, T.LaunchMoveLeft, Btn.Bordered, Mx, y, 88, 32);
+            nint r = Button(IdLeRight, T.LaunchMoveRight, Btn.Bordered, Mx + 96, y, 88, 32);
             if (l != 0 && NeighborInRow(_launchEditIndex, -1) < 0) Native.EnableWindow(l, false);
             if (r != 0 && NeighborInRow(_launchEditIndex, +1) < 0) Native.EnableWindow(r, false);
             y += 32 + 12;
         }
 
+        MetalDial(metalTop, ref y);
         _page.BarTop = y;
-        y += 20;
-        Button(IdLeTest, T.CommonTest, Btn.Bordered, Margin, y, 72, 34);
-        if (!isNew) Button(IdLeDelete, T.LaunchDelete, Btn.DangerBordered, Margin + 80, y, 64, 34);
-        Button(IdLeCancel, T.CommonCancel, Btn.Bordered, WinW - Margin - 80 - 8 - 72, y, 72, 34);
-        Button(IdLeSave, T.CommonSave, Btn.Prominent, WinW - Margin - 80, y, 80, 34, isDefault: true);
+        y += 14;
+        BarPill(IdLeTest, T.CommonTest, Btn.PillMain, 18, y, BarPillW(T.CommonTest));
+        if (!isNew) BarPill(IdLeDelete, T.LaunchDelete, Btn.DangerBordered, 18 + BarPillW(T.CommonTest) + 8, y, BarPillW(T.LaunchDelete));
+        int saveW = BarPillW(T.CommonSave, 72), cancelW = BarPillW(T.CommonCancel);
+        BarPill(IdLeCancel, T.CommonCancel, Btn.PillMain, WinW - 22 - saveW - 8 - cancelW, y, cancelW);
+        BarPill(IdLeSave, T.CommonSave, Btn.Prominent, WinW - 22 - saveW, y, saveW, isDefault: true);
         _page.DefaultButton = IdLeSave;
-        _page.Height = y + 34 + Margin;
+        _page.Height = y + MetalUi.PillMainH + 16;
 
         Native.SetText(C(IdLeName), e.Name);
         Native.SendMessageW(C(IdLeName), Native.EM_LIMITTEXT, LaunchStore.NameMax, 0);

@@ -43,7 +43,7 @@ try {
     if ($mode -eq "") {
       Check MA01 "1|101|42|True|True|True" ("$($e.Count)|" + $(if ($e.Count -gt 0) { [A1]::Field($e[0]) } else { "" })) "unlock widget field: text, protected, focusable, bounds = EDIT"
       $w = [A1]::Top([uint32]$p.Id, "OneKeyLockWidget")
-      Check MA04 "3|43/43/43|True|True|1" ("$([A1]::Buttons($w))|$($e.Count)") "widget client: 3 named push buttons with a default action, no extra edit"
+      Check MA04 "4|43/43/43/43|True|True|1" ("$([A1]::Buttons($w))|$($e.Count)") "widget client: 4 named push buttons (with widget mode, 0.3.124) with a default action, no extra edit"
     } else {
       $f = @($e | ForEach-Object { [A1]::Field($_) }) -join ";"
       Check MA02 "101|42|True|True|True;102|42|True|True|True" $f "first-setup widget fields: text, protected, focusable, bounds = EDIT"

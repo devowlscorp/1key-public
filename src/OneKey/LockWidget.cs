@@ -77,7 +77,7 @@ internal static unsafe class LockWidget
     // ---- 그리기 자원
     private static nint _mem, _dib, _oldBmp, _bits, _canvas, _sprite, _editFont;
     private static int _spriteW, _spriteH;
-    private static nint _famRegular, _fontBody, _fontSmall, _fontBold, _fontTiny, _fmtCenter, _fmtLeft, _fmtRight;
+    private static nint _famRegular, _fontBody, _fontSmall, _fontBold, _fontTiny, _fontKb, _fmtCenter, _fmtLeft, _fmtRight;
     private static nint _famIcon, _fontIcon;   // 위젯 모드 단추: 본창 단추와 같은 Segoe Fluent Icons EaseOfAccess(E776)(0.3.124 사용자)
     private static nint _hostBrush;
     private static float _placeholderW;
@@ -317,14 +317,18 @@ internal static unsafe class LockWidget
     // ================================================================== 배치
 
     private static int S(float v) => (int)Math.Round(v * _s);
-    private const float W = 380, CtlY = 2, CtlD = 22, MasTop = 32, MasH = 140, BubH = 50, PillH = 44, WideW = 340, HintH = 22;
+    // 새 디자인(2026-10-08, 시안 Lock-light/dark.dc.html): 머리 위 둥근 단추 26, 말풍선 높이 64(금속 판), 넓은 입력 알약 58(테 5 + 파인 칸 48) · 폭 344,
+    // 화살표 40. 좁을 때는 예전처럼 반투명 알약 44(2026-10-05 사용자 "평소만 반투명"). 창 폭 380·마스코트 자리는 그대로(시험이 이 좌표를 쓴다).
+    private const float W = 380, CtlY = 2, CtlD = 26, MasTop = 32, MasH = 140, BubH = 64, PillH = 58, PillNarrowH = 44, WideW = 344, HintH = 22;
     private static float MasW => MasH * _spriteW / Math.Max(1, _spriteH);
     private static float NarrowW => 14 + _placeholderW + 14 + 32 + 6;
     private static float BaseTop => MasTop + MasH - 2;
+    /// <summary>지금 알약 높이: 좁음 44 → 넓음 58.</summary>
+    private static float PillHe => (float)(PillNarrowH + (PillH - PillNarrowH) * Math.Clamp(_e, 0, 1));
 
     private static void Layout()
     {
-        float h = BaseTop + BubH + 10 + PillH + (_create ? 8 + PillH : 0) + 10 + HintH + 8;
+        float h = BaseTop + BubH + 16 + PillH + (_create ? 8 + PillH : 0) + 14 + HintH + 12;
         _cw = S(W); _ch = S(h);
     }
 
@@ -335,14 +339,15 @@ internal static unsafe class LockWidget
         double e = _e;
         float pw = (float)(NarrowW + (WideW - NarrowW) * e);
         float pl = (W - pw) / 2;
-        float pillTop = (float)(BaseTop + (BubH + 10) * e);
-        float pill2 = pillTop + PillH + 8;
-        float ad = (float)(32 + 4 * e);
+        float ph = PillHe;
+        float pillTop = (float)(BaseTop + (BubH + 16) * e);
+        float pill2 = pillTop + ph + 8;
+        float ad = (float)(32 + 8 * e);
         float arrowRowTop = _create ? pill2 : pillTop;
-        float acx = pl + pw - 6 - ad / 2, acy = arrowRowTop + PillH / 2;
-        float kbRight = pl + pw - 6 - 36 - 8;
-        float hintTop = (_create ? pill2 : pillTop) + PillH + 10;
-        return new Geo(pl, pw, pillTop, pill2, ad, acx, acy, kbRight, hintTop, MasTop + MasH - 6, 0);
+        float acx = (float)(pl + pw - (6 + 3 * e) - ad / 2), acy = arrowRowTop + ph / 2;   // 넓으면 테 5 + 칸 안쪽 4
+        float kbRight = acx - ad / 2 - 8;
+        float hintTop = (_create ? pill2 : pillTop) + ph + 14;
+        return new Geo(pl, pw, pillTop, pill2, ad, acx, acy, kbRight, hintTop, MasTop + MasH - 2, 0);
     }
 
     /// <summary>
@@ -361,12 +366,12 @@ internal static unsafe class LockWidget
     /// <summary>입력 창 자리(위젯 창 왼쪽 위 기준 픽셀). 그리기(빈자리)와 배치가 같은 정수 계산을 쓴다.</summary>
     private static (int X, int Y, int W, int H) HostRect(Geo g, int i)
     {
-        float top = i == 0 ? g.PillTop : g.Pill2Top;
+        float top = i == 0 ? g.PillTop : g.Pill2Top, ph = PillHe;
         bool hasArrow = !_create || i == 1;
         bool hasKb = i == 0;
-        float right = g.PillL + g.PillW - 6 - (hasArrow ? 36 : 0) - 14 - (hasKb ? (float)(64 * _e) : 0);
-        float left = g.PillL + 14;
-        return (S(left), S(top + 10), Math.Max(S(20), S(right - left)), S(PillH - 20));
+        float right = (hasArrow ? g.ArrowCx - g.ArrowD / 2 - 8 : g.PillL + g.PillW - (float)(14 + 9 * _e)) - (hasKb ? (float)(58 * _e) : 0);
+        float left = g.PillL + (float)(14 + 9 * _e);   // 넓으면 테 5 + 칸 안쪽 18(시안)
+        return (S(left), S(top + (ph - 24) / 2), Math.Max(S(20), S(right - left)), S(24));
     }
 
     /// <summary>입력 창을 알약의 글자 자리에 맞춘다(애니메이션 중에도 지금 그림과 같은 자리 — B-W04).</summary>
@@ -481,42 +486,78 @@ internal static unsafe class LockWidget
         try
         {
             GdipSetSmoothingMode(g, 4); GdipSetPixelOffsetMode(g, 4); GdipSetInterpolationMode(g, 7); GdipSetTextRenderingHint(g, 4);
-            GdipGraphicsClear(g, 0);
             var geo = GetGeo();
-            double e = _e;
+            double e = _e, k = _s;
             bool d = _dark;
-            // 색은 본창과 같은 Theme 토큰(2026-10-04 사용자: 잠금 위젯과 본창의 색을 통일). 말풍선·−×·안내 = 카드, 칸 = 입력칸, 글자 = 본문/보조 글자
-            uint ink = Hex(Theme.ControlText), sub = Hex(Theme.SecondaryText);
-            uint chipBg = Hex(Theme.CardBg), ring = Hex(Theme.CardBorder), focus = Hex(Theme.AccentInk);
+            // 글자색은 시안(본창 새 디자인과 같은 Metal 색). 좁을 때의 반투명 알약은 예전 토큰 그대로
+            uint ink = Metal.Ink(d), sub = Metal.InkLabel(d), note = Metal.InkNote(d);
             uint pillBg = Hex(Theme.EditBg), pillRing = Hex(Theme.FieldBorder);
+            string t1 = _create ? T.LockWidgetHelloNew : T.LockWidgetHello, t2 = _create ? T.LockWidgetSubNew : T.LockLockedSub;
+            float bw = Math.Max(Measure(g, t1, _fontBold), Measure(g, t2, _fontSmall)) + 48, bx = (W - bw) / 2, by = geo.BubTop;
+            string hint = "v" + App.Version;   // ×·− 설명 줄은 뺐다(2026-10-04 사용자: 불필요). 버전만 남긴다
+            float hw = Measure(g, hint, _fontTiny) + 20, hx = (W - hw) / 2;
+            double bubFade = Math.Clamp((e - 0.35) / 0.65, 0, 1), lateFade = Math.Clamp((e - 0.3) / 0.7, 0, 1);
 
-            // − (위젯) ×  (머리 위 가운데, 22px)
-            DrawCircleBtn(g, CtlCx(1), CtlY + CtlD / 2, 1, d, chipBg, ring, ink);
-            if (WidgetBtn) DrawCircleBtn(g, CtlCx(6), CtlY + CtlD / 2, 6, d, chipBg, ring, ink);
-            DrawCircleBtn(g, CtlCx(2), CtlY + CtlD / 2, 2, d, chipBg, ring, ink);
-
-            // 말풍선(넓음에서만)
-            if (e > 0.01)
+            // 1) 모양: 시안의 CSS 와 같은 식으로 픽셀마다(Metal, 미리 곱한 알파 — 그늘은 뒤의 화면 위에 반투명으로)
+            var surf = new Metal.Surf((uint*)_bits, _cw, _ch);
+            new Span<uint>((void*)_bits, _cw * _ch).Clear();
+            Metal.Premul = true;
+            try
             {
-                string t1 = _create ? T.LockWidgetHelloNew : T.LockWidgetHello, t2 = _create ? T.LockWidgetSubNew : T.LockLockedSub;
-                float w1 = Measure(g, t1, _fontBold), w2 = Measure(g, t2, _fontSmall);
-                // 말풍선도 입력칸·버튼과 같은 알약 모양(양 끝 반지름 = 높이의 절반, 2026-10-03 사용자 결정). 둥근 끝 안쪽까지 글이 닿지 않게 좌우 여백을 넉넉히.
-                float bw = Math.Max(w1, w2) + 48, bh = (float)(BubH * Math.Min(1, e * 1.2));
-                float bx = (W - bw) / 2, by = geo.BubTop;
-                double fade = Math.Clamp((e - 0.35) / 0.65, 0, 1);
-                FillRound(g, bx, by, bw, BubH, BubH / 2, A(chipBg, fade));
-                StrokeRound(g, bx, by, bw, BubH, BubH / 2, A(ring, fade), 1);
-                DrawText(g, t1, _fontBold, bx, by + 8, bw, 18, A(ink, fade), _fmtCenter);
-                DrawText(g, t2, _fontSmall, bx, by + 27, bw, 16, A(sub, fade), _fmtCenter);
-                _ = bh;
+                MascotShadow(surf, d);
+                foreach (int part in WidgetBtn ? new[] { 1, 6, 2 } : new[] { 1, 2 })
+                    Metal.Knob(surf, (CtlCx(part) - CtlD / 2) * k, CtlY * k, CtlD * k, k, d, _pressed && _pressedPart == part ? 2 : 0);
+                if (bubFade > 0) { Metal.Opacity = bubFade; Metal.Plate(surf, bx * k, by * k, bw * k, BubH * k, 18 * k, k, d, true); }
+                for (int i = 0; i < (_create ? 2 : 1); i++)
+                {
+                    float top = i == 0 ? geo.PillTop : geo.Pill2Top, ph = PillHe;
+                    double x = geo.PillL * k, y = top * k, w = geo.PillW * k, h = ph * k;
+                    if (e < 0.999)
+                    {
+                        // 좁음: 반투명 알약(입력 창과 같은 바탕·같은 불투명도) + 1px 테 — 넓어지면서 금속 알약으로 바뀐다
+                        Metal.Opacity = 1 - e;
+                        Metal.RRect(surf, x, y, w, h, h / 2, pillBg, PillAlpha);
+                        Metal.Inset(surf, x, y, w, h, h / 2, 0, 0, 0, Math.Max(1, k), pillRing, 1);
+                    }
+                    if (e > 0.001)
+                    {
+                        Metal.Opacity = e;
+                        Metal.Plate(surf, x, y, w, h, h / 2, k, d, false);
+                        // 강조색 테는 커서가 있는 칸만(처음 설정의 두 칸 — 어느 칸에 치는지 보이게)
+                        bool ringOn = !_create || Native.GetFocus() == _edit[i] || (i == 0 && Native.GetFocus() != _edit[1]);
+                        Metal.LockWell(surf, x + 5 * k * e, y + 5 * k * e, w - 10 * k * e, h - 10 * k * e, k, d, ringOn);
+                    }
+                }
+                Metal.Opacity = 1;
+                double ad = geo.ArrowD * k;
+                Metal.AccentPill(surf, geo.ArrowCx * k - ad / 2, geo.ArrowCy * k - ad / 2, ad, ad, k, d, _pressed && _pressedPart == 3 ? 2 : 0);
+                if (lateFade > 0) { Metal.Opacity = lateFade; Metal.Chip(surf, hx * k, geo.HintTop * k, hw * k, HintH * k, k, d); }
+                Metal.Opacity = 1;
+                UpdateHostBrushes(geo);
+                // 반투명일 때는 입력 창 자리를 비운다: 입력 창(같은 불투명도)이 바로 바탕 위에 놓여, 알약 양 끝과 같은 진하기로 보인다
+                if (PillAlpha < 0.999)
+                    for (int i = 0; i < 2; i++)
+                    {
+                        if (_host[i] == 0 || HostHidden(i)) continue;   // 숨긴 입력 창 자리는 비우지 않는다: 알약 바탕·자리표시 글을 위젯이 그린다
+                        var (rx, ry, rw, rh) = HostRect(geo, i);
+                        for (int yy = Math.Max(0, ry); yy < Math.Min(_ch, ry + rh); yy++)
+                            new Span<uint>((uint*)_bits + yy * _cw + Math.Max(0, rx), Math.Max(0, Math.Min(_cw, rx + rw) - Math.Max(0, rx))).Clear();
+                    }
             }
+            finally { Metal.Premul = false; Metal.Opacity = 1; }
 
-            // 알약(들)
+            // 2) 글자·아이콘·마스코트(GDI+)
+            DrawCircleBtn(g, CtlCx(1), CtlY + CtlD / 2, 1, d, 0, 0, Metal.InkIcon(d));
+            if (WidgetBtn) DrawCircleBtn(g, CtlCx(6), CtlY + CtlD / 2, 6, d, 0, 0, Metal.InkIcon(d));
+            DrawCircleBtn(g, CtlCx(2), CtlY + CtlD / 2, 2, d, 0, 0, Metal.InkIcon(d));
+            if (bubFade > 0)
+            {
+                DrawText(g, t1, _fontBold, bx, by + 12, bw, 22, A(ink, bubFade), _fmtCenter);
+                DrawText(g, t2, _fontSmall, bx, by + 35, bw, 18, A(sub, bubFade), _fmtCenter);
+            }
             for (int i = 0; i < (_create ? 2 : 1); i++)
             {
                 float top = i == 0 ? geo.PillTop : geo.Pill2Top;
-                FillRound(g, geo.PillL, top, geo.PillW, PillH, PillH / 2, A(pillBg, PillAlpha));   // 입력 창과 같은 바탕·같은 불투명도(좁을 때 20%)
-                StrokeRound(g, geo.PillL, top, geo.PillW, PillH, PillH / 2, e > 0.5 ? A(focus, 1.0) : A(pillRing, 1.0), e > 0.5 ? 1.5f : 1f);
                 // 좁을 때는 입력 창 대신 자리표시 글을 그린다(칸은 넓을 때만 보임)
                 if (e < 0.05 && GetWindowTextLengthW(_edit[i]) == 0)
                 {
@@ -525,53 +566,29 @@ internal static unsafe class LockWidget
                     if (i == 0 && _cueCheckedAt == 0) CheckBackdrop();
                     string cue = i == 0 ? (_create ? T.LockCueNew : T.LockLabelMaster) : T.LockLabelAgain;
                     uint cueInk = PillAlpha >= 0.999 ? A(Hex(Theme.SecondaryText), 1.0) : _backdropLight ? 0xE6202020u : 0xFFFFFFFFu;
-                    DrawText(g, cue, _fontBody, geo.PillL + 14, top + 13, _placeholderW + 4, 20, cueInk, _fmtLeft);
+                    DrawText(g, cue, _fontBody, geo.PillL + 14, top + (PillHe - 20) / 2, _placeholderW + 4, 20, cueInk, _fmtLeft);
                 }
             }
-            // 반투명일 때는 입력 창 자리를 비운다: 입력 창(같은 불투명도)이 바로 바탕 위에 놓여, 알약 양 끝과 같은 진하기로 보인다
-            if (PillAlpha < 0.999)
-                for (int i = 0; i < 2; i++)
-                {
-                    if (_host[i] == 0 || HostHidden(i)) continue;   // 숨긴 입력 창 자리는 비우지 않는다: 알약 바탕·자리표시 글을 위젯이 그린다
-                    var (hx, hy, hw, hh) = HostRect(geo, i);
-                    GdipSetClipRectI(g, hx, hy, hw, hh, 0 /* CombineModeReplace */);
-                    GdipGraphicsClear(g, 0);
-                    GdipResetClip(g);
-                }
-            // 한/영·Caps (넓음에서만, 첫 칸 오른쪽)
+            // 한/영·Caps (넓음에서만, 첫 칸의 화살표 왼쪽 — 시안 10px)
             if (e > 0.3)
             {
                 string kb = KbText(out bool wIme, out bool wCaps);
                 _kbShown = kb;
                 if (Program.IsTestMode) SetPropW(_hwnd, "OneKeyTestKb", (nint)(4 | (wIme ? 1 : 0) | (wCaps ? 2 : 0)));   // 검증 전용: 그린 한/영·Caps 표시를 시험이 읽는다(inputext.ps1)
                 string[] lines = kb.Split('\n');
-                double fade = Math.Clamp((e - 0.3) / 0.7, 0, 1);
                 uint warn = Hex(Theme.DangerText);
-                float kr = _create ? geo.PillL + geo.PillW - 14 : geo.KbRight;
-                DrawText(g, lines[0], _fontTiny, kr - 70, geo.PillTop + 8, 70, 14, A(wIme ? warn : sub, 0.85 * fade), _fmtRight);
-                DrawText(g, lines[1], _fontTiny, kr - 70, geo.PillTop + 22, 70, 14, A(wCaps ? warn : sub, 0.85 * fade), _fmtRight);
+                float kr = _create ? geo.PillL + geo.PillW - (float)(14 + 9 * e) : geo.KbRight, mid = geo.PillTop + PillHe / 2;
+                DrawText(g, lines[0], _fontKb, kr - 70, mid - 13, 70, 13, A(wIme ? warn : note, lateFade), _fmtRight);
+                DrawText(g, lines[1], _fontKb, kr - 70, mid, 70, 13, A(wCaps ? warn : note, lateFade), _fmtRight);
             }
-            // 화살표(늘 있음)
+            // 화살표(늘 있음): 강조색 원 위 흰 화살표(시안 — 두 테마 같음)
             {
-                // 본창 주 버튼([저장] 등)과 같은 색(2026-10-04 사용자 결정 — 10-03 의 "어두움 강조 파랑 원"을 대신함): 어두움 흰 원 + 남색 화살표, 밝음 남색 원 + 흰 화살표
-                // 어두움: 본창 [입력]·[+ 추가] 같은 옅은 강조 버튼(Tinted — 흰 원은 어두운 화면에서 칸보다 눈에 띄었다, 2026-10-04 사용자). 밝음: 주 버튼(남색 원 + 흰 화살표)
-                uint fill = Hex(Theme.IsDark ? Theme.TintFill : Theme.Accent), arrow = Hex(Theme.IsDark ? Theme.AccentLabel : Theme.AccentText);
-                FillEllipse(g, geo.ArrowCx - geo.ArrowD / 2, geo.ArrowCy - geo.ArrowD / 2, geo.ArrowD, geo.ArrowD, A(fill, _pressed && _pressedPart == 3 ? 0.8 : 1.0));
-                float a = 6.5f;
-                DrawLine(g, geo.ArrowCx - a, geo.ArrowCy, geo.ArrowCx + a, geo.ArrowCy, A(arrow, 1), 2.2f);
-                DrawLine(g, geo.ArrowCx + a - 5, geo.ArrowCy - 5, geo.ArrowCx + a, geo.ArrowCy, A(arrow, 1), 2.2f);
-                DrawLine(g, geo.ArrowCx + a - 5, geo.ArrowCy + 5, geo.ArrowCx + a, geo.ArrowCy, A(arrow, 1), 2.2f);
+                float a = (float)(6.5 + 0.5 * e);
+                DrawLine(g, geo.ArrowCx - a, geo.ArrowCy, geo.ArrowCx + a, geo.ArrowCy, 0xFFFFFFFFu, 2.3f);
+                DrawLine(g, geo.ArrowCx + a - 5.5f, geo.ArrowCy - 5.5f, geo.ArrowCx + a, geo.ArrowCy, 0xFFFFFFFFu, 2.3f);
+                DrawLine(g, geo.ArrowCx + a - 5.5f, geo.ArrowCy + 5.5f, geo.ArrowCx + a, geo.ArrowCy, 0xFFFFFFFFu, 2.3f);
             }
-            // 안내(넓음에서만)
-            if (e > 0.3)
-            {
-                double fade = Math.Clamp((e - 0.3) / 0.7, 0, 1);
-                string hint = "v" + App.Version;   // ×·− 설명 줄은 뺐다(2026-10-04 사용자: 불필요). 버전만 남긴다
-                float hw = Measure(g, hint, _fontTiny) + 24;
-                FillRound(g, (W - hw) / 2, geo.HintTop, hw, HintH, HintH / 2, A(chipBg, fade));
-                StrokeRound(g, (W - hw) / 2, geo.HintTop, hw, HintH, HintH / 2, A(ring, fade), 1);
-                DrawText(g, hint, _fontTiny, (W - hw) / 2, geo.HintTop + 4, hw, 16, A(sub, fade), _fmtCenter);
-            }
+            if (lateFade > 0) DrawText(g, hint, _fontTiny, hx, geo.HintTop + 3.5f, hw, 16, A(sub, lateFade), _fmtCenter);
             // 마스코트(맨 마지막 = 늘 맨 앞)
             {
                 float mw = MasW;
@@ -582,6 +599,122 @@ internal static unsafe class LockWidget
         finally { GdipDeleteGraphics(g); }
         Push();
     }
+
+    // ---- 마스코트 그늘: 그림 장의 투명도를 가우스로 흐려(σ = 흐림/2) 아래로 6px. 장마다 한 번 계산해 둔다(인사 중에도 가볍게)
+    private static readonly Dictionary<int, float[]> _shadowCache = new();
+    private static string _shadowKey = "";
+
+    private static void MascotShadow(Metal.Surf surf, bool dark)
+    {
+        if (_sprite == 0) return;
+        float mw = MasW;
+        int dx = S(W / 2 - mw / 2), dy = S(MasTop), dw = S(mw), dh = S(MasH);
+        double sg = (dark ? 6 : 5) * _s;
+        int pad = (int)Math.Ceiling(3 * sg), sw = dw + 2 * pad, sh = dh + 2 * pad;
+        string key = $"{dw}x{dh}|{dark}|{_sprite}";
+        if (key != _shadowKey) { _shadowCache.Clear(); _shadowKey = key; }
+        int cell = GreetCell();
+        if (!_shadowCache.TryGetValue(cell, out float[]? blur))
+        {
+            var px = new uint[dw * dh];
+            fixed (uint* pp = px)
+            {
+                if (GdipCreateBitmapFromScan0(dw, dh, dw * 4, 0x000E200B /* PARGB */, (nint)pp, out nint bmp) != 0 || bmp == 0) return;
+                try
+                {
+                    if (GdipGetImageGraphicsContext(bmp, out nint tg) != 0) return;
+                    GdipSetInterpolationMode(tg, 7); GdipSetPixelOffsetMode(tg, 4);
+                    GdipDrawImageRectRectI(tg, _sprite, 0, 0, dw, dh, cell * _spriteW, 0, _spriteW, _spriteH, 2, 0, 0, 0);
+                    GdipDeleteGraphics(tg);
+                }
+                finally { GdipDisposeImage(bmp); }
+            }
+            int rad = pad;
+            var ker = new float[2 * rad + 1]; float ks = 0;
+            for (int i = -rad; i <= rad; i++) { ker[i + rad] = (float)Math.Exp(-i * i / (2 * sg * sg)); ks += ker[i + rad]; }
+            for (int i = 0; i < ker.Length; i++) ker[i] /= ks;
+            var a = new float[sw * sh];
+            for (int y = 0; y < dh; y++) for (int x = 0; x < dw; x++) a[(y + pad) * sw + x + pad] = (px[y * dw + x] >> 24) / 255f;
+            var t = new float[sw * sh];
+            for (int y = 0; y < sh; y++)
+                for (int x = 0; x < sw; x++)
+                {
+                    float v = 0;
+                    for (int i = -rad; i <= rad; i++) { int xx = x + i; if (xx >= 0 && xx < sw) v += a[y * sw + xx] * ker[i + rad]; }
+                    t[y * sw + x] = v;
+                }
+            blur = new float[sw * sh];
+            for (int y = 0; y < sh; y++)
+                for (int x = 0; x < sw; x++)
+                {
+                    float v = 0;
+                    for (int i = -rad; i <= rad; i++) { int yy = y + i; if (yy >= 0 && yy < sh) v += t[yy * sw + x] * ker[i + rad]; }
+                    blur[y * sw + x] = v;
+                }
+            _shadowCache[cell] = blur;
+        }
+        int ox = dx - pad, oy = dy - pad + S(6);
+        uint rgb = dark ? 0x000000u : 0x28282Du;
+        double alpha = dark ? 0.5 : 0.18;
+        for (int y = 0; y < sh; y++)
+        {
+            int py = oy + y; if (py < 0 || py >= surf.H) continue;
+            for (int x = 0; x < sw; x++)
+            {
+                int qx = ox + x; if (qx < 0 || qx >= surf.W) continue;
+                float v = blur[y * sw + x];
+                if (v > 0.003f) Metal.Put(surf, qx, py, rgb, v * alpha);
+            }
+        }
+    }
+
+    // ---- 입력 창 바탕: 위젯이 그린 알약 픽셀을 그대로 무늬 붓으로(넓으면 파인 칸의 빛 번짐이 입력 창에서 끊기지 않게)
+    private static readonly nint[] _hostPat = new nint[2], _hostPatBmp = new nint[2];
+    private static readonly string[] _hostPatKey = new string[2];
+
+    private static void UpdateHostBrushes(Geo geo)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (_host[i] == 0) continue;
+            var (hx, hy, hw, hh) = HostRect(geo, i);
+            string key = $"{hx},{hy},{hw},{hh},{Math.Round(_e, 4)},{_dark}";
+            if (_hostPat[i] != 0 && _hostPatKey[i] == key) continue;
+            var bih = new BIH { biSize = (uint)sizeof(BIH), biWidth = hw, biHeight = -hh, biPlanes = 1, biBitCount = 32 };
+            nint bmp = CreateDIBSection(_mem, ref bih, 0, out nint bits, 0, 0);
+            if (bmp == 0 || bits == 0) { if (bmp != 0) Native.DeleteObject(bmp); continue; }
+            uint fallback = Hex(Theme.EditBg);
+            for (int y = 0; y < hh; y++)
+                for (int x = 0; x < hw; x++)
+                {
+                    int sx = hx + x, sy = hy + y;
+                    uint c = sx >= 0 && sy >= 0 && sx < _cw && sy < _ch ? ((uint*)_bits)[sy * _cw + sx] : 0;
+                    uint a = c >> 24;
+                    uint o = fallback;
+                    if (a > 0)
+                    {
+                        uint r = Math.Min(255, (c >> 16 & 0xFF) * 255 / a), gg = Math.Min(255, (c >> 8 & 0xFF) * 255 / a), b = Math.Min(255, (c & 0xFF) * 255 / a);
+                        o = r << 16 | gg << 8 | b;
+                    }
+                    ((uint*)bits)[y * hw + x] = 0xFF000000u | o;
+                }
+            nint brush = Native.CreatePatternBrush(bmp);
+            if (brush == 0) { Native.DeleteObject(bmp); continue; }
+            FreeHostBrush(i);
+            _hostPat[i] = brush; _hostPatBmp[i] = bmp; _hostPatKey[i] = key;
+            Native.InvalidateRect(_host[i], 0, true);
+            if (_edit[i] != 0) Native.InvalidateRect(_edit[i], 0, true);
+        }
+    }
+
+    private static void FreeHostBrush(int i)
+    {
+        if (_hostPat[i] != 0) { Native.DeleteObject(_hostPat[i]); _hostPat[i] = 0; }
+        if (_hostPatBmp[i] != 0) { Native.DeleteObject(_hostPatBmp[i]); _hostPatBmp[i] = 0; }
+        _hostPatKey[i] = "";
+    }
+
+    private static nint HostBrush(nint hwnd) => hwnd == _host[1] && _host[1] != 0 && _hostPat[1] != 0 ? _hostPat[1] : hwnd == _host[0] && _hostPat[0] != 0 ? _hostPat[0] : _hostBrush;
 
     /// <summary>그리기 실패: 처음 보이기 전이면 표시만 하고(Show 가 false), 보이는 중이면 위젯을 닫고 부르는 쪽에 알린다(B-W04).</summary>
     private static void Fail()
@@ -607,15 +740,10 @@ internal static unsafe class LockWidget
 
     private static void DrawCircleBtn(nint g, float cx, float cy, int kind, bool dark, uint bg, uint ring, uint ink)
     {
-        float r = CtlD / 2;
+        // 새 디자인: 둥근 금속 단추는 Render 가 Metal.Knob 으로 먼저 깐다. 여기서는 − · 위젯 · × 글리프만
         bool x = kind == 2;
-        bool pressed = _pressed && _pressedPart == kind;
-        // 본창 위쪽 둥근 버튼(−·잠금·종료, Btn.IconBordered)과 같은 모양: 테두리 없이 옅은 채움(2026-10-04 사용자 화면 비교)
-        uint fill = Theme.Mix(Theme.WindowBg, Theme.ControlText, Theme.IsDark ? 0.12 : 0.07);
-        if (pressed) fill = Theme.Mix(fill, Theme.ControlText, Theme.PressMix);
-        FillEllipse(g, cx - r, cy - r, CtlD, CtlD, A(Hex(fill), 1.0));
-        _ = bg; _ = ring;
-        float a = 3.2f;
+        _ = bg; _ = ring; _ = dark;
+        float a = 3.4f;
         if (kind == 6)
         {
             // 본창 목록 위의 위젯 모드 단추와 같은 아이콘(Segoe Fluent Icons EaseOfAccess, 2026-10-07 사용자: 마스코트 윤곽은 커 보임)
@@ -780,10 +908,11 @@ internal static unsafe class LockWidget
         }
         string face = L.Current switch { Lang.Ja => "Yu Gothic UI", Lang.ZhHans => "Microsoft YaHei UI", Lang.En or Lang.Vi => "Segoe UI", _ => "Malgun Gothic" };
         fixed (char* f = face) if (GdipCreateFontFamilyFromName(f, 0, out _famRegular) != 0) return false;
-        GdipCreateFont(_famRegular, 13 * _s, 0, 2, out _fontBody);
+        GdipCreateFont(_famRegular, 14 * _s, 0, 2, out _fontBody);
         GdipCreateFont(_famRegular, 12 * _s, 0, 2, out _fontSmall);
-        GdipCreateFont(_famRegular, 14 * _s, 1, 2, out _fontBold);
+        GdipCreateFont(_famRegular, 14.5f * _s, 1, 2, out _fontBold);
         GdipCreateFont(_famRegular, 11 * _s, 0, 2, out _fontTiny);
+        GdipCreateFont(_famRegular, 10 * _s, 0, 2, out _fontKb);
         foreach (string icon in new[] { "Segoe Fluent Icons", "Segoe MDL2 Assets" })   // Windows 10 에는 MDL2 에 같은 글자가 있다
         {
             fixed (char* f = icon) if (GdipCreateFontFamilyFromName(f, 0, out _famIcon) == 0 && _famIcon != 0) break;
@@ -805,7 +934,7 @@ internal static unsafe class LockWidget
         _placeholderW = (float)Math.Ceiling(Math.Max(bound.Width, b2.Width) / _s);
         GdipDeleteGraphics(mg); Native.ReleaseDC(0, dc);
         _hostBrush = Native.CreateSolidBrush(Theme.EditBg);   // 그린 칸 바탕과 같은 본창 입력칸 색
-        _editFont = Native.MakeFont(face, (int)Math.Round(13 * _s), Native.FW_NORMAL);
+        _editFont = Native.MakeFont(face, (int)Math.Round(14 * _s), Native.FW_NORMAL);
         return _editFont != 0;
     }
 
@@ -827,8 +956,9 @@ internal static unsafe class LockWidget
         if (_mem != 0) { if (_oldBmp != 0) Native.SelectObject(_mem, _oldBmp); Fx.DeleteDC(_mem); _mem = 0; _oldBmp = 0; }
         if (_dib != 0) { Native.DeleteObject(_dib); _dib = 0; _bits = 0; }
         if (_sprite != 0) { GdipDisposeImage(_sprite); _sprite = 0; }
-        foreach (nint f in new[] { _fontBody, _fontSmall, _fontBold, _fontTiny, _fontIcon }) if (f != 0) GdipDeleteFont(f);
-        _fontBody = _fontSmall = _fontBold = _fontTiny = _fontIcon = 0;
+        foreach (nint f in new[] { _fontBody, _fontSmall, _fontBold, _fontTiny, _fontKb, _fontIcon }) if (f != 0) GdipDeleteFont(f);
+        _fontBody = _fontSmall = _fontBold = _fontTiny = _fontKb = _fontIcon = 0;
+        FreeHostBrush(0); FreeHostBrush(1);
         if (_famIcon != 0) { GdipDeleteFontFamily(_famIcon); _famIcon = 0; }
         foreach (nint f in new[] { _fmtLeft, _fmtCenter, _fmtRight }) if (f != 0) GdipDeleteStringFormat(f);
         _fmtLeft = _fmtCenter = _fmtRight = 0;
@@ -851,7 +981,7 @@ internal static unsafe class LockWidget
         for (int i = 0; i < (_create ? 2 : 1); i++)
         {
             float top = i == 0 ? g.PillTop : g.Pill2Top;
-            if (x >= g.PillL && x <= g.PillL + g.PillW && y >= top && y <= top + PillH) return 10 + i;
+            if (x >= g.PillL && x <= g.PillL + g.PillW && y >= top && y <= top + PillHe) return 10 + i;
         }
         float mw = MasW;
         if (x >= W / 2 - mw / 2 && x <= W / 2 + mw / 2 && y >= MasTop && y <= MasTop + MasH) return 5;
@@ -1055,18 +1185,26 @@ internal static unsafe class LockWidget
                 case Native.WM_ERASEBKGND:
                 {
                     Native.GetClientRect(hwnd, out Native.RECT rc);
-                    Native.FillRect(wParam, ref rc, _hostBrush);
+                    Native.SetBrushOrgEx(wParam, 0, 0, 0);
+                    Native.FillRect(wParam, ref rc, HostBrush(hwnd));
                     return 1;
                 }
                 case Native.WM_CTLCOLOREDIT:
-                    Native.SetBkColor(wParam, Theme.EditBg);
-                    Native.SetTextColor(wParam, Theme.EditText);
-                    return _hostBrush;
+                {
+                    // 글 뒤는 칠하지 않고 붓 원점을 입력칸 자리에 맞춘다(입력 창 바탕 = 위젯이 그린 알약 픽셀)
+                    nint br = HostBrush(hwnd);
+                    Native.SetTextColor(wParam, Metal.Ref(Metal.Ink(_dark)));
+                    if (br == _hostBrush) { Native.SetBkColor(wParam, Theme.EditBg); return br; }
+                    Native.SetBkMode(wParam, Native.TRANSPARENT);
+                    Native.GetWindowRect(lParam, out Native.RECT er); Native.GetWindowRect(hwnd, out Native.RECT hr);
+                    Native.SetBrushOrgEx(wParam, -(er.left - hr.left), -(er.top - hr.top), 0);
+                    return br;
+                }
                 case Native.WM_ACTIVATE:
                     if (_hwnd != 0) Native.PostMessageW(_hwnd, WM_RECALC, 0, 0);
                     break;
                 case Native.WM_COMMAND:
-                    if (((wParam >> 16) & 0xFFFF) == 0x0100 /* EN_SETFOCUS */) Notify(3);
+                    if (((wParam >> 16) & 0xFFFF) == 0x0100 /* EN_SETFOCUS */) { Notify(3); if (_create && _hwnd != 0) Render(); }   // 강조 테가 칸을 따라간다
                     if (((wParam >> 16) & 0xFFFF) == 0x0300 /* EN_CHANGE */ && _e < 0.05 && _hwnd != 0) Render();
                     break;
                 case 0x0021: // WM_MOUSEACTIVATE: 입력 창을 눌러 활성화

@@ -268,7 +268,8 @@ try {
   $inside = $true; $cx = 0; $cy = 0
   foreach ($c in 1..3) { $l = [LW]::AccLoc($w, $c); if ($l[2] -le 0 -or $l[0] -lt $wr.L -or $l[1] -lt $wr.T -or $l[0] + $l[2] -gt $wr.R -or $l[1] + $l[3] -gt $wr.B) { $inside = $false }; if ($c -eq 1) { $cx = $l[0] + [int]($l[2] / 2); $cy = $l[1] + [int]($l[3] / 2) } }
   $hit = [LW]::AccHit($w, $cx, $cy)
-  Check LW06 ("3|" + [char]0xC7A0 + [char]0xAE08 + " " + [char]0xD574 + [char]0xC81C + "/" + [char]0xCD5C + [char]0xC18C + [char]0xD654 + "/" + [char]0xC885 + [char]0xB8CC + "|43/43/43|" + [char]0xB204 + [char]0xB974 + [char]0xAE30 + "|True|1") "$n|$names|$roles|$act|$inside|$hit" "MSAA: 3 push buttons, names, default action, locations, hit test"
+  # since 0.3.124 the unlock widget has a 4th drawn button (widget mode, between - and x); names/roles of the first three are checked
+  Check LW06 ("4|" + [char]0xC7A0 + [char]0xAE08 + " " + [char]0xD574 + [char]0xC81C + "/" + [char]0xCD5C + [char]0xC18C + [char]0xD654 + "/" + [char]0xC885 + [char]0xB8CC + "|43/43/43|" + [char]0xB204 + [char]0xB974 + [char]0xAE30 + "|True|1") "$n|$names|$roles|$act|$inside|$hit" "MSAA: 4 push buttons (unlock, minimize, exit, widget mode), names, default action, locations, hit test"
 
   # LW07
   Press 1

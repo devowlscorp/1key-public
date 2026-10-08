@@ -41,6 +41,14 @@ internal sealed unsafe partial class App
             case Native.WM_CTLCOLORSTATIC:
             case Native.WM_CTLCOLORBTN:
             {
+                if (_edits.Contains(lParam) && Theme.MetalPage)
+                {
+                    // 새 디자인: 읽기 전용·쓸 수 없는 입력칸도 홈을 이어 그린다
+                    Native.SetBkMode(wParam, Native.TRANSPARENT);
+                    Native.SetTextColor(wParam, Metal.Ref(Metal.InkSub(Theme.IsDark)));
+                    Theme.AlignBg(wParam, lParam);
+                    return Theme.BgBrush;
+                }
                 if (_edits.Contains(lParam))
                 {
                     Native.SetBkColor(wParam, Theme.EditBg);
@@ -50,7 +58,7 @@ internal sealed unsafe partial class App
                 // 창 바탕 위 글자: 바탕이 그림(B 그라데이션)이므로 글자 뒤를 칠하지 않고, 붓 원점을 이 칸 자리에 맞춘다.
                 // _staticStyle 의 붓은 화면을 만들 때 넣은 것이라, 테마가 바뀌어 붓이 새로 생겨도 "바탕 쪽"이면 지금 붓을 쓴다.
                 bool onCardStatic = _staticStyle.TryGetValue(lParam, out var st) && st.Brush == Theme.CardBrush;
-                if (onCardStatic)
+                if (onCardStatic && !Theme.MetalPage)   // 새 디자인 화면: 조각도 바탕 그림에 있으므로 창 바탕 위 글자와 같게
                 {
                     Native.SetBkColor(wParam, Theme.CardBg);
                     Native.SetTextColor(wParam, st.Text);
@@ -64,6 +72,14 @@ internal sealed unsafe partial class App
 
             case Native.WM_CTLCOLOREDIT:
             case Native.WM_CTLCOLORLISTBOX:
+                if (Theme.MetalPage && msg == Native.WM_CTLCOLOREDIT && _edits.Contains(lParam))
+                {
+                    // 새 디자인: 입력칸의 파인 홈이 바탕 그림에 있으므로 글 뒤를 칠하지 않고 그 자리를 이어 그린다
+                    Native.SetBkMode(wParam, Native.TRANSPARENT);
+                    Native.SetTextColor(wParam, Metal.Ref(Metal.Ink(Theme.IsDark)));
+                    Theme.AlignBg(wParam, lParam);
+                    return Theme.BgBrush;
+                }
                 if (_editsOnBg.Contains(lParam))
                 {
                     Native.SetBkColor(wParam, Theme.CardBg);
@@ -77,7 +93,7 @@ internal sealed unsafe partial class App
             case Native.WM_ERASEBKGND:
             {
                 Native.GetClientRect(hwnd, out Native.RECT rc);
-                Theme.BuildBackground(hwnd, rc.right, rc.bottom, _dpi);   // B 바탕 그림(크기·테마가 같으면 그대로)
+                ComposeBackground();   // 바탕 그림(몸체 + 판·머리줄): 크기·테마·화면이 같으면 그대로
                 Native.SetBrushOrgEx(wParam, 0, 0, 0);
                 Native.FillRect(wParam, ref rc, Theme.BgBrush);
                 DrawDecorations(wParam);
@@ -583,6 +599,10 @@ internal sealed unsafe partial class App
             case IdListLock: LockNow(); return;
             case IdListMin: if (WidgetButton) HideToTray(); else Native.ShowWindow(_hwnd, Native.SW_MINIMIZE); return;
             case IdRowSettings: ShowScreen(Screen.Settings); return;
+            case IdListAutoLock:   // 목록 판의 자동 잠금 칸: 설정 화면의 자동 잠금으로
+                ShowScreen(Screen.Settings);
+                if (C(IdAutoLock) is nint al and not 0) { Ctl.ShowFocus = true; Native.SetFocus(al); }
+                return;
             case IdSBack: LeaveSettings(); return;        // 바뀐 값이 있으면 버릴지 묻는다
             case IdSCancel: DiscardSettings(); return;    // [취소]는 묻지 않고 버린다
             case IdListExit: ConfirmExit(); return;
