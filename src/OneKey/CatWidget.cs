@@ -465,7 +465,7 @@ internal static unsafe class CatWidget
             lines.Add($"cursor {px},{py} -> {Names[g]}");
         }
         // 잠금 위젯 인사 띠(둘러보기 + 야옹, 지금 테마)
-        nint greet = MascotGreet.Load(out int gn);
+        nint greet = MascotGreet.Load(out int gn, FlipClock.WindowsLight());
         if (greet == 0) { File.WriteAllText(log, "greet"); return false; }
         Guid png = new("557CF406-1A04-11D3-9A73-0000F81EF32E");
         fixed (char* gp = Path.Combine(dir, "cat-greet.png")) GdipSaveImageToFile(greet, gp, &png, 0);

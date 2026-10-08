@@ -5,7 +5,7 @@ namespace OneKey;
 /// <summary>
 /// 마스코트 인사 그림(잠금 위젯이 쓴다). 한 띠에 두 동작: 앞쪽 <see cref="LookN"/> 장 = 둘러보기(정면 → 왼쪽 → 위 → 오른쪽 → 정면 —
 /// 마우스를 올렸을 때), 그 뒤 <see cref="MeowN"/> 장 = 야옹(입을 반쯤 → 크게 벌렸다 닫기 — 칸이 넓어져 마스터 비밀번호를 넣기 시작할 때,
-/// 2026-10-08 사용자). 0번 장 = 정면(서 있기). 그림은 작업 표시줄 고양이(CatWidget)의 시선 그림 + 입 그림, 색은 Windows 테마를 따른다.
+/// 2026-10-08 사용자). 0번 장 = 정면(서 있기). 그림은 작업 표시줄 고양이(CatWidget)의 시선 그림 + 입 그림, 색은 위젯(앱) 테마를 따른다.
 /// 입 그림(cat_*_meow-half / meow-open)이 없으면 야옹은 0장이고 부르는 쪽은 둘러보기를 쓴다.
 /// </summary>
 internal static unsafe class MascotGreet
@@ -24,10 +24,11 @@ internal static unsafe class MascotGreet
     }
 
     /// <summary>인사 그림 띠(가로로 frames 장, GDI+ 32bpp ARGB 비트맵)를 만든다. 실패하면 0. 받은 쪽이 GdipDisposeImage.</summary>
-    public static nint Load(out int frames) { Gdiplus.Init(); return LoadCat(out frames); }
+    /// <param name="light">밝은 회색 고양이(밝은 화면) / 검은 고양이(어두운 화면) — 그림을 놓을 화면의 테마.</param>
+    public static nint Load(out int frames, bool light) { Gdiplus.Init(); return LoadCat(out frames, light); }
 
     // 공개판 고양이의 "인사": 정면 → 왼쪽 → 왼쪽 위 → 위 → 오른쪽 위 → 오른쪽 → 정면으로 둘러본다(장마다 몇 번씩, 16 fps 로 약 2초).
-    // 그림은 9방향 시선(CatWidget 과 같은 것), 색은 Windows 테마를 따른다
+    // 그림은 9방향 시선(CatWidget 과 같은 것), 색은 부르는 쪽이 정한다(잠금 위젯 = 앱 테마)
     private static readonly (string Name, int Repeat)[] CatLook =
         { ("center", 6), ("left", 5), ("up-left", 4), ("up", 4), ("up-right", 4), ("right", 5), ("center", 4) };
     // 야옹(약 1초): 입을 반쯤 → 크게 벌려 잠깐 → 반쯤 → 닫기
@@ -38,12 +39,12 @@ internal static unsafe class MascotGreet
     public static int LookN { get; private set; }
     public static int MeowN { get; private set; }
 
-    private static nint LoadCat(out int frames)
+    private static nint LoadCat(out int frames, bool light)
     {
         frames = 0;
         PingPong = false;
         LookN = MeowN = 0;
-        string th = FlipClock.WindowsLight() ? "light" : "dark";
+        string th = light ? "light" : "dark";
         var seq = new List<(string Name, int Repeat)>(CatLook);
         int look = 0; foreach (var c in CatLook) look += c.Repeat;
         int meow = 0; foreach (var c in CatMeow) meow += c.Repeat;

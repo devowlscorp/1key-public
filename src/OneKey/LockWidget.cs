@@ -772,7 +772,7 @@ internal static unsafe class LockWidget
     {
         // 마스코트 인사 프레임(가로 묶음, 280px 높이 — 0.3.121: 16 fps 약 96장, 색 JPEG + 투명도 회색 PNG 를 합친 32비트, MascotGreet)
         {
-            _sprite = MascotGreet.Load(out int n);
+            _sprite = MascotGreet.Load(out int n, !_dark);   // 고양이 색은 위젯(앱) 테마를 따른다
             if (_sprite == 0) return false;
             Frames = n;
             GdipGetImageWidth(_sprite, out uint w); GdipGetImageHeight(_sprite, out uint h);
