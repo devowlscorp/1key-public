@@ -35,7 +35,7 @@ internal static unsafe class LockWidget
     public static int TestFailAt = Program.IsTestMode && int.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_LOCKWIDGET_FAIL"), out int tf) ? tf : 0;   // 통합 시험: 환경 변수로도
     private static int _renders;
     private static bool _failed, _live;
-    private const nuint TimerAnim = 1, TimerGreet = 2, TimerBackdrop = 3;
+    private const nuint TimerAnim = 1, TimerGreet = 2, TimerBackdrop = 3, TimerRest = 4;
     private const int GreetMs = MascotGreet.FrameMs, ExpandMs = 220;   // 0.3.121: 인사 16 fps(예전 19장 100 ms)
     private static int Frames = 19;   // 인사 그림 장 수(mascot_greet.txt)
 
@@ -50,11 +50,17 @@ internal static unsafe class LockWidget
     private static long _animStart;
     private static bool _hover, _tracking, _pressed;
     private static bool _hoverDone;   // 마우스를 올려 시작한 인사가 한 바퀴 끝났다(올린 채로 있으면 서 있는다 — 다시 올리면 또 한 번, 0.3.123)
-    // 넓어질 때의 야옹(공개판, 2026-10-08 사용자: 마스터 비밀번호를 넣도록 넓어지면 입을 벌리고 야옹): 한 번만 하고 정면으로 선다.
+    // 넓어질 때의 야옹(공개판, 2026-10-08 사용자: 마스터 비밀번호를 넣도록 넓어지면 입을 벌리고 야옹): 하고 나면 정면으로 서서 잠시 쉰다(아래).
     // 좁아지면 다시 할 수 있다. 입 그림이 없으면(MeowN = 0) 예전처럼 넓은 동안 둘러보기를 되풀이한다
+    // 2026-10-08 사용자: 한 번 하고 가만히 있으니 단조롭다 → 넓은 동안 한 동작이 끝나면 3.5~7초 쉬었다가 다음 동작(야옹 ↔ 둘러보기를 번갈아,
+    // 가끔 같은 동작을 한 번 더). 쉬는 동안은 타이머 하나(한 번)만 — 그리기 없음
     private static bool _meowDone;
+    private static bool _wideLook;               // 넓은 동안 지금 동작이 둘러보기(아니면 야옹)
+    private static readonly Random _restRng = new();
     private static bool Wide => _eTo > 0;
     private static bool Meowing => Wide && MascotGreet.MeowN > 0;
+    /// <summary>지금 야옹을 그리는가(넓음 · 입 그림 있음 · 이번 동작이 둘러보기가 아님).</summary>
+    private static bool MeowAct => Meowing && !_wideLook;
     private static int _pressedPart;             // 1 = −, 2 = ×, 3 = 화살표, 6 = 위젯 모드
 
     /// <summary>
@@ -319,7 +325,8 @@ internal static unsafe class LockWidget
     private static int S(float v) => (int)Math.Round(v * _s);
     // 새 디자인(2026-10-08, 시안 Lock-light/dark.dc.html): 머리 위 둥근 단추 26, 말풍선 높이 64(금속 판), 넓은 입력 알약 58(테 5 + 파인 칸 48) · 폭 344,
     // 화살표 40. 좁을 때는 예전처럼 반투명 알약 44(2026-10-05 사용자 "평소만 반투명"). 창 폭 380·마스코트 자리는 그대로(시험이 이 좌표를 쓴다).
-    private const float W = 380, CtlY = 2, CtlD = 26, MasTop = 32, MasH = 140, BubH = 64, PillH = 58, PillNarrowH = 44, WideW = 344, HintH = 22;
+    // 마스코트 높이 112(2026-10-08 사용자: 고양이가 너무 크다 — 140 에서 80%)
+    private const float W = 380, CtlY = 2, CtlD = 26, MasTop = 32, MasH = 112, BubH = 64, PillH = 58, PillNarrowH = 44, WideW = 344, HintH = 22;
     private static float MasW => MasH * _spriteW / Math.Max(1, _spriteH);
     private static float NarrowW => 14 + _placeholderW + 14 + 32 + 6;
     private static float BaseTop => MasTop + MasH - 2;
@@ -419,7 +426,9 @@ internal static unsafe class LockWidget
     private static long _clickAt;
 
     /// <summary>지금 그릴 인사 띠의 칸: 야옹 중이면 띠 뒤쪽(LookN 부터), 아니면 둘러보기. 0 = 정면.</summary>
-    private static int GreetCell() => _frame <= 0 ? 0 : Meowing ? Math.Min(Frames - 1, MascotGreet.LookN + _frame) : Math.Min(Frames - 1, _frame);
+    private static int GreetCell() => _frame <= 0 ? 0
+        : Meowing && MascotGreet.Chain.Length > 0 ? Math.Min(Frames - 1, MascotGreet.Chain[_frame % MascotGreet.Chain.Length])   // 넓음: 이어진 동작
+        : MeowAct ? Math.Min(Frames - 1, MascotGreet.LookN + _frame) : Math.Min(Frames - 1, _frame);
 
     private static void Recalc()
     {
@@ -434,7 +443,7 @@ internal static unsafe class LockWidget
             _eFrom = _e; _eTo = target; _animStart = Environment.TickCount64;
             Native.SetTimer(_hwnd, TimerAnim, 15, 0);
             _frame = 0;   // 둘러보기 ↔ 야옹: 처음부터
-            if (target <= 0) _meowDone = false;
+            if (target <= 0) { _meowDone = false; _wideLook = false; Native.KillTimer(_hwnd, TimerRest); }
         }
         bool greet = visible && !minimized && (Meowing ? !_meowDone : _eTo > 0 || (_hover && !_hoverDone));
         if (visible && !minimized) Native.SetTimer(_hwnd, TimerBackdrop, BackdropMs, 0); else Native.KillTimer(_hwnd, TimerBackdrop);
@@ -499,12 +508,18 @@ internal static unsafe class LockWidget
             double bubFade = Math.Clamp((e - 0.35) / 0.65, 0, 1), lateFade = Math.Clamp((e - 0.3) / 0.7, 0, 1);
 
             // 1) 모양: 시안의 CSS 와 같은 식으로 픽셀마다(Metal, 미리 곱한 알파 — 그늘은 뒤의 화면 위에 반투명으로)
+            // 모양 층은 바뀔 때만 다시 계산하고(넓어지는 중·누름·포커스·테마·크기), 인사 장마다는 저장해 둔 층을 복사한다 — 그늘·판의 흐림 계산이 무거워
+            // 고양이가 이어서 움직이는 동안 CPU 가 높았다(lockwidget mouse.ps1: 넓을 때 한 코어의 24%). 고양이 그늘은 그 위에 장마다(장별로 저장)
             var surf = new Metal.Surf((uint*)_bits, _cw, _ch);
-            new Span<uint>((void*)_bits, _cw * _ch).Clear();
+            string layerKey = $"{_cw}x{_ch}|{Math.Round(e, 4)}|{d}|{_pressed}|{_pressedPart}|{bw:0.0}|{hw:0.0}|{(_create ? (Native.GetFocus() == _edit[1] ? 2 : 1) : 0)}|{HostHidden(0)}|{HostHidden(1)}";
+            bool cached = _layerKey == layerKey && _layer is not null && _layer.Length == _cw * _ch;
+            if (cached) fixed (uint* src = _layer) Buffer.MemoryCopy(src, (void*)_bits, (long)_cw * _ch * 4, (long)_cw * _ch * 4);
             Metal.Premul = true;
             try
             {
-                MascotShadow(surf, d);
+              if (!cached)
+              {
+                new Span<uint>((void*)_bits, _cw * _ch).Clear();
                 foreach (int part in WidgetBtn ? new[] { 1, 6, 2 } : new[] { 1, 2 })
                     Metal.Knob(surf, (CtlCx(part) - CtlD / 2) * k, CtlY * k, CtlD * k, k, d, _pressed && _pressedPart == part ? 2 : 0);
                 if (bubFade > 0) { Metal.Opacity = bubFade; Metal.Plate(surf, bx * k, by * k, bw * k, BubH * k, 18 * k, k, d, true); }
@@ -543,6 +558,12 @@ internal static unsafe class LockWidget
                         for (int yy = Math.Max(0, ry); yy < Math.Min(_ch, ry + rh); yy++)
                             new Span<uint>((uint*)_bits + yy * _cw + Math.Max(0, rx), Math.Max(0, Math.Min(_cw, rx + rw) - Math.Max(0, rx))).Clear();
                     }
+                _layer ??= new uint[_cw * _ch];
+                if (_layer.Length != _cw * _ch) _layer = new uint[_cw * _ch];
+                fixed (uint* dst = _layer) Buffer.MemoryCopy((void*)_bits, dst, (long)_cw * _ch * 4, (long)_cw * _ch * 4);
+                _layerKey = layerKey;
+              }
+                MascotShadow(surf, d);   // 고양이는 판 앞에 있으므로 그늘도 판 위에 진다
             }
             finally { Metal.Premul = false; Metal.Opacity = 1; }
 
@@ -581,12 +602,13 @@ internal static unsafe class LockWidget
                 DrawText(g, lines[0], _fontKb, kr - 70, mid - 13, 70, 13, A(wIme ? warn : note, lateFade), _fmtRight);
                 DrawText(g, lines[1], _fontKb, kr - 70, mid, 70, 13, A(wCaps ? warn : note, lateFade), _fmtRight);
             }
-            // 화살표(늘 있음): 강조색 원 위 흰 화살표(시안 — 두 테마 같음)
+            // 화살표(늘 있음): 강조색(단색) 원 위 화살표 — 밝음 흑연 원 + 흰 화살표, 어두움 알루미늄 원 + 진한 화살표
             {
+                uint arrowInk = A(Metal.OnAccent(d), 1.0);
                 float a = (float)(6.5 + 0.5 * e);
-                DrawLine(g, geo.ArrowCx - a, geo.ArrowCy, geo.ArrowCx + a, geo.ArrowCy, 0xFFFFFFFFu, 2.3f);
-                DrawLine(g, geo.ArrowCx + a - 5.5f, geo.ArrowCy - 5.5f, geo.ArrowCx + a, geo.ArrowCy, 0xFFFFFFFFu, 2.3f);
-                DrawLine(g, geo.ArrowCx + a - 5.5f, geo.ArrowCy + 5.5f, geo.ArrowCx + a, geo.ArrowCy, 0xFFFFFFFFu, 2.3f);
+                DrawLine(g, geo.ArrowCx - a, geo.ArrowCy, geo.ArrowCx + a, geo.ArrowCy, arrowInk, 2.3f);
+                DrawLine(g, geo.ArrowCx + a - 5.5f, geo.ArrowCy - 5.5f, geo.ArrowCx + a, geo.ArrowCy, arrowInk, 2.3f);
+                DrawLine(g, geo.ArrowCx + a - 5.5f, geo.ArrowCy + 5.5f, geo.ArrowCx + a, geo.ArrowCy, arrowInk, 2.3f);
             }
             if (lateFade > 0) DrawText(g, hint, _fontTiny, hx, geo.HintTop + 3.5f, hw, 16, A(sub, lateFade), _fmtCenter);
             // 마스코트(맨 마지막 = 늘 맨 앞)
@@ -602,6 +624,8 @@ internal static unsafe class LockWidget
 
     // ---- 마스코트 그늘: 그림 장의 투명도를 가우스로 흐려(σ = 흐림/2) 아래로 6px. 장마다 한 번 계산해 둔다(인사 중에도 가볍게)
     private static readonly Dictionary<int, float[]> _shadowCache = new();
+    private static uint[]? _layer;          // 모양 층(미리 곱한 알파) — Render
+    private static string _layerKey = "";
     private static string _shadowKey = "";
 
     private static void MascotShadow(Metal.Surf surf, bool dark)
@@ -905,6 +929,21 @@ internal static unsafe class LockWidget
             Frames = n;
             GdipGetImageWidth(_sprite, out uint w); GdipGetImageHeight(_sprite, out uint h);
             _spriteW = (int)(w / Frames); _spriteH = (int)h;
+            // 그릴 크기로 한 번만 줄여 둔다(장마다 고화질 축소를 하지 않게 — 넓은 동안 고양이가 이어서 움직여 CPU 가 올랐다)
+            int dw = Math.Max(1, S(MasW)), dh = Math.Max(1, S(MasH));
+            if (GdipCreateBitmapFromScan0(dw * Frames, dh, 0, 0x000E200B /* PARGB */, 0, out nint scaled) == 0 && scaled != 0)
+            {
+                if (GdipGetImageGraphicsContext(scaled, out nint sg) == 0)
+                {
+                    GdipSetInterpolationMode(sg, 7); GdipSetPixelOffsetMode(sg, 4);
+                    for (int c = 0; c < Frames; c++)
+                        GdipDrawImageRectRectI(sg, _sprite, c * dw, 0, dw, dh, c * _spriteW, 0, _spriteW, _spriteH, 2, 0, 0, 0);
+                    GdipDeleteGraphics(sg);
+                    GdipDisposeImage(_sprite);
+                    _sprite = scaled; _spriteW = dw; _spriteH = dh;
+                }
+                else GdipDisposeImage(scaled);
+            }
         }
         string face = L.Current switch { Lang.Ja => "Yu Gothic UI", Lang.ZhHans => "Microsoft YaHei UI", Lang.En or Lang.Vi => "Segoe UI", _ => "Malgun Gothic" };
         fixed (char* f = face) if (GdipCreateFontFamilyFromName(f, 0, out _famRegular) != 0) return false;
@@ -959,6 +998,7 @@ internal static unsafe class LockWidget
         foreach (nint f in new[] { _fontBody, _fontSmall, _fontBold, _fontTiny, _fontKb, _fontIcon }) if (f != 0) GdipDeleteFont(f);
         _fontBody = _fontSmall = _fontBold = _fontTiny = _fontKb = _fontIcon = 0;
         FreeHostBrush(0); FreeHostBrush(1);
+        _layer = null; _layerKey = ""; _shadowCache.Clear(); _shadowKey = "";   // 배율·테마가 바뀌면 다시
         if (_famIcon != 0) { GdipDeleteFontFamily(_famIcon); _famIcon = 0; }
         foreach (nint f in new[] { _fmtLeft, _fmtCenter, _fmtRight }) if (f != 0) GdipDeleteStringFormat(f);
         _fmtLeft = _fmtCenter = _fmtRight = 0;
@@ -1110,12 +1150,27 @@ internal static unsafe class LockWidget
                     if (wParam == (nint)TimerAnim) TickAnim();
                     else if (wParam == (nint)TimerGreet)
                     {
-                        _frame = (_frame + 1) % (Meowing ? MascotGreet.MeowN : Math.Max(1, MascotGreet.LookN));
-                        if (_frame == 0 && Meowing) { _meowDone = true; Recalc(); }                       // 야옹은 한 번만
+                        _frame = (_frame + 1) % (Meowing && MascotGreet.Chain.Length > 0 ? MascotGreet.Chain.Length : MeowAct ? MascotGreet.MeowN : Math.Max(1, MascotGreet.LookN));
+                        if (_frame == 0 && Meowing)
+                        {
+                            // 한 동작이 끝났다: 정면으로 서서 쉬고, 잠시 뒤 다음 동작
+                            _meowDone = true; Recalc();
+                            Native.SetTimer(hwnd, TimerRest, (uint)(MascotGreet.Chain.Length > 0 ? _restRng.Next(2500, 4500) : _restRng.Next(3500, 7000)), 0);
+                        }
                         else if (_frame == 0 && _eTo <= 0 && _hover) { _hoverDone = true; Recalc(); }   // 마우스로 시작한 인사는 한 바퀴만
                         Render();
                     }
                     else if (wParam == (nint)TimerBackdrop) { if (_e < 0.05 && CheckBackdrop()) Render(); }
+                    else if (wParam == (nint)TimerRest)
+                    {
+                        Native.KillTimer(hwnd, TimerRest);
+                        if (Meowing && Native.IsWindowVisible(hwnd) && !Native.IsIconic(hwnd))
+                        {
+                            if (MascotGreet.Chain.Length == 0) _wideLook = _restRng.Next(4) == 0 ? _wideLook : !_wideLook;   // 이어진 동작이 없을 때만: 대개 번갈아, 네 번에 한 번은 같은 동작을 한 번 더
+                            _meowDone = false; _frame = 0;
+                            Recalc();
+                        }
+                    }
                     return 0;
                 case 0x0003: // WM_MOVE: 입력 창도 함께
                     PlaceHosts(); break;
@@ -1126,8 +1181,8 @@ internal static unsafe class LockWidget
                     if (wParam == 1 /* SIZE_MINIMIZED */)
                     {
                         // 최소화 중에는 넓어지기·인사 타이머를 모두 멈춘다(R-W5). 복원하면 Recalc 가 지금 상태로 다시.
-                        Native.KillTimer(hwnd, TimerAnim); Native.KillTimer(hwnd, TimerGreet); Native.KillTimer(hwnd, TimerBackdrop);
-                        _e = _eFrom = _eTo = 0; _frame = 0;
+                        Native.KillTimer(hwnd, TimerAnim); Native.KillTimer(hwnd, TimerGreet); Native.KillTimer(hwnd, TimerBackdrop); Native.KillTimer(hwnd, TimerRest);
+                        _e = _eFrom = _eTo = 0; _frame = 0; _meowDone = false; _wideLook = false;
                         // 버튼을 누른 채 최소화되면(Win+D 등) 그 누름은 취소: 숨은 위젯에서 손을 떼 제출·종료 묻기가 일어나지 않게(Codex R148-2)
                         if (_pressed) { _pressed = false; _pressedPart = 0; Native.ReleaseCapture(); }
                     }
@@ -1167,7 +1222,7 @@ internal static unsafe class LockWidget
                     if ((wParam & 0xFFF0) == 0xF060 /* SC_CLOSE */) { Notify(2); return 0; }   // Alt+F4 도 × 와 같게
                     break;
                 case Native.WM_DESTROY:
-                    Native.KillTimer(hwnd, TimerAnim); Native.KillTimer(hwnd, TimerGreet); Native.KillTimer(hwnd, TimerBackdrop);
+                    Native.KillTimer(hwnd, TimerAnim); Native.KillTimer(hwnd, TimerGreet); Native.KillTimer(hwnd, TimerBackdrop); Native.KillTimer(hwnd, TimerRest);
                     break;
             }
         }

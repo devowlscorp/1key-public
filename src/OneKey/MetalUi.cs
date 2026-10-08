@@ -178,7 +178,7 @@ internal static unsafe class MetalUi
             Metal.Well(s, 0, 0, w, h, 10 * k, k, dark, hot || focus ? 1 : 0);
             bool none = text.Length == 0;
             Text(dc, 12.5, !none, none ? empty : text, !enabled || none ? Metal.InkSub(dark) : Metal.Ink(dark), 10 * k, 0, w - 10 * k, h, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
-            if (focus) Gdiplus.DrawRoundRect(dc, 0, 0, w, h, (float)(10 * k), Theme.AccentInk, Math.Max(1, R(k)));
+            if (focus) Gdiplus.DrawRoundRect(dc, 0, 0, w, h, (float)(10 * k), Metal.Ref(Metal.FocusInk(Theme.IsDark)), (float)Math.Max(1.5, 1.5 * k));
         });
     }
 
@@ -198,7 +198,7 @@ internal static unsafe class MetalUi
         PaintDib(hwnd, (dc, s, k) =>
         {
             int w = s.W, h = s.H;
-            if (hot || pressed) Metal.RRect(s, 4 * k, 3 * k, w - 8 * k, h - 6 * k, 9 * k, dark ? 0xFFFFFFu : 0x2F3E8Fu, dark ? (pressed ? 0.09 : 0.05) : (pressed ? 0.08 : 0.045));
+            if (hot || pressed) Metal.RRect(s, 4 * k, 3 * k, w - 8 * k, h - 6 * k, 9 * k, dark ? 0xFFFFFFu : 0x000000u, dark ? (pressed ? 0.09 : 0.05) : (pressed ? 0.07 : 0.035));
             if ((style & Row.Last) == 0) Metal.Sep(s, Row.PadX * k, h - Math.Max(1, Math.Round(k)), w - 2 * Row.PadX * k, k, dark);
             double x = Row.PadX * k;
             if (icon.Length > 0)
@@ -365,7 +365,7 @@ internal static unsafe class MetalUi
     private static bool IsGlyph(string s) => s.Length > 0 && s.All(c => c >= 0xE000 && c <= 0xF8FF);
 
     private static void Ring(nint dc, double x, double y, double w, double h, double r, double k)
-        => Gdiplus.DrawRoundRect(dc, R(x - 2 * k), R(y - 2 * k), R(w + 4 * k), R(h + 4 * k), (float)(r + 2 * k), Theme.AccentInk, Math.Max(1, R(k)));
+        => Gdiplus.DrawRoundRect(dc, R(x - 2 * k), R(y - 2 * k), R(w + 4 * k), R(h + 4 * k), (float)(r + 2 * k), Metal.Ref(Metal.FocusInk(Theme.IsDark)), (float)Math.Max(1.5, 1.5 * k));
 
     public static void PaintButton(nint hwnd, uint style, uint kind)
     {
@@ -449,7 +449,7 @@ internal static unsafe class MetalUi
                     uint[]? snap = enabled ? null : Metal.Snap(s);
                     Metal.AccentPill(s, x, y, pw, ph, k, dark, state);
                     if (snap is not null) Metal.Fade(s, snap, 0.55);
-                    Text(dc, 13, true, text, 0xFFFFFF, x, y, x + pw, y + ph, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
+                    Text(dc, 13, true, text, Metal.OnAccent(dark), x, y, x + pw, y + ph, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
                     if (focus) Ring(dc, x, y, pw, ph, ph / 2, k);
                     break;
                 }

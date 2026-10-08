@@ -112,7 +112,7 @@ internal static unsafe class Theme
             // 어두움 = 차콜(2026-10-04 사용자: 남색 B 가 너무 밝다 — 눈이 편한 검은 회색 바탕, 단색 검정은 아님, A안 "남색 기운 조금").
             // 위에서 아래로 조금씩 밝아지는 그라데이션과 옅은 빛 번짐은 입체감을 위해 남긴다(사용자). 주 버튼은 흰색 대신 파랑 바탕 + 흰 글자.
             // 새 디자인(2026-10-08): 흑연색 금속 몸체 — 왼쪽 위가 밝고 오른쪽 아래로 어두워진다. 빛 번짐은 없다
-            GradTop = Rgb(0x4C, 0x4D, 0x52); GradMid = Rgb(0x3C, 0x3D, 0x41); GradBottom = Rgb(0x2E, 0x2F, 0x32); GradEnd = Rgb(0x23, 0x24, 0x27);   // 시안 List-dark 그대로
+            GradTop = Rgb(0x2C, 0x2D, 0x31); GradMid = Rgb(0x20, 0x21, 0x24); GradBottom = Rgb(0x17, 0x18, 0x1A); GradEnd = Rgb(0x0F, 0x10, 0x12);   // 검은 금속(2026-10-08 사용자 — 시안 List-dark 보다 어둡게). Metal.Body 와 같은 색
             GlowA = Rgb(0x8C, 0x78, 0xFF); GlowAAlpha = 0;
             GlowB = Rgb(0x50, 0xAA, 0xFF); GlowBAlpha = 0;
             WindowBg = GradMid;

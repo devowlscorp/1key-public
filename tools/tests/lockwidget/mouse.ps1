@@ -48,22 +48,23 @@ Start-Sleep -Milliseconds 600
 $h = @([T2]::All([uint32]$p.Id, "OneKeyLockInput"))[0]; $hr = Rect $h
 $narrowW = $hr.R - $hr.L
 # 2) click the pill (centre) -> focus goes to the widget input, pill widens
-$pt = P 190 ((32 + 140 - 2) + 22); [T2]::Click($pt[0], $pt[1]); Start-Sleep -Milliseconds 700
+# mascot 112 high since 0.5.12
+$pt = P 190 ((32 + 112 - 2) + 22); [T2]::Click($pt[0], $pt[1]); Start-Sleep -Milliseconds 700
 $fg = [T2]::GetForegroundWindow(); $hr2 = Rect $h; $wideW = $hr2.R - $hr2.L
 Check "pill click -> input focused and wider" (($fg -eq $h -or $fg -eq $w) -and $wideW -gt $narrowW + 40) "host width $narrowW -> $wideW, fg host=$($fg -eq $h)"
 # 3) greeting frames change while expanded
-$r = Rect $w; $a = Snap $r ([int](145*$s)) ([int](32*$s)) ([int](90*$s)) ([int](140*$s)); Start-Sleep -Milliseconds 350; $b = Snap $r ([int](145*$s)) ([int](32*$s)) ([int](90*$s)) ([int](140*$s))
+$r = Rect $w; $a = Snap $r ([int](152*$s)) ([int](32*$s)) ([int](76*$s)) ([int](112*$s)); Start-Sleep -Milliseconds 350; $b = Snap $r ([int](152*$s)) ([int](32*$s)) ([int](76*$s)) ([int](112*$s))
 $diff = Same $a $b; Check "greeting animates while expanded" ($diff -gt 20) "changed samples $diff"
 # 4) CPU expanded vs narrow
 $pp = Get-Process -Id $p.Id; $t0 = $pp.TotalProcessorTime.TotalMilliseconds; Start-Sleep -Seconds 4; $pp.Refresh(); $cpuWide = ($pp.TotalProcessorTime.TotalMilliseconds - $t0) / 4000 * 100
 $form.Activate(); [void][T2]::SetForegroundWindow($form.Handle); Start-Sleep -Milliseconds 800; [Windows.Forms.Application]::DoEvents()
-$r = Rect $w; $a = Snap $r ([int](145*$s)) ([int](32*$s)) ([int](90*$s)) ([int](140*$s)); Start-Sleep -Milliseconds 350; $b = Snap $r ([int](145*$s)) ([int](32*$s)) ([int](90*$s)) ([int](140*$s))
+$r = Rect $w; $a = Snap $r ([int](152*$s)) ([int](32*$s)) ([int](76*$s)) ([int](112*$s)); Start-Sleep -Milliseconds 350; $b = Snap $r ([int](152*$s)) ([int](32*$s)) ([int](76*$s)) ([int](112*$s))
 $diffN = Same $a $b
 $pp.Refresh(); $t0 = $pp.TotalProcessorTime.TotalMilliseconds; Start-Sleep -Seconds 4; $pp.Refresh(); $cpuNarrow = ($pp.TotalProcessorTime.TotalMilliseconds - $t0) / 4000 * 100
 Check "narrow: greeting stopped" ($diffN -le 2) "changed samples $diffN"
 Check "CPU narrow ~0" ($cpuNarrow -lt 0.3) ("narrow {0:N2}% / expanded {1:N2}% of one core" -f $cpuNarrow, $cpuWide)
 # 5) drag the mascot 60px right
-$r1 = Rect $w; $pt = P 190 110; [T2]::Drag($pt[0], $pt[1], 60, 0); Start-Sleep -Milliseconds 400; $r2 = Rect $w; $hr3 = Rect $h
+$r1 = Rect $w; $pt = P 190 90; [T2]::Drag($pt[0], $pt[1], 60, 0); Start-Sleep -Milliseconds 400; $r2 = Rect $w; $hr3 = Rect $h
 Check "drag mascot moves widget (and input follows)" (($r2.L - $r1.L) -ge 50 -and ($hr3.L - $hr2.L) -ge 40) "widget dx $($r2.L - $r1.L), host dx $($hr3.L - $hr2.L)"
 $r = $r2
 # 6) minimize with the − button (logical x = 190-13, y = 13)

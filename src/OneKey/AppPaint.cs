@@ -69,8 +69,8 @@ internal sealed unsafe partial class App
                 if (fi < _page.FieldEdits.Count && _page.FieldEdits[fi] == focused && focused != 0)
                 {
                     bool round = _page.PillFields.Contains(fi);
-                    int t2 = Math.Max(1, (int)Math.Round(_dpi / 96.0 * (round ? 1.5 : 1)));
-                    Gdiplus.DrawRoundRect(hdc, Scale(x), Yp(y), Scale(w), Scale(h), round ? Scale(h) / 2 : Scale(Theme.FieldRadius), Theme.AccentInk, t2);
+                    // 포커스 색: 금속 시계의 흑연색(2026-10-08 사용자: 파란 포커스는 이질적), 1.5px
+                    Gdiplus.DrawRoundRect(hdc, Scale(x), Yp(y), Scale(w), Scale(h), round ? Scale(h) / 2 : Scale(Theme.FieldRadius), Metal.Ref(Metal.FocusInk(Theme.IsDark)), (float)Math.Max(1.5, 1.5 * _dpi / 96.0));
                 }
                 continue;
             }
@@ -145,10 +145,9 @@ internal sealed unsafe partial class App
                 Metal.Sep(body, x * k, Yp(y), w * k, k, dark);
             if (_page.Hero is { } hero)
             {
-                // 잠금 화면의 큰 둥근 단추(고양이 윤곽) + 오른쪽 아래 자물쇠 작은 단추
+                // 잠금 화면의 큰 둥근 금속 단추: 안에 지금 상태(잠김 = 자물쇠, 처음 설정 = 열쇠) — 2026-10-08 사용자: 고양이 윤곽은 뜬금없다
                 double hd = hero.D * k, hx = hero.Cx * k - hd / 2, hy = Yp(hero.Y);
                 Metal.Knob(body, hx, hy, hd, k, dark, 0, 2);
-                Metal.Knob(body, hx + hd - 24 * k, hy + hd - 24 * k, 26 * k, k, dark, 0);
             }
             if (_page.Bubble is { } bb) Metal.Plate(body, bb.X * k, Yp(bb.Y), bb.W * k, bb.H * k, 18 * k, k, dark, true);
             for (int fi = 0; fi < _page.Fields.Count; fi++)
@@ -164,8 +163,12 @@ internal sealed unsafe partial class App
             if (_page.Hero is { } he)
             {
                 double hd = he.D * k, hx = he.Cx * k - hd / 2, hy = Yp(he.Y);
-                Gdiplus.DrawCatGlyph(dc, (float)(hx + hd * 0.25), (float)(hy + hd * 0.23), (float)(hd * 0.5), Metal.Ref(Metal.InkIcon(dark)));
-                Ctl.Text(dc, Theme.FontIconSmall, IcLock, Metal.Ref(Metal.InkIcon(dark)), (int)(hx + hd - 24 * k), (int)(hy + hd - 24 * k), (int)(hx + hd + 2 * k), (int)(hy + hd + 2 * k), Native.DT_CENTER | Native.DT_VCENTER);
+                nint big = Native.MakeFont("Segoe Fluent Icons", (int)Math.Round(30 * k), Native.FW_NORMAL);
+                if (big != 0)
+                {
+                    Ctl.Text(dc, big, _createMode ? "" : IcLock, Metal.Ref(Metal.InkIcon(dark)), (int)hx, (int)hy, (int)(hx + hd), (int)(hy + hd), Native.DT_CENTER | Native.DT_VCENTER);   // Permissions(열쇠) / Lock
+                    Native.DeleteObject(big);
+                }
             }
             if (_page.Title.Length > 0)
             {

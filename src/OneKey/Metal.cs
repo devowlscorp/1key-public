@@ -173,7 +173,7 @@ internal static unsafe class Metal
     /// </summary>
     public static void Body(Surf s, double k, bool dark, double band)
     {
-        uint c0 = dark ? 0x4C4D52u : 0xFFFFFFu, c1 = dark ? 0x3C3D41u : 0xF3F3F3u, c2 = dark ? 0x2E2F32u : 0xE6E6E7u, c3 = dark ? 0x232427u : 0xD8D8DAu;
+        uint c0 = dark ? 0x2C2D31u : 0xFFFFFFu, c1 = dark ? 0x202124u : 0xF3F3F3u, c2 = dark ? 0x17181Au : 0xE6E6E7u, c3 = dark ? 0x0F1012u : 0xD8D8DAu;   // 어두움 = 검은 금속(2026-10-08 사용자)
         int w = s.W, h = s.H;
         double a = 152 * Math.PI / 180, ux = Math.Sin(a), uy = -Math.Cos(a);
         double len = Math.Abs(w * ux) + Math.Abs(h * uy);
@@ -196,7 +196,7 @@ internal static unsafe class Metal
         double r = 20 * k;
         Shadow(s, x, y, w, h, r, 0, 1 * k, 0, 0, 0xFFFFFF, dark ? 0.08 : 0.95);
         Shadow(s, x, y, w, h, r, 0, -1 * k, 0, 0, 0x000000, dark ? 0.30 : 0.05);
-        (double, uint)[] stops = dark ? new[] { (0.0, 0x36373Cu), (0.55, 0x2A2B2Fu), (1.0, 0x202124u) } : new[] { (0.0, 0xF8F8F8u), (0.55, 0xE9E9E9u), (1.0, 0xDBDBDCu) };
+        (double, uint)[] stops = dark ? new[] { (0.0, 0x1D1E21u), (0.55, 0x151618u), (1.0, 0x0E0F11u) } : new[] { (0.0, 0xF8F8F8u), (0.55, 0xE9E9E9u), (1.0, 0xDBDBDCu) };
         double cx = x + 0.38 * w, cy = y + 0.22 * h, rx = 0.95 * w, ry = 0.75 * h, bottom = y + h;
         double aLine = dark ? 0.025 : 0.05, aGap = dark ? 0.04 : 0.018;
         RRect(s, x, y, w, h, r, (px, py) =>
@@ -213,8 +213,8 @@ internal static unsafe class Metal
     /// <summary>판 위 조각의 위·아래 색. state: 0 보통 · 1 올림 · 2 누름.</summary>
     public static (uint Top, uint Bottom) TileColors(bool dark, int state)
     {
-        uint t = dark ? 0x3C3D42u : 0xFFFFFFu, b = dark ? 0x333438u : 0xF5F5F5u;
-        if (state == 1) { uint toward = dark ? 0xFFFFFFu : 0x2F3E8Fu; double f = dark ? 0.05 : 0.045; t = Mix(t, toward, f); b = Mix(b, toward, f); }
+        uint t = dark ? 0x26272Bu : 0xFFFFFFu, b = dark ? 0x1D1E21u : 0xF5F5F5u;
+        if (state == 1) { uint toward = dark ? 0xFFFFFFu : 0x000000u; double f = dark ? 0.05 : 0.035; t = Mix(t, toward, f); b = Mix(b, toward, f); }
         else if (state == 2) { double f = dark ? 0.10 : 0.05; t = Mix(t, 0, f); b = Mix(b, 0, f); }
         return (t, b);
     }
@@ -235,7 +235,7 @@ internal static unsafe class Metal
         if (state == 0) return stops;
         var o = new (double, uint)[stops.Length];
         for (int i = 0; i < stops.Length; i++)
-            o[i] = (stops[i].Item1, state == 1 ? Mix(stops[i].Item2, dark ? 0xFFFFFFu : 0x2F3E8Fu, dark ? 0.07 : 0.05) : Mix(stops[i].Item2, 0x000000, dark ? 0.12 : 0.07));
+            o[i] = (stops[i].Item1, state == 1 ? Mix(stops[i].Item2, dark ? 0xFFFFFFu : 0x000000u, dark ? 0.07 : 0.035) : Mix(stops[i].Item2, 0x000000, dark ? 0.12 : 0.07));
         return o;
     }
 
@@ -247,7 +247,7 @@ internal static unsafe class Metal
     {
         double r = d / 2;
         if (state != 2) Shadow(s, x, y, d, d, r, 0, lift * k, 2 * lift * k, 0, 0x000000, dark ? (lift > 1 ? 0.55 : 0.5) : 0.22);
-        var stops = Hover(dark ? new[] { (0.0, 0x5E5F64u), (0.55, 0x44454Au), (1.0, 0x2C2D31u) } : new[] { (0.0, 0xFFFFFFu), (0.55, 0xEDEDEDu), (1.0, 0xCFCFD1u) }, dark, state);
+        var stops = Hover(dark ? new[] { (0.0, 0x4A4B50u), (0.55, 0x2B2C30u), (1.0, 0x151618u) } : new[] { (0.0, 0xFFFFFFu), (0.55, 0xEDEDEDu), (1.0, 0xCFCFD1u) }, dark, state);
         RRect(s, x, y, d, d, r, RadialAt(x, y, d, d, 0.35, state == 2 ? 0.45 : 0.30, true, stops));
         if (dark) Inset(s, x, y, d, d, r, 0, 1 * k, 0, 0, 0xFFFFFF, 0.12);
         else Inset(s, x, y, d, d, r, 0, -1 * k, 1 * k, 0, 0x000000, 0.08);
@@ -265,8 +265,8 @@ internal static unsafe class Metal
             else Shadow(s, x, y, w, h, r, 0, 1 * k, 2 * k, 0, 0x000000, dark ? 0.5 : 0.18);
         }
         (double, uint)[] stops = main
-            ? (dark ? new[] { (0.0, 0x5E5F64u), (0.6, 0x44454Au), (1.0, 0x303135u) } : new[] { (0.0, 0xFFFFFFu), (0.6, 0xEDEDEDu), (1.0, 0xD5D5D7u) })
-            : (dark ? new[] { (0.0, 0x55565Bu), (1.0, 0x3A3B40u) } : new[] { (0.0, 0xFFFFFFu), (1.0, 0xE9E9E9u) });
+            ? (dark ? new[] { (0.0, 0x46474Cu), (0.6, 0x2A2B2Fu), (1.0, 0x18191Bu) } : new[] { (0.0, 0xFFFFFFu), (0.6, 0xEDEDEDu), (1.0, 0xD5D5D7u) })
+            : (dark ? new[] { (0.0, 0x3C3D42u), (1.0, 0x232427u) } : new[] { (0.0, 0xFFFFFFu), (1.0, 0xE9E9E9u) });
         RRect(s, x, y, w, h, r, RadialAt(x, y, w, h, 0.40, state == 2 ? 0.45 : 0.25, false, Hover(stops, dark, state)));
         if (dark) Inset(s, x, y, w, h, r, 0, 1 * k, 0, 0, 0xFFFFFF, main ? 0.12 : 0.10);
         else if (main) Inset(s, x, y, w, h, r, 0, -1 * k, 1 * k, 0, 0x000000, 0.08);
@@ -275,7 +275,13 @@ internal static unsafe class Metal
     // ---------------------------------------------------------------- 설정 화면의 부품(시안 Settings-light/dark.dc.html)
 
     /// <summary>강조색(시안 기본값): 밝음 #2F3E8F, 어두움 #4F5FC8.</summary>
-    public static uint Accent(bool dark) => dark ? 0x4F5FC8u : 0x2F3E8Fu;
+    /// <summary>
+    /// 강조색(켜진 스위치 · [저장] · 단계 막대): 2026-10-08 사용자 결정 — 금속 시계 사진처럼 색 없는 단색. 밝음 = 흑연(#3A3B40, 그 위 흰 글자),
+    /// 어두움 = 밝은 알루미늄(#C9CACE, 그 위 진한 글자). 시안의 남색(#2F3E8F/#4F5FC8)을 대신한다.
+    /// </summary>
+    public static uint Accent(bool dark) => dark ? 0xC9CACEu : 0x3A3B40u;
+    /// <summary>강조색 위의 글자·아이콘 색.</summary>
+    public static uint OnAccent(bool dark) => dark ? 0x1F1F1Fu : 0xFFFFFFu;
 
     /// <summary>
     /// 스위치(42×24, 반지름 12): 켬 = 강조색 + 안쪽 그늘 0 1px 3px, 끔 = 위→아래 회색. 손잡이 18 이 3px 안쪽에 — radial(circle at 35% 30%) + 그늘 0 1px 2px.
@@ -292,22 +298,22 @@ internal static unsafe class Metal
         }
         else
         {
-            uint t = dark ? 0x232427u : 0xCACACCu, b = dark ? 0x2E2F33u : 0xDADADBu;
+            uint t = dark ? 0x0E0F11u : 0xCACACCu, b = dark ? 0x18191Bu : 0xDADADBu;
             if (state != 0) { double f = state == 1 ? 0.05 : 0.10; t = Mix(t, dark ? 0xFFFFFFu : 0x000000u, f); b = Mix(b, dark ? 0xFFFFFFu : 0x000000u, f); }
             RRect(s, x, y, w, h, r, (_, py) => Mix(t, b, (py - y) / h));
         }
         Inset(s, x, y, w, h, r, 0, 1 * k, 3 * k, 0, 0x000000, on ? (dark ? 0.5 : 0.35) : (dark ? 0.6 : 0.25));
         double d = 18 * k, kx = on ? x + w - 3 * k - d : x + 3 * k, ky = y + 3 * k;
         Shadow(s, kx, ky, d, d, d / 2, 0, 1 * k, 2 * k, 0, 0x000000, dark ? 0.6 : 0.35);
-        (uint c0, uint c1) = dark ? (on ? (0xF6F6F6u, 0xCFCFCFu) : (0xE6E6E6u, 0xB8B8B8u)) : (0xFFFFFFu, 0xE2E2E2u);
+        (uint c0, uint c1) = dark ? (on ? (0x55565Bu, 0x2E2F33u) : (0xE6E6E6u, 0xB8B8B8u)) : (0xFFFFFFu, 0xE2E2E2u);   // 어두움 켬: 밝은 홈 위 진한 손잡이
         RRect(s, kx, ky, d, d, d / 2, RadialAt(kx, ky, d, d, 0.35, 0.30, true, new[] { (0.0, c0), (1.0, c1) }));
     }
 
     /// <summary>파인 홈(테마 고르기 묶음 · 키 칸): 위→아래(밝음 #E2E2E3→#EDEDED, 어두움 #1E1F22→#26272A) + 안쪽 그늘 0 1px 3px.</summary>
     public static void Well(Surf s, double x, double y, double w, double h, double r, double k, bool dark, int state = 0)
     {
-        uint t = dark ? 0x1E1F22u : 0xE2E2E3u, b = dark ? 0x26272Au : 0xEDEDEDu;
-        if (state == 1) { t = Mix(t, dark ? 0xFFFFFFu : 0x2F3E8Fu, 0.04); b = Mix(b, dark ? 0xFFFFFFu : 0x2F3E8Fu, 0.04); }
+        uint t = dark ? 0x0B0C0Eu : 0xE2E2E3u, b = dark ? 0x131416u : 0xEDEDEDu;
+        if (state == 1) { t = Mix(t, dark ? 0xFFFFFFu : 0x000000u, 0.04); b = Mix(b, dark ? 0xFFFFFFu : 0x000000u, 0.03); }
         RRect(s, x, y, w, h, r, (_, py) => Mix(t, b, (py - y) / h));
         Inset(s, x, y, w, h, r, 0, 1 * k, 3 * k, 0, 0x000000, dark ? 0.6 : 0.16);
     }
@@ -317,7 +323,7 @@ internal static unsafe class Metal
     {
         double r = 8 * k;
         Shadow(s, x, y, w, h, r, 0, 1 * k, 3 * k, 0, 0x000000, dark ? 0.5 : 0.2);
-        var stops = dark ? new[] { (0.0, 0x55565Bu), (1.0, 0x3E3F44u) } : new[] { (0.0, 0xFFFFFFu), (1.0, 0xF0F0F0u) };
+        var stops = dark ? new[] { (0.0, 0x3C3D42u), (1.0, 0x26272Bu) } : new[] { (0.0, 0xFFFFFFu), (1.0, 0xF0F0F0u) };
         RRect(s, x, y, w, h, r, RadialAt(x, y, w, h, 0.40, 0.25, false, stops));
         if (dark) Inset(s, x, y, w, h, r, 0, 1 * k, 0, 0, 0xFFFFFF, 0.10);
     }
@@ -327,7 +333,7 @@ internal static unsafe class Metal
     {
         double h = 5 * k;
         if (sel) { RRect(s, x, y, 22 * k, h, 3 * k, Accent(dark)); return; }
-        RRect(s, x, y, h, h, h / 2, dark ? 0x232427u : 0xCCCCCAu);
+        RRect(s, x, y, h, h, h / 2, dark ? 0x0E0F11u : 0xCCCCCAu);
         Inset(s, x, y, h, h, h / 2, 0, 1 * k, 1 * k, 0, 0x000000, dark ? 0.6 : 0.2);
     }
 
@@ -338,7 +344,7 @@ internal static unsafe class Metal
         if (state != 2)
         {
             if (dark) Shadow(s, x, y, w, h, r, 0, 2 * k, 8 * k, 0, 0x000000, 0.5);
-            else Shadow(s, x, y, w, h, r, 0, 2 * k, 6 * k, 0, 0x2F3E8F, 0.35);
+            else Shadow(s, x, y, w, h, r, 0, 2 * k, 6 * k, 0, 0x000000, 0.28);
         }
         uint c = Accent(dark);
         if (state == 1) c = dark ? Mix(c, 0xFFFFFF, 0.08) : Mix(c, 0x000000, 0.14);
@@ -375,8 +381,8 @@ internal static unsafe class Metal
         Shadow(s, x, y, w, h, r, 0, 12 * k, 26 * k, 0, dark ? 0x000000u : 0x28282Du, dark ? 0.5 : 0.18);
         if (bubble) Shadow(s, x, y, w, h, r, 0, 2 * k, 6 * k, 0, dark ? 0x000000u : 0x28282Du, dark ? 0.3 : 0.10);
         var stops = bubble
-            ? (dark ? new[] { (0.0, 0x4C4D52u), (0.35, 0x3C3D41u), (1.0, 0x2B2C2Fu) } : new[] { (0.0, 0xFFFFFFu), (0.35, 0xF3F3F3u), (1.0, 0xE4E4E5u) })
-            : (dark ? new[] { (0.0, 0x4C4D52u), (0.45, 0x393A3Eu), (1.0, 0x27282Bu) } : new[] { (0.0, 0xFFFFFFu), (0.45, 0xEDEDEDu), (1.0, 0xD9D9DBu) });
+            ? (dark ? new[] { (0.0, 0x2E2F33u), (0.35, 0x1F2023u), (1.0, 0x121315u) } : new[] { (0.0, 0xFFFFFFu), (0.35, 0xF3F3F3u), (1.0, 0xE4E4E5u) })
+            : (dark ? new[] { (0.0, 0x2E2F33u), (0.45, 0x1C1D20u), (1.0, 0x0F1012u) } : new[] { (0.0, 0xFFFFFFu), (0.45, 0xEDEDEDu), (1.0, 0xD9D9DBu) });
         RRect(s, x, y, w, h, r, LinearAt(x, y, w, h, 152, stops));
         Inset(s, x, y, w, h, r, 1.5 * k, 1.5 * k, 0, 0, 0xFFFFFF, dark ? 0.13 : 0.95);
         Inset(s, x, y, w, h, r, -2 * k, -3 * k, 6 * k, 0, 0x000000, dark ? 0.35 : 0.10);
@@ -386,8 +392,8 @@ internal static unsafe class Metal
     public static void LockWell(Surf s, double x, double y, double w, double h, double k, bool dark, bool ring)
     {
         double r = h / 2;
-        if (ring) Shadow(s, x, y, w, h, r, 0, 0, 0, 1.5 * k, Accent(dark), 1);
-        var stops = dark ? new[] { (0.0, 0x34353Au), (0.6, 0x28292Du), (1.0, 0x1F2023u) } : new[] { (0.0, 0xFAFAFAu), (0.6, 0xEBEBEBu), (1.0, 0xDEDEDFu) };
+        if (ring) Shadow(s, x, y, w, h, r, 0, 0, 0, 1.5 * k, FocusInk(dark), 1);   // 커서가 있는 칸 = 포커스 색(예전 강조색 파랑)
+        var stops = dark ? new[] { (0.0, 0x1A1B1Eu), (0.6, 0x121315u), (1.0, 0x0B0C0Eu) } : new[] { (0.0, 0xFAFAFAu), (0.6, 0xEBEBEBu), (1.0, 0xDEDEDFu) };
         double cx = x + 0.35 * w, cy = y + 0.20 * h, rx = 0.95 * w, ry = 1.20 * h;
         RRect(s, x, y, w, h, r, (px, py) => { double ex = (px - cx) / rx, ey = (py - cy) / ry; return Grad(Math.Sqrt(ex * ex + ey * ey), stops); });
         Inset(s, x, y, w, h, r, 0, 2 * k, (dark ? 6 : 5) * k, 0, 0x000000, dark ? 0.6 : 0.16);
@@ -399,7 +405,7 @@ internal static unsafe class Metal
     {
         double r = Math.Min(10 * k, h / 2);
         Shadow(s, x, y, w, h, r, 0, 1 * k, 2 * k, 0, 0x000000, dark ? 0.45 : 0.12);
-        uint t = dark ? 0x3E3F44u : 0xFFFFFFu, b = dark ? 0x2E2F33u : 0xECECECu;
+        uint t = dark ? 0x2A2B2Fu : 0xFFFFFFu, b = dark ? 0x18191Bu : 0xECECECu;
         RRect(s, x, y, w, h, r, (_, py) => Mix(t, b, (py - y) / h));
         if (dark) Inset(s, x, y, w, h, r, 0, 1 * k, 0, 0, 0xFFFFFF, 0.08);
     }
@@ -424,9 +430,14 @@ internal static unsafe class Metal
     public static uint InkSub(bool dark) => dark ? 0xABABABu : 0x6E6E6Eu;       // 조각의 작은 글
     public static uint InkLabel(bool dark) => dark ? 0xABABABu : 0x5F5F5Fu;     // 판의 이름표(자동 잠금)
     public static uint InkIcon(bool dark) => dark ? 0xD6D6D6u : 0x4A4A4Au;      // 단추 아이콘
-    public static uint InkAccent(bool dark) => dark ? 0xB6C0F8u : 0x2F3E8Fu;    // [입력]
+    public static uint InkAccent(bool dark) => dark ? 0xE4E4E6u : 0x2E2F33u;    // [입력] · 추가 메뉴 표식(단색, 2026-10-08 사용자)
     public static uint InkLink(bool dark) => dark ? 0xC8C8C8u : 0x4A4A4Au;      // 설정 ›
-    public static uint Divider(bool dark) => dark ? 0x4A4B50u : 0xE2E2E0u;      // 조각 안 세로선
+    public static uint Divider(bool dark) => dark ? 0x34353Au : 0xE2E2E0u;      // 조각 안 세로선
+    /// <summary>
+    /// 포커스 테두리(2026-10-08 사용자: 파란색은 금속 시계 느낌과 이질적) — 시계판 눈금 같은 흑연색, 어두움은 밝은 알루미늄.
+    /// 색이 없는 만큼 1.5px 로 굵게 그린다(밝음 #55565B · 어두움 #C9CACE, 둘레 조각·판과 대비 3:1 이상).
+    /// </summary>
+    public static uint FocusInk(bool dark) => dark ? 0xC9CACEu : 0x55565Bu;
     public static uint InkNote(bool dark) => dark ? 0xABABABu : 0x646464u;      // 설정의 작은 설명(마지막으로 쓴 뒤)
     public static uint InkSeg(bool dark) => dark ? 0xB8B8B8u : 0x4A4A4Au;       // 고르지 않은 테마 칸
 }
