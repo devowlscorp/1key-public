@@ -81,7 +81,7 @@ internal static unsafe partial class CatWidget
             RetryLater();
             return;
         }
-        bool light = FlipClock.WindowsLight();
+        bool light = FlipClock.MascotLight();
         if (_shown && dpi == _dpi && light == _light && work.left == _work.left && work.right == _work.right && work.bottom == _work.bottom) return;
         if (_shown) Hide(keepCheck: true);
         if (!EnsureWindow()) { _why = 9; SetProps(); return; }
@@ -343,7 +343,7 @@ internal static unsafe partial class CatWidget
         {
             _lastCheck = now;
             bool redo = !EnvOk(out Native.RECT work, out int dpi) || dpi != _dpi || work.bottom != _work.bottom || work.left != _work.left
-                || work.right != _work.right || FlipClock.WindowsLight() != _light;
+                || work.right != _work.right || FlipClock.MascotLight() != _light;
             if (redo) { Evaluate(); return; }
             KeepOnTop();
         }
@@ -445,6 +445,7 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestWalkerShows", _showGen);
         Native.SetPropW(_owner, "OneKeyTestWalkerTimer", _hwnd != 0 && _shown ? 1 : 0);
         Native.SetPropW(_owner, "OneKeyTestCatGaze", _gaze);
+        Native.SetPropW(_owner, "OneKeyTestCatLight", _shown ? (_light ? 2 : 1) : 0);   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
     /// <summary>시험: 지정 배율로 밝은·어두운 띠(9장)와, 커서 9자리에 대한 시선 표를 dir 에 남긴다.</summary>
@@ -472,7 +473,7 @@ internal static unsafe partial class CatWidget
             lines.Add($"cursor {px},{py} -> {Names[g]}");
         }
         // 잠금 위젯 인사 띠(둘러보기 + 야옹, 지금 테마)
-        nint greet = MascotGreet.Load(out int gn, FlipClock.WindowsLight());
+        nint greet = MascotGreet.Load(out int gn, FlipClock.MascotLight());
         if (greet == 0) { File.WriteAllText(log, "greet"); return false; }
         Guid png = new("557CF406-1A04-11D3-9A73-0000F81EF32E");
         fixed (char* gp = Path.Combine(dir, "cat-greet.png")) GdipSaveImageToFile(greet, gp, &png, 0);
