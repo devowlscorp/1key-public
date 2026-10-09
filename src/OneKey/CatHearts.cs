@@ -91,6 +91,8 @@ internal static unsafe class CatHearts
         if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestHearts", (nint)(int)Math.Round(_level * 100) + (_burst ? 100000 : 0));
     }
 
+    public static bool IsOpen => _hwnd != 0;
+
     public static void Close()
     {
         if (_hwnd != 0) { nint h = _hwnd; _hwnd = 0; Native.DestroyWindow(h); }

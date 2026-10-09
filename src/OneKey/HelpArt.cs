@@ -10,12 +10,35 @@ namespace OneKey;
 ///   btns:입력|*저장          버튼(* = 강조 버튼, 나머지는 옅은 강조 채움)
 ///   seg:안함|*전송|…      나란한 선택 버튼(* = 고른 칸)
 ///   mark:warn / mark:tip     주의·도움말 줄의 기호
+///   stages:2                 고양이 크기 단계 빵 여섯 개(지금 단계는 크게, 아직 안 된 단계는 흐린 실루엣) — 고양이 수첩(0.5.20)
+///   album:wave=1|groom=0|…   고양이 앨범 칸(본 장면 = 그림 + 이름, 못 본 장면 = 흐린 실루엣 + "?") — 고양이 수첩
 /// 창 글자는 화면 읽기용으로 읽기 쉬운 형태(키는 " + ", 나머지는 ", ")로 둔다.
 /// </summary>
 internal static unsafe class HelpArt
 {
     public const string ClassName = "OneKeyHelpArt";
     public const int Height = 36;
+    private const int AlbumCell = 84, AlbumCap = 18, AlbumGap = 8, AlbumCols = 4, StagesH = 48;
+
+    /// <summary>그림 줄의 높이(논리 px): 앨범은 칸 줄 수만큼, 단계 줄은 48, 나머지는 36.</summary>
+    public static int HeightFor(string spec)
+    {
+        string kind = spec.Split(':', 2)[0];
+        if (kind == "album")
+        {
+            int n = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|').Length : 0, rows = (n + AlbumCols - 1) / AlbumCols;
+            return rows * (AlbumCell + AlbumCap) + Math.Max(0, rows - 1) * AlbumGap;
+        }
+        return kind == "stages" ? StagesH : Height;
+    }
+
+    private static readonly Dictionary<string, nint> _images = new();
+    private static nint Image(string name)
+    {
+        if (_images.TryGetValue(name, out nint img)) return img;
+        Gdiplus.Init();
+        return _images[name] = CatWidget.LoadPng(name);   // 작은 그림 18장 — 프로세스가 끝날 때까지 둔다
+    }
     private static readonly Dictionary<nint, string> _spec = new();
     private static bool _registered;
 
@@ -28,6 +51,8 @@ internal static unsafe class HelpArt
         {
             "keys" => string.Join(" + ", items),
             "mark" => "",
+            "stages" => "",
+            "album" => string.Join(", ", items.Where(s => s.EndsWith("=1")).Select(s => CatGrowth.AlbumName(s.Split('=')[0]))),
             _ => string.Join(", ", items.Select(s => s.TrimStart('*'))),
         };
         nint c;
@@ -74,6 +99,41 @@ internal static unsafe class HelpArt
             nint font = Theme.FontBody;
             switch (kind)
             {
+                case "stages":
+                {
+                    int cur = items.Length > 0 && int.TryParse(items[0], out int c) ? c : 0;
+                    int big = S(40), small = S(28), gap = S(10), x = (w - (big + 5 * small + 5 * gap)) / 2;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        int sz = i == cur ? big : small, y = (h - sz) / 2;
+                        nint img = Image($"album_stage{i}.png");
+                        if (i <= cur) Gdiplus.DrawImageSmooth(dc, img, x, y, sz, sz);
+                        else Gdiplus.DrawImageTinted(dc, img, x, y, sz, sz, Theme.SecondaryText, 0.30f);   // 아직 안 된 단계
+                        x += sz + gap;
+                    }
+                    return;
+                }
+                case "album":
+                {
+                    int cell = S(AlbumCell), cap = S(AlbumCap), gap = S(AlbumGap);
+                    int x0 = (w - (AlbumCols * cell + (AlbumCols - 1) * gap)) / 2;
+                    for (int i = 0; i < items.Length; i++)
+                    {
+                        string[] kv = items[i].Split('=');
+                        bool seen = kv.Length > 1 && kv[1] == "1";
+                        int cx = x0 + (i % AlbumCols) * (cell + gap), cy = (i / AlbumCols) * (cell + cap + gap), pad = S(4);
+                        Gdiplus.FillRoundRect(dc, cx, cy, cell, cell, S(10), Theme.Mix(Theme.CardBg, Theme.ControlText, Theme.IsDark ? 0.07 : 0.045));
+                        nint img = Image($"album_{kv[0]}.png");
+                        if (seen) Gdiplus.DrawImageSmooth(dc, img, cx + pad, cy + pad, cell - 2 * pad, cell - 2 * pad);
+                        else
+                        {
+                            Gdiplus.DrawImageTinted(dc, img, cx + pad, cy + pad, cell - 2 * pad, cell - 2 * pad, Theme.SecondaryText, 0.22f);   // 실루엣
+                            Ctl.Text(dc, Theme.FontStrong, "?", Theme.SecondaryText, cx, cy, cx + cell, cy + cell, Native.DT_CENTER | Native.DT_VCENTER);
+                        }
+                        Ctl.Text(dc, Theme.FontSmall, seen ? CatGrowth.AlbumName(kv[0]) : "???", seen ? Theme.ControlText : Theme.SecondaryText, cx - gap / 2, cy + cell, cx + cell + gap / 2, cy + cell + cap, Native.DT_CENTER | Native.DT_VCENTER);
+                    }
+                    return;
+                }
                 case "mark":
                 {
                     bool warn = items.Length > 0 && items[0] == "warn";

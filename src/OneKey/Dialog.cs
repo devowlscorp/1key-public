@@ -166,7 +166,7 @@ internal static unsafe class Dialog
     /// <summary>extraText: 확인 상자(MB_OK)에 [확인] 왼쪽의 추가 버튼(누르면 IDEXTRA). maxBodyH: 본문이 이 높이(논리 px)를 넘으면
     /// 작업 영역과 상관없이 스크롤·복사되는 읽기 전용 본문으로(라이선스 전문처럼 긴 글).</summary>
     /// <summary>share: 로그성 안내면 파일 이름에 넣을 짧은 말 — 왼쪽에 [복사]·[파일로 저장](제목·버전·시각을 붙여서, 상자는 그대로, 2026-10-07 사용자).</summary>
-    public static int Show(nint owner, string text, string title, uint flags, int width = Width, string? okText = null, string? extraText = null, int maxBodyH = 0, string? share = null)
+    public static int Show(nint owner, string text, string title, uint flags, int width = Width, string? okText = null, string? extraText = null, int maxBodyH = 0, string? share = null, bool fold = true)
     {
         okText ??= T.CommonOk;
         // 섹션 제목("## " 로 시작하는 줄)이 있으면 제목은 굵게, 본문은 보통 글꼴로 칸을 나눠 만든다 (2026-09-29 사용자 요청).
@@ -191,7 +191,7 @@ internal static unsafe class Dialog
         }
         // 섹션 제목이 둘 이상이면(도움말) 섹션을 접고 편다: 제목을 누르면 그 섹션의 본문이 보이거나 숨는다(D6)
         int heads = blocks.Count(b => b.Kind == KHead);
-        bool foldable = heads >= 2;
+        bool foldable = fold && heads >= 2;   // fold false: 섹션을 모두 펼친 채(고양이 수첩·돌보는 방법 — 한눈에 보는 글, 0.5.20)
         var sectionOf = new int[blocks.Count];
         { int sec = -1; for (int i = 0; i < blocks.Count; i++) { if (blocks[i].Kind == KHead) sec++; sectionOf[i] = sec; } }
         if (!_registered)
@@ -232,7 +232,7 @@ internal static unsafe class Dialog
             {
                 var b = blocks[i];
                 bool ind = b.Kind is KBullet or KWarn or KTip;
-                int hh = b.Kind == KArt ? S(HelpArt.Height) : Measure(b.Text, b.Kind == KHead ? Theme.FontStrong : Theme.FontBody, !ind ? 0 : b.Kind is KWarn or KTip ? indent + S(MarkExtra) : indent);
+                int hh = b.Kind == KArt ? S(HelpArt.HeightFor(b.Text)) : Measure(b.Text, b.Kind == KHead ? Theme.FontStrong : Theme.FontBody, !ind ? 0 : b.Kind is KWarn or KTip ? indent + S(MarkExtra) : indent);
                 if (foldable && b.Kind == KHead) hh = Math.Max(hh, S(HeadH));   // 접는 제목은 누르는 버튼이라 조금 높게
                 blocks[i] = (b.Text, b.Kind, hh);
                 if (foldable && b.Kind != KHead && sectionOf[i] > 0) continue;   // 처음에는 첫 섹션만 펼침

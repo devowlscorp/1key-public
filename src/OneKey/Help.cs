@@ -10,7 +10,7 @@ namespace OneKey;
 internal static class Help
 {
     public static string ListTitle => T.HelpListTitle;
-    public static string List => T.HelpList + "\n## " + T.HelpFontHeading + "\n• " + FontNotice;
+    public static string List => T.HelpList + "\n" + T.HelpCat + "\n## " + T.HelpFontHeading + "\n• " + FontNotice;   // 고양이 키우기(0.5.20)
 
     /// <summary>글꼴 고지(OFL 1.1): 목록 도움말과 잠금 화면 정보에 쓴다. 전문은 [라이선스 보기].</summary>
     public static string FontNotice => T.HelpFontNotice;

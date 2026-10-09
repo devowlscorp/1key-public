@@ -473,9 +473,28 @@ internal static unsafe partial class CatWidget
     /// 머리 위 하트(CatHearts): 지금 단계 하트 줄 + burst 면 떠오르는 하트. 머리 가운데 = 앉은 고양이의 가운데, 맨 위 = topY(동작 중 가장 높은 자리 —
     /// CatClips.ClipTop) 또는 앉은 고양이의 맨 위.
     /// </summary>
-    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "", bool stamp = false)
+    // ---------------------------------------------------------------- 마우스를 올리면 이름표(0.5.20): 1초 머물면 이름 · 단계 · 하트 딱지(점수를 받을 때만 보이던 것을 언제든)
+    private static long _hoverStart;
+    private static bool _hoverShown;
+
+    private static void HoverTick(long now)
+    {
+        if (SeqTest || WalkTest || PeekTest || FullTest || CatMenu.IsOpen || _hwnd == 0 || !_shown) { _hoverStart = 0; return; }
+        Native.GetCursorPos(out Native.POINT cp);
+        bool inside = Native.GetWindowRect(_hwnd, out Native.RECT r) && cp.x >= r.left && cp.x < r.right && cp.y >= r.top && cp.y < r.bottom;
+        if (!inside) { _hoverStart = 0; _hoverShown = false; return; }
+        if (_hoverStart == 0) { _hoverStart = now; return; }
+        if (!_hoverShown && now - _hoverStart >= 1000) { _hoverShown = true; ShowHearts(false); LogLine("hover"); }
+    }
+
+    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "", bool stamp = false, bool noteOnly = false)
     {
         if (_hwnd == 0 || !_shown || _sitTop < 0) return;
+        if (noteOnly)
+        {
+            CatHearts.Show(WinX + _sitCx, topY != int.MinValue ? topY : WinY + _sitTop, _work, _dpi, !_light, -1, false, "", note);
+            return;
+        }
         int cx = WinX + _sitCx, top = topY != int.MinValue ? topY : WinY + _sitTop;
         // 딱지 = 이름 · 단계 이름(자라는 고양이만 — 하트 줄도). 자라지 않는 고양이(그림이 아직 없는 검은 고양이)는 이름과 한 줄만
         bool grows = HasInteractArt(_light);
@@ -617,6 +636,7 @@ internal static unsafe partial class CatWidget
     private static void Tick()
     {
         if (!_shown) return;
+        HoverTick(Environment.TickCount64);   // 마우스를 올리면 이름표 — 동작 중에도(ClipTick 도 부른다)
         if (_clipOn || _clipLoading) return;   // 동작 중에는 시선·환경 점검을 쉰다(틱 스레드가 그린다, CatClips.cs)
         long now = Environment.TickCount64;
         // 2초마다 환경을 다시 본다(전체 화면·시스템 패널·작업 표시줄·테마 바뀜). 시계가 움직이는 동안은 미룬다(끊기지 않게)
@@ -629,10 +649,20 @@ internal static unsafe partial class CatWidget
             CatGrowth.Tick();
             if (CatMenu.IsOpen) { KeepOnTop(); return; }   // 메뉴 판이 열려 있는 동안은 하트·쉬자·커지기를 미룬다(판 위에 겹치지 않게)
             if (BreakTick(now)) return;
+            // 처음 말풍선(0.5.20, 2026-10-10 사용자: 사용자는 이걸 어떻게 아나): 아직 오른쪽 클릭을 해 보지 않았으면 하루 한 번, 서로 다른 날 세 번까지
+            if (!_clipOn && !_peekOn && !SeqTest && !WalkTest && !PeekTest && !FullTest && CatGrowth.IntroDue)
+            {
+                CatGrowth.IntroShown();
+                ShowHearts(false, note: T.CatIntro, noteOnly: true);
+                _nextClipAt = Math.Max(_nextClipAt, now + 4000);
+                LogLine("intro");
+                return;
+            }
             // 보안 습관 보상(1Key 창에서 한 일)은 고양이가 보일 때 알린다. 그 보상으로 커지면 다음 점검(2초 뒤)에 커진다 — 하트가 겹치지 않게
             if (!_clipOn && !_peekOn && !SeqTest && !WalkTest && !PeekTest && !FullTest && CatGrowth.TakePending(out string note, out bool stamp))
             {
                 ShowHearts(true, note: note, stamp: stamp);
+                if (stamp && CatGrowth.MarkSeen("stamp")) LogLine("album stamp");   // 앨범: 발도장(축하가 이미 떠 있어 적기만)
                 if (stamp && HasInteractArt(_light) && ClipIndex("M04") is int pi and >= 0) { LogLine("stamp paw"); StartClip(pi); }   // 출근 도장: 앞발 인사(발도장)
                 _nextClipAt = Math.Max(_nextClipAt, now + 3500);   // 축하하는 동안은 제자리(하트가 빈 곳에 뜨지 않게) — 커지는 것은 다음 점검(2초 뒤)
                 return;
