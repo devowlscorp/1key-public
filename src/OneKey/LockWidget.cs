@@ -440,7 +440,9 @@ internal static unsafe class LockWidget
     private static int GreetCell()
     {
         var seq = Seq();
-        return _frame <= 0 || seq.Length == 0 ? 0 : Math.Clamp(seq[_frame % seq.Length], 0, Frames - 1);
+        if (_frame <= 0 || seq.Length == 0) return 0;
+        int c = seq[_frame % seq.Length];
+        return c >= 0 && c < Frames ? c : 0;   // 사이 장을 덧붙이지 못했으면(Frames 가 작다) 정면
     }
 
     /// <summary>쉰 뒤 넓은 동안의 다음 동작. 처음은 늘 이어진 동작(야옹부터), 그 뒤 깜빡임 5 · 메롱 3 · 이어진 동작 2 의 비율(같은 동작은 두 번까지만 잇달아).</summary>
@@ -1021,16 +1023,29 @@ internal static unsafe class LockWidget
             if (_sprite == 0) return false;
             Frames = n;
             GdipGetImageWidth(_sprite, out uint w); GdipGetImageHeight(_sprite, out uint h);
-            _spriteW = (int)(w / Frames); _spriteH = (int)h;
-            // 그릴 크기로 한 번만 줄여 둔다(장마다 고화질 축소를 하지 않게 — 넓은 동안 고양이가 이어서 움직여 CPU 가 올랐다)
-            int dw = Math.Max(1, S(MasW)), dh = Math.Max(1, S(MasH));
-            if (GdipCreateBitmapFromScan0(dw * Frames, dh, 0, 0x000E200B /* PARGB */, 0, out nint scaled) == 0 && scaled != 0)
+            _spriteW = (int)(w / n); _spriteH = (int)h;
+            // 그릴 크기로 한 번만 줄여 둔다(장마다 고화질 축소를 하지 않게 — 넓은 동안 고양이가 이어서 움직여 CPU 가 올랐다).
+            // 사이 장(MascotGreet.TweenBase~)은 띠 뒤에 그릴 크기로 바로 그린다(0.5.15-Z — 한 번만 줄인다)
+            int dw = Math.Max(1, S(MasW)), dh = Math.Max(1, S(MasH)), nt = MascotGreet.TweenCount;
+            if (GdipCreateBitmapFromScan0(dw * (n + nt), dh, 0, 0x000E200B /* PARGB */, 0, out nint scaled) == 0 && scaled != 0)
             {
                 if (GdipGetImageGraphicsContext(scaled, out nint sg) == 0)
                 {
                     GdipSetInterpolationMode(sg, 7); GdipSetPixelOffsetMode(sg, 4);
-                    for (int c = 0; c < Frames; c++)
+                    for (int c = 0; c < n; c++)
                         GdipDrawImageRectRectI(sg, _sprite, c * dw, 0, dw, dh, c * _spriteW, 0, _spriteW, _spriteH, 2, 0, 0, 0);
+                    nint tw = nt > 0 ? MascotGreet.LoadTweens(!_dark) : 0;
+                    if (tw != 0)
+                    {
+                        GdipGetImageWidth(tw, out uint tsw); GdipGetImageHeight(tw, out uint tsh);
+                        int tcw = (int)(tsw / (uint)nt);
+                        double sx = dw / (double)_spriteW;   // 정지 그림 칸 = 여백 + 그림 + 여백
+                        int px = (int)Math.Round(MascotGreet.Pad * sx), iw = Math.Max(1, (int)Math.Round((_spriteW - 2 * MascotGreet.Pad) * sx));
+                        for (int k = 0; k < nt; k++)
+                            GdipDrawImageRectRectI(sg, tw, (n + k) * dw + px, 0, iw, dh, k * tcw, 0, tcw, (int)tsh, 2, 0, 0, 0);
+                        GdipDisposeImage(tw);
+                        Frames = n + nt;
+                    }
                     GdipDeleteGraphics(sg);
                     GdipDisposeImage(_sprite);
                     _sprite = scaled; _spriteW = dw; _spriteH = dh;

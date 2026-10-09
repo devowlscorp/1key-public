@@ -62,10 +62,18 @@ if __name__ == "__main__":
     final, chain = Path(sys.argv[1]), Path(sys.argv[2])
     lines = []
     sit = None
+    # 0.5.15-Y: final 의 동작 앞뒤에 쉬는 그림과 잇는 사이 장이 붙어 있으면(edges.json = 앞에 붙인 장 수) 앉은 키 기준은 원래 첫 장에서 잰다
+    edges = json.loads((final / "edges.json").read_text(encoding="utf-8")) if (final / "edges.json").exists() else {}
     for m in REST:
         fr = load(final / m)
-        sit = sit or bbox(fr[0])
-        lines.append(strip(m, fr, bbox(fr[0])))
+        ref = bbox(fr[edges.get(m, 0)])
+        sit = sit or ref
+        lines.append(strip(m, fr, ref))
+    # interactions (0.5.16, user: right-click menu - pet, treat, play): same start/end sitting pose, played only from the menu (x:1)
+    for m in ("I1", "I2", "I3"):
+        if (final / m).exists():
+            fr = load(final / m)
+            lines.append(strip(m, fr, bbox(fr[edges.get(m, 0)]), " x:1"))
     # walk (0.5.15-D, user: walk around like the in-house edition): from the joined chain, two strips that share the front-sit reference
     # (same scale and anchor, so the app can switch between them in place):
     #   WT = turn out: M02 (front sit -> stand -> side) + the RIFE seam into the walk (the app plays it backwards to turn back)
@@ -75,11 +83,13 @@ if __name__ == "__main__":
     m03 = labs.index("M03")
     # 0.5.15-F (user: the stand-up-and-turn took 3.4 s each way): M02 at every second frame (2x, still even spacing - the way M08 was
     # sped up), the 3-frame RIFE seam into the walk at full rate -> 29 frames, 1.8 s
-    turn = list(range(0, m03 - 3, 2)) + list(range(m03 - 3, m03))
+    # 0.5.15-Y(전체 시험: 앉은 자세에서 한 장 만에 일어서 보였다): 앉기 → 정면 서기(M02 앞 16장)는 원래 속도, 그 뒤만 2장마다
+    turn = list(range(0, min(16, m03 - 3))) + list(range(16, m03 - 3, 2)) + list(range(m03 - 3, m03))
     cycle = list(range(m03, m03 + 16))
     load_c = lambda ids: [np.asarray(Image.open(chain / "chain" / f"{i:04d}.png").convert("RGBA")) for i in ids]
     ref = bbox(load_c([0])[0])                       # front sit of the chain
-    lines.append(strip("WT", load_c(turn), ref, " x:1"))
+    pre = [np.asarray(Image.open(p).convert("RGBA")) for p in sorted((chain / "pre").glob("*.png"))] if (chain / "pre").exists() else []
+    lines.append(strip("WT", pre + load_c(turn), ref, " x:1"))   # pre: 쉬는 그림 → 앉은 첫 장 사이 장(cat_edges.py)
     lines.append(strip("WL", load_c(cycle), ref, " x:1"))
     # 0.5.15-K (user: turning back to the front looked forced - WT played backwards): WI = turn back and sit down as forward motion
     # (work/cat-motions/flf/cat_turnback.py: seam walk -> side stand, then S04 -> 3/4 -> front stand -> sit, 2x)

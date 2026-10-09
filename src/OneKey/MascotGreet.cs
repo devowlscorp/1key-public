@@ -51,6 +51,16 @@ internal static unsafe class MascotGreet
     public static int Pad { get; private set; }
     /// <summary>작은 동작의 첫 장 번호(그 앞은 정지 그림). 작은 동작은 몸의 윤곽이 거의 같아 그늘은 정면(0번) 것을 쓴다.</summary>
     public static int ClipStart { get; private set; }
+    /// <summary>
+    /// 사이 장(0.5.15-Z, 2026-10-09 사용자: 축소된 잠금 화면의 고양이 동작도 뚝뚝 끊긴다 — 정지 그림을 몇 걸음씩 붙여 바꿨다): 작업 표시줄 고양이와 같은
+    /// 사이 장 띠(시선 20쌍 + 입 모양 2쌍 × 3장, cat_&lt;테마&gt;_tw)의 칸이 걸음 차례에서 TweenBase 부터의 번호로 나온다. 띠 자체는 이 그림에 넣지 않고
+    /// 잠금 위젯이 그릴 크기로 바로 덧붙인다(LoadTweens — 256 으로 키웠다가 다시 줄이면 위젯이 1초 늦게 떴다).
+    /// </summary>
+    public static int TweenBase { get; private set; }
+    public static int TweenCount { get; private set; }
+
+    /// <summary>사이 장 띠(미리 곱한 PARGB, TweenCount 칸). 없으면 0. 받은 쪽이 GdipDisposeImage.</summary>
+    public static nint LoadTweens(bool light) { Gdiplus.Init(); return CatWidget.LoadPremulStrip($"cat_{(light ? "light" : "dark")}_tw"); }
 
     private sealed class Clip { public string Motion = ""; public int Frames, X, Y, W, H; }
 
@@ -81,7 +91,7 @@ internal static unsafe class MascotGreet
     {
         frames = 0;
         Look = Meow = Chain = Blink = Blep = Ears = Array.Empty<int>();
-        Pad = 0; ClipStart = int.MaxValue;
+        Pad = 0; ClipStart = int.MaxValue; TweenBase = 0; TweenCount = 0;
         string th = light ? "light" : "dark";
         bool hasMeow = CatWidget.HasPng($"cat_{th}_meow-half.png") && CatWidget.HasPng($"cat_{th}_meow-open.png");
         // 띠의 정지 그림(이름마다 한 장): 정면이 0번
@@ -118,8 +128,56 @@ internal static unsafe class MascotGreet
                 at += c.Frames;
             }
             frames = n; Pad = pad; ClipStart = names.Count;
+            int twCells = CatWidget.HasPng($"cat_{th}_tw.jpg") && CatWidget.HasPng($"cat_{th}_tw_a.png") ? CatWidget.TweenStripCells : 0;
+            TweenBase = n; TweenCount = twCells;   // 띠 뒤(잠금 위젯이 덧붙인다)
             int Cell(string name) => Math.Max(0, names.IndexOf(name));
-            int[] Steps(IEnumerable<(string Name, int Repeat)> seq) { var l = new List<int>(); foreach (var c in seq) for (int r = 0; r < c.Repeat; r++) l.Add(Cell(c.Name)); return l.ToArray(); }
+            // 그림 이름 → 사이 장 띠의 번호(gaze_tweens.py 와 같다): 시선 0~8(왼쪽 위·위·오른쪽 위·왼쪽·정면·오른쪽·왼쪽 아래·아래·오른쪽 아래), 입 반쯤 9, 입 크게 10
+            int Pos(string name) => Array.IndexOf(TweenNames, name);
+            int Pair(int a, int b)
+            {
+                if (a > b) (a, b) = (b, a);
+                if (a == 4 && b == 9) return 20;
+                if (a == 9 && b == 10) return 21;
+                if (a > 8 || b > 8 || Math.Max(Math.Abs(a / 3 - b / 3), Math.Abs(a % 3 - b % 3)) != 1) return -1;
+                int k = 0;
+                for (int x = 0; x < 9; x++) for (int y = x + 1; y < 9; y++)
+                    if (Math.Max(Math.Abs(x / 3 - y / 3), Math.Abs(x % 3 - y % 3)) == 1) { if (x == a && y == b) return k; k++; }
+                return -1;
+            }
+            // from → to 사이 장(한 칸씩: 시선은 이웃 한 칸, 입은 정면 ↔ 반쯤 ↔ 크게 — 시선에서 입으로는 정면을 거쳐서). 가는 길의 중간 그림도 한 걸음
+            List<int> Between(string from, string to)
+            {
+                var l = new List<int>();
+                int a = Pos(from), b = Pos(to);
+                if (twCells == 0 || a < 0 || b < 0 || a == b) return l;
+                int cur = a, guard = 0;
+                while (cur != b && guard++ < 8)
+                {
+                    int next;
+                    if (cur > 8) next = cur == 10 ? 9 : b == 10 ? 10 : 4;
+                    else if (b > 8) next = cur == 4 ? 9 : (cur / 3 + Math.Sign(1 - cur / 3)) * 3 + cur % 3 + Math.Sign(1 - cur % 3);
+                    else next = (cur / 3 + Math.Sign(b / 3 - cur / 3)) * 3 + cur % 3 + Math.Sign(b % 3 - cur % 3);
+                    int p = Pair(cur, next);
+                    if (p < 0) return new List<int>();
+                    for (int j = 0; j < 3; j++) l.Add(TweenBase + 3 * p + (cur < next ? j : 2 - j));
+                    if (next != b && names.Contains(TweenNames[next])) l.Add(Cell(TweenNames[next]));
+                    cur = next;
+                }
+                return cur == b ? l : new List<int>();
+            }
+            // 걸음 차례: 그림이 바뀌는 곳마다 사이 장을 끼우고, 끼운 만큼 머무는 걸음을 줄인다(전체 길이 그대로, 최소 1걸음)
+            int[] Steps(IEnumerable<(string Name, int Repeat)> seq)
+            {
+                var l = new List<int>(); string? prev = null;
+                foreach (var c in seq)
+                {
+                    int ins = 0;
+                    if (prev is not null && prev != c.Name) foreach (int t in Between(prev, c.Name)) { l.Add(t); ins++; }
+                    for (int r = 0; r < Math.Max(1, c.Repeat - ins); r++) l.Add(Cell(c.Name));
+                    prev = c.Name;
+                }
+                return l.ToArray();
+            }
             Look = Steps(CatLook);
             if (hasMeow) { Meow = Steps(CatMeow); Chain = Steps(CatChain); }
             Blink = cellOf.GetValueOrDefault("B") ?? Array.Empty<int>();
@@ -136,6 +194,9 @@ internal static unsafe class MascotGreet
             if (dst != 0) GdipDisposeImage(dst);
         }
     }
+
+    /// <summary>사이 장 띠의 그림 차례(gaze_tweens.py 의 NAMES).</summary>
+    private static readonly string[] TweenNames = { "up-left", "up", "up-right", "left", "center", "right", "down-left", "down", "down-right", "meow-half", "meow-open" };
 
     /// <summary>작은 동작 하나의 장들을 띠의 first 번 칸부터 덮는다. 그림이 맞지 않으면 false(그 동작은 빼고 — 칸은 정면 그대로).</summary>
     private static bool Overlay(nint dst, int cw, int ch, int first, Clip c, string th)
