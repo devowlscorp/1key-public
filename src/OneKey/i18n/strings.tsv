@@ -615,10 +615,21 @@ restore.pendingBlocked	백업 복원을 끝내지 못한 상태입니다. 설정
 restore.noLaunch	이 백업에는 프로그램·폴더 목록이 없습니다(만들 때 목록을 읽지 못함).\n지금 목록을 그대로 둘까요?\n\n[예] 지금 목록 그대로    [아니요] 목록을 비움    [취소] 복원 그만두기	This backup has no program/folder list (the list could not be read when it was made).\nKeep the current list?\n\n[Yes] keep the current list    [No] empty the list    [Cancel] stop the restore	此备份不含程序/文件夹列表（创建时无法读取列表）。\n要保留当前列表吗？\n\n[是] 保留当前列表    [否] 清空列表    [取消] 停止恢复	このバックアップにはプログラム・フォルダー一覧がありません（作成時に一覧を読み込めませんでした）。\n現在の一覧をそのまま残しますか?\n\n[はい] 現在の一覧のまま    [いいえ] 一覧を空にする    [キャンセル] 復元をやめる	Bản sao lưu này không có danh sách chương trình/thư mục (không đọc được danh sách khi tạo).\nGiữ danh sách hiện tại?\n\n[Có] giữ danh sách hiện tại    [Không] làm trống danh sách    [Hủy] dừng khôi phục
 support.title	후원하기	Support 1Key	支持 1Key	1Keyを応援	Ủng hộ 1Key
 support.heading	1Key가 도움이 됐다면	If 1Key helps you	如果 1Key 对你有帮助	1Keyがお役に立っているなら	Nếu 1Key giúp ích cho bạn
-support.body	1Key는 무료이고, 광고도 추적도 없어요. 커피 한 잔으로 응원해 주시면 계속 다듬는 힘이 돼요. 후원하지 않아도 모든 기능은 그대로예요.	1Key is free, with no ads and no tracking. A cup of coffee helps keep it improving. Every feature stays the same whether you support it or not.	1Key 免费，没有广告，也不追踪。请喝一杯咖啡，就是继续改进的动力。不支持也能照常使用全部功能。	1Keyは無料で、広告もトラッキングもありません。コーヒー1杯の応援が改善を続ける力になります。応援しなくても、すべての機能はそのまま使えます。	1Key miễn phí, không quảng cáo, không theo dõi. Một ly cà phê sẽ giúp 1Key tiếp tục được hoàn thiện. Dù bạn có ủng hộ hay không, mọi tính năng vẫn như cũ.
+support.body	1Key는 무료이고, 사용자를 추적하지 않아요. 커피 한 잔으로 응원해 주시면 계속 다듬는 힘이 돼요. 후원하지 않아도 모든 기능은 그대로예요.	1Key is free, with no ads and no tracking. A cup of coffee helps keep it improving. Every feature stays the same whether you support it or not.	1Key 免费，没有广告，也不追踪。请喝一杯咖啡，就是继续改进的动力。不支持也能照常使用全部功能。	1Keyは無料で、広告もトラッキングもありません。コーヒー1杯の応援が改善を続ける力になります。応援しなくても、すべての機能はそのまま使えます。	1Key miễn phí, không quảng cáo, không theo dõi. Một ly cà phê sẽ giúp 1Key tiếp tục được hoàn thiện. Dù bạn có ủng hộ hay không, mọi tính năng vẫn như cũ.
 support.phone	휴대폰으로 후원	Support from your phone	用手机支持	スマートフォンで応援	Ủng hộ bằng điện thoại
 support.phoneNote	휴대폰 카메라로 찍으면 송금 화면이 바로 열려요. 금액만 넣으면 끝.	Scan with your phone camera to open the payment screen, then just enter an amount.	用手机相机扫描即可打开转账页面，输入金额即可。	スマートフォンのカメラで読み取ると送金画面が開きます。金額を入れるだけです。	Quét bằng camera điện thoại để mở màn hình chuyển tiền, chỉ cần nhập số tiền.
 support.kakao	카카오페이	KakaoPay	KakaoPay	カカオペイ	KakaoPay
 support.kakaoNote	카카오페이로 열려요	Opens in KakaoPay	在 KakaoPay 中打开	カカオペイで開きます	Mở bằng KakaoPay
 support.browser	브라우저에서 열기	Open in browser	在浏览器中打开	ブラウザで開く	Mở trong trình duyệt
 support.browserNote	카카오페이 송금 페이지	KakaoPay payment page	KakaoPay 转账页面	カカオペイ送金ページ	Trang chuyển tiền KakaoPay
+support.github	GitHub에서 별 주기	Star 1Key on GitHub	在 GitHub 上点星	GitHubでスターを付ける	Gắn sao cho 1Key trên GitHub
+support.githubNote	돈 들지 않는 응원 — GitHub 계정으로 ★를 눌러 주세요	Free support — click ★ with your GitHub account	免费的支持 — 用 GitHub 账号点 ★	無料の応援 — GitHubアカウントで★を押してください	Ủng hộ miễn phí — bấm ★ bằng tài khoản GitHub
+support.shop	필요한 걸 사실 때	When you shop	购物时	お買い物のときに	Khi bạn mua sắm
+support.shopNote	아래 링크로 사시면 가격은 같고, 개발자에게 수수료가 지급돼요.	Buy through the links below: the price is the same and the developer is paid a commission.			
+support.coupang	쿠팡	Coupang			
+support.coupangNote	평소 쇼핑	Everyday shopping			
+support.mrt	마이리얼트립	MyRealTrip			
+support.mrtNote	항공·숙소·투어 예약	Flights, stays and tours			
+support.btnMore	자세히	Details	详情	詳しく	Chi tiết
+support.coupangBody	## 쿠팡에서 쇼핑하기\n평소처럼 쇼핑하시면 돼요. 가격은 같아요.\n> 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.\n• 가는 곳: link.coupang.com → 쿠팡 (기본 브라우저)\n• 1Key는 아무 정보도 모으지 않아요. 제휴 기록은 쿠팡이 브라우저에서 남겨요.	## Shop on Coupang\nShop as usual; the price is the same.\n> This is part of the Coupang Partners program, and the developer receives a fixed commission for it.\n• Goes to: link.coupang.com → Coupang (default browser)\n• 1Key collects nothing. Coupang records the referral in your browser.			
+support.mrtBody	## 마이리얼트립에서 예약하기\n평소처럼 예약하시면 돼요. 가격은 같아요.\n> 마이리얼트립과 함께하는 마케팅 파트너십을 통해 여행자가 구매할 때마다 일정 비율의 수수료를 지급받습니다.\n• 가는 곳: myrealt.rip(마이리얼트립 단축 주소) → 마이리얼트립 (기본 브라우저)\n• 1Key는 아무 정보도 모으지 않아요. 제휴 기록은 마이리얼트립이 브라우저에서 남겨요.	## Book on MyRealTrip\nBook as usual; the price is the same.\n> Through a marketing partnership with MyRealTrip, the developer is paid a set percentage commission on every purchase.\n• Goes to: myrealt.rip (MyRealTrip short link) → MyRealTrip (default browser)\n• 1Key collects nothing. MyRealTrip records the referral in your browser.			

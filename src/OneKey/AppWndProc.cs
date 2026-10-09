@@ -642,7 +642,10 @@ internal sealed unsafe partial class App
             case IdRowAdvanced: ShowScreen(Screen.Advanced); return;
             case IdRowSupport: ShowScreen(Screen.Support); return;
             case IdSupBack: case IdSupClose: ShowScreen(Screen.Settings); return;
-            case IdSupOpen: OpenSupportLink(0); return;
+            case IdSupOpen: OpenSupportLink(SupportLinks.IxKakaoPay); return;
+            case IdSupGitHub: OpenSupportLink(SupportLinks.IxGitHub); return;
+            case IdSupCoupang: ShowAffiliate(SupportLinks.IxCoupang); return;
+            case IdSupMyRealTrip: ShowAffiliate(SupportLinks.IxMyRealTrip); return;
             case IdSave: SaveList(); return;
 
             // 편집

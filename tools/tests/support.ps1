@@ -8,19 +8,28 @@
 # SP06 [Close] goes back to Settings
 # SP07 no network: the test process has no TCP connection while the support screen is shown
 # SP08 accessible name of [Open] says what it opens (CtlAcc name: "<browser label> — <page label>", so it names KakaoPay)
+# 0.5.15-O (user 2026-10-09: affiliate links as buttons with a detail box, Korean screen only; GitHub star in every language):
+# SP09 Korean screen: GitHub row (2507) and the shop card with Coupang (2505) / MyRealTrip (2506) [Details]
+# SP10 GitHub [Open] records exactly SupportLinks.GitHub once (no box)
+# SP11 Coupang [Details] opens a box with the exact Coupang Partners disclosure; [Cancel] opens nothing, [Open in browser] records SupportLinks.Coupang once
+# SP12 MyRealTrip [Details]: the box has the disclosure with "수수료를 지급받습니다" (no conditional wording); [Open in browser] records SupportLinks.MyRealTrip once
+# SP13 English screen: GitHub row present, no affiliate buttons
 # -Shots: PrintWindow pictures of the screen (test window only) in 5 languages x light/dark into the test folder (looked at, not judged).
 # Own config folder and instance suffix; the real 1Key and its settings are not touched. UTF-8 with BOM (Korean title strings).
 param([string]$Exe = "", [switch]$Shots)
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-Start-Checks -Required @('SP01', 'SP02', 'SP03', 'SP04', 'SP05', 'SP06', 'SP07', 'SP08')
+Start-Checks -Required @('SP01', 'SP02', 'SP03', 'SP04', 'SP05', 'SP06', 'SP07', 'SP08', 'SP09', 'SP10', 'SP11', 'SP12', 'SP13')
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
 New-Item -ItemType Directory -Force $sp | Out-Null
 $exe = if ($Exe) { $Exe } else { Get-DefaultExe }
 $suffix = ".support"
 $cfg = "$sp\support_cfg"; if (Test-Path $cfg) { Get-ChildItem $cfg -Recurse | Remove-Item -Force -Recurse -ErrorAction Ignore }; New-Item -ItemType Directory -Force $cfg | Out-Null
 $master = "Sp-Dummy-6630"
-$kakao = ([regex]::Match((Get-Content (Join-Path $PSScriptRoot "..\..\src\OneKey\SupportLinks.cs") -Raw), 'KakaoPay\s*=\s*"([^"]+)"')).Groups[1].Value
+$linksSrc = Get-Content (Join-Path $PSScriptRoot "..\..\src\OneKey\SupportLinks.cs") -Raw
+function LinkOf($n) { ([regex]::Match($linksSrc, "$n\s*=\s*""([^""]+)""")).Groups[1].Value }
+$kakao = LinkOf 'KakaoPay'; $coupang = LinkOf 'Coupang'; $mrt = LinkOf 'MyRealTrip'; $github = LinkOf 'GitHub'
+$coupangDisclosure = "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다."
 Add-Type -ReferencedAssemblies System.Drawing @'
 using System;using System.Runtime.InteropServices;using System.Text;using System.Collections.Generic;using System.Drawing;
 public class SPU {
@@ -94,6 +103,32 @@ try {
 
   Check SP08 "True" "$((AccName 2502) -like '*카카오페이*')" "accessible name of [Open]: '$(AccName 2502)'"
 
+  # 0.5.15-O: GitHub star (every language) and affiliate links behind a disclosure box (Korean only)
+  $t9 = [SPU]::Texts($m)
+  Check SP09 "True|True|True|True" "$(Has 2507)|$(Has 2505)|$(Has 2506)|$($t9 -contains [string]'필요한 걸 사실 때')" "Korean screen: GitHub row, Coupang and MyRealTrip [Details], shop heading"
+  function OpenLog() { if (Test-Path $log) { @(Get-Content $log) } else { @() } }
+  Remove-Item $log -ErrorAction Ignore
+  Click 2507 900
+  $l10 = OpenLog
+  Check SP10 "1|$github|False" "$($l10.Count)|$($l10 -join ';')|$([SPU]::FindCls([uint32]$p.Id, 'OneKeyDialog') -ne [IntPtr]::Zero)" "GitHub [Open] records the allowlisted repository link once, no box"
+  function Affiliate($id, $tag) {
+    Remove-Item $log -ErrorAction Ignore
+    Click $id 900
+    $d = [SPU]::FindCls([uint32]$p.Id, "OneKeyDialog")
+    $txt = if ($d -ne [IntPtr]::Zero) { ([SPU]::Texts($d)) -join "`n" } else { "" }
+    if ($d -ne [IntPtr]::Zero) { [void][SPU]::PostMessageW($d, 0x0111, [IntPtr]2, [IntPtr]::Zero); Start-Sleep -Milliseconds 700 }
+    $afterCancel = @(OpenLog).Count
+    Click $id 900
+    $d2 = [SPU]::FindCls([uint32]$p.Id, "OneKeyDialog")
+    if ($d2 -ne [IntPtr]::Zero) { [void][SPU]::PostMessageW($d2, 0x0111, [IntPtr]1, [IntPtr]::Zero); Start-Sleep -Milliseconds 900 }
+    return @{ Box = ($d -ne [IntPtr]::Zero); Text = $txt; Cancel = $afterCancel; Lines = @(OpenLog) }
+  }
+  $r11 = Affiliate 2505 "coupang"
+  Check SP11 "True|True|0|1|$coupang" "$($r11.Box)|$($r11.Text.Contains($coupangDisclosure))|$($r11.Cancel)|$($r11.Lines.Count)|$($r11.Lines -join ';')" "Coupang [Details]: box with the exact disclosure; [Cancel] opens nothing; [Open in browser] records the Coupang link once"
+  $r12 = Affiliate 2506 "mrt"
+  $noCond = -not ($r12.Text -match "수 있")
+  Check SP12 "True|True|True|0|1|$mrt" "$($r12.Box)|$($r12.Text.Contains('수수료를 지급받습니다'))|$noCond|$($r12.Cancel)|$($r12.Lines.Count)|$($r12.Lines -join ';')" "MyRealTrip [Details]: disclosure with a definite '수수료 지급'; [Cancel] opens nothing; [Open in browser] records the link once"
+
   # Esc: a key press in the focused control goes through the message loop (IsDialogMessage -> IDCANCEL)
   $pre4 = Has 2502
   [void][SPU]::PostMessageW([SPU]::GetDlgItem($m, 2502), 0x0100, [IntPtr]0x1B, [IntPtr]0x00010001); Start-Sleep -Milliseconds 80
@@ -104,6 +139,12 @@ try {
   Check SP05 "True|True|False" "$pre5|$(Has 2504)|$(Has 2502)" "back knob on the support screen: back to Settings"
   Click 2504; $pre6 = Has 2503; Click 2503
   Check SP06 "True|True|False" "$pre6|$(Has 2504)|$(Has 2502)" "[Close] on the support screen: back to Settings"
+  Quit1Key
+
+  $env:ONEKEY_TEST_LANG = "en"
+  Start1Key; SetText 101 $master; Click 103 1500
+  OpenSupport
+  Check SP13 "True|True|False|False" "$(Has 2502)|$(Has 2507)|$(Has 2505)|$(Has 2506)" "English screen: KakaoPay and GitHub rows, no affiliate buttons"
   Quit1Key
 
   if ($Shots) {
