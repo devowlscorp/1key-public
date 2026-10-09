@@ -24,6 +24,14 @@ internal sealed unsafe partial class App
     private bool LockedWalker => _lockedWalker && OnLockScreen && !_createMode && _cfg.HasMaster && !_recoveryOnly && !_exiting
         && !LockWidget.IsShown && !Native.IsWindowVisible(_hwnd);
 
+    /// <summary>출근 도장(0.5.19): 잠금이 풀려 있고 오늘 아직 안 찍었으면 찍는다(고양이가 보일 때 알린다). 잠금 해제 · 15초 점검마다.</summary>
+    private void MaybeStamp()
+    {
+        if (!Unlocked || OnLockScreen || !_cfg.HasMaster || !CatGrowth.StampDue) return;
+        if (Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_STAMP") != "1") return;   // 시험: 켤 때만(다른 시험의 동작 차례를 흔들지 않게)
+        CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.Stamp);
+    }
+
     private void SyncWalker()
     {
         CatWidget.SetNames(_cfg.CatNameLight, _cfg.CatNameDark);   // 하트 옆 이름(설정)
