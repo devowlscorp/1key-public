@@ -290,7 +290,12 @@ internal static unsafe partial class CatWidget
 
     /// <summary>앉은 고양이 창의 왼쪽: 집(작업 표시줄 오른쪽 끝) 또는 걷기로 간 자리(다니는 범위 안 — CatClips.cs).</summary>
     private static int WinX => _posX == int.MinValue ? HomeX : Math.Clamp(_posX, MinX, HomeX);
-    private static int WinY => _work.bottom - _h;
+    /// <summary>
+    /// 앉은 고양이 창의 위: 작업 표시줄 위 선보다 <see cref="SitSinkPx"/> 만큼 아래까지(0.5.15-J, 2026-10-09 사용자: 정면에서 보면 뒷다리(옆다리)가 앞발보다
+    /// 높아 앞발을 선에 맞추면 옆다리가 떠 보인다 — 살짝 내려 앞발이 작업 표시줄과 겹치게). 9방향 그림에서 잰 차이는 앉은 키의 10~14 %.
+    /// </summary>
+    private static int WinY => _work.bottom - _h + SitSinkPx;
+    private static int SitSinkPx => _sitTop < 0 ? 0 : (int)Math.Round((_sitBot - _sitTop) * 0.11);
 
     /// <summary>지금 시선 그림(시선이 막 바뀌었으면 앞 그림과 섞어서)을 제자리에 내보낸다.</summary>
     private static bool Render()
@@ -311,12 +316,14 @@ internal static unsafe partial class CatWidget
         uint t = fade ? (uint)(since * 256 / FadeMs) : 256, u = 256 - t;
         int W = _w * Names.Length;
         uint* src = (uint*)_bits, o = (uint*)_xbits;
+        // 숨는 동안 자르는 선: 처음에는 창 아래 끝(앞발이 작업 표시줄과 겹친 그대로), 내려가기 시작하면 작업 표시줄 위 선까지 올라온다(그 밑으로 숨는다)
+        int cutY = _sink <= 0 ? _h : _h - (int)Math.Round(SitSinkPx * Math.Min(1.0, _sink / (double)Math.Max(1, SitSinkPx)));
         for (int y = 0; y < _h; y++)
         {
             // 숨기(Peek): 그림을 _sink 만큼 아래로(창 아래 끝 = 작업 표시줄 위 선 밑으로 들어간 줄은 그리지 않는다), 발을 기준으로 세로 _squash 배
             // (1 = 그대로, 웅크리면 1 보다 작게), 옆으로 _lean 만큼(두리번거릴 때 그쪽으로 몸을 살짝)
             int sy = _squash == 1.0 ? y - _sink : _h - 1 - (int)Math.Round((_h - 1 - (y - _sink)) / _squash);
-            if (sy < 0 || sy >= _h) { new Span<uint>(o + y * _w, _w).Clear(); continue; }
+            if (sy < 0 || sy >= _h || y >= cutY) { new Span<uint>(o + y * _w, _w).Clear(); continue; }
             uint* b = src + sy * W + _gaze * _w, a = src + sy * W + _from * _w, d = o + y * _w;
             if (_lean != 0)
             {
