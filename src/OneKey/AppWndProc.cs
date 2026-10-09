@@ -550,7 +550,8 @@ internal sealed unsafe partial class App
         if (_cur == Screen.Settings && id == IdTheme) { PreviewTheme(); return; }
         if (_cur == Screen.Settings && id == IdLang) { PreviewLanguage(); return; }
         if (id == IdHelp) { ShowHelp(); return; }
-        if (id == Native.IDCANCEL && _cur == Screen.Support) { ShowScreen(Screen.Settings); return; }   // Esc: 후원 화면에서 설정으로
+        if (id == Native.IDCANCEL && _cur == Screen.Extra) { ShowScreen(Screen.Settings); return; }   // Esc: 추가 화면에서 설정으로
+        { bool handled = false; ExtraCommand(id, ref handled); if (handled) return; }   // 배포본 전용 추가 화면(App.cs)
         if (id >= IdTile && id < IdTile + LaunchStore.Max) { if (_cur == Screen.List) OnTile(id - IdTile); return; }
         if (_cur == Screen.PickProgram && id >= IdPkRow && id < IdPkRow + PickMax) { OnPickRow(id - IdPkRow); return; }
         if (_cur == Screen.PickProgram && id == IdPkSearch && code == (int)EN_CHANGE)
@@ -640,12 +641,6 @@ internal sealed unsafe partial class App
             case IdEInAdd: ChangeInputs(-1); return;
             case 336: case 337: case 338: ChangeInputs(id - 335); return;
             case IdRowAdvanced: ShowScreen(Screen.Advanced); return;
-            case IdRowSupport: ShowScreen(Screen.Support); return;
-            case IdSupBack: case IdSupClose: ShowScreen(Screen.Settings); return;
-            case IdSupOpen: OpenSupportLink(SupportLinks.IxKakaoPay); return;
-            case IdSupGitHub: OpenSupportLink(SupportLinks.IxGitHub); return;
-            case IdSupCoupang: ShowAffiliate(SupportLinks.IxCoupang); return;
-            case IdSupMyRealTrip: ShowAffiliate(SupportLinks.IxMyRealTrip); return;
             case IdSave: SaveList(); return;
 
             // 편집

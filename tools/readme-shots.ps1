@@ -103,9 +103,6 @@ try {
     if ([RS]::Shot($m, "$Out\list-$theme.png")) { $made += "list-$theme" }
     Click 220 900
     if ([RS]::Shot($m, "$Out\settings-$theme.png")) { $made += "settings-$theme" }
-    Click 2504 900   # 설정 맨 아래 [후원하기 · 열기] → 후원 화면(0.5.14)
-    if ([RS]::Shot($m, "$Out\support-$theme.png")) { $made += "support-$theme" }
-    Click 2501 700   # ‹ 설정으로
     if ($taskbar) {
       [void][RS]::PostMessageW([RS]::GetDlgItem($m, 2032), 0x0100, [IntPtr]0x20, [IntPtr]::Zero); Start-Sleep -Milliseconds 400   # 트레이 위젯 모드: 스페이스로 켬
       Click 2012 1500; CloseBox
