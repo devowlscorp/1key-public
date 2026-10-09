@@ -421,11 +421,59 @@ internal static unsafe partial class CatWidget
         if (s > old) _nextClipAt = Math.Max(_nextClipAt, Environment.TickCount64 + 3500);   // 커졌다: "통식빵으로 부풀었어요!"
     }
 
+    // ---------------------------------------------------------------- 쉬는 시간 친구(0.5.19-C, 2026-10-10 사용자: 게임 요소 — 쉬는 시간 친구)
+    // 키보드·마우스를 5분 넘게 쉬지 않고 50분 쓰면 고양이가 기지개(M17)를 켜며 "잠깐 쉬어요" 한 줄. 그 뒤 실제로 5분 넘게 쉬었다 돌아오면
+    // 하트와 "잘 쉬었어요! +5". 무시하면 다시 조르지 않는다(한 시간에 한 번까지). 고양이가 보일 때만(환경 점검 2초마다 — 동작 중에는 쉰다).
+    private static readonly long WorkMs = Program.IsTestMode && long.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_WORK_MS"), out long wm) && wm > 0 ? wm : 50 * 60_000;
+    private static readonly long RestMs = Program.IsTestMode && long.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_REST_MS"), out long rm) && rm > 0 ? rm : 5 * 60_000;
+    private static readonly long AskGapMs = Program.IsTestMode && long.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_ASKGAP_MS"), out long ag) && ag > 0 ? ag : 60 * 60_000;
+    private static long _workStart, _lastAsk = long.MinValue / 2;
+    private static bool _breakAsked, _breakTaken;
+
+    /// <summary>쉬는 시간 친구 한 걸음. 무언가 보였으면(기지개·하트) true.</summary>
+    private static bool BreakTick(long now)
+    {
+        if (SeqTest || WalkTest || PeekTest || FullTest || _clipOn || _peekOn) return false;
+        var li = new LASTINPUTINFO { cbSize = (uint)sizeof(LASTINPUTINFO) };
+        if (!GetLastInputInfo(ref li)) return false;
+        long idle = (uint)Environment.TickCount - li.dwTime;
+        if (idle >= RestMs)
+        {
+            _workStart = 0;                        // 쉬는 중: 일한 시간은 처음부터
+            if (_breakAsked) _breakTaken = true;   // 쉬자고 한 뒤 실제로 쉬었다
+            return false;
+        }
+        if (_workStart == 0) _workStart = now - idle;
+        if (_breakTaken && idle < 3000)            // 쉬고 돌아왔다
+        {
+            _breakAsked = _breakTaken = false;
+            _workStart = now;
+            if (CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.Break) > 0 && CatGrowth.TakePending(out string back))
+            {
+                ShowHearts(true, note: back);
+                _nextClipAt = Math.Max(_nextClipAt, now + 3500);
+                LogLine("break back");
+                return true;
+            }
+            return false;
+        }
+        if (_breakAsked && now - _lastAsk >= AskGapMs) _breakAsked = false;   // 쉬지 않고 한 시간이 더 지났다: 다음에 한 번 더 말해도 된다
+        if (!_breakAsked && now - _workStart >= WorkMs && now - _lastAsk >= AskGapMs)
+        {
+            _breakAsked = true; _breakTaken = false; _lastAsk = now;
+            ShowHearts(false, note: T.CatBreakAsk(Math.Max(1, (int)((now - _workStart) / 60_000))));   // 실제로 쉬지 않고 쓴 분
+            if (HasInteractArt(_light) && ClipIndex("M17") is int si and >= 0) StartClip(si);   // 기지개
+            LogLine("break ask");
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// 머리 위 하트(CatHearts): 지금 단계 하트 줄 + burst 면 떠오르는 하트. 머리 가운데 = 앉은 고양이의 가운데, 맨 위 = topY(동작 중 가장 높은 자리 —
     /// CatClips.ClipTop) 또는 앉은 고양이의 맨 위.
     /// </summary>
-    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "")
+    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "", bool stamp = false)
     {
         if (_hwnd == 0 || !_shown || _sitTop < 0) return;
         int cx = WinX + _sitCx, top = topY != int.MinValue ? topY : WinY + _sitTop;
@@ -433,7 +481,7 @@ internal static unsafe partial class CatWidget
         bool grows = HasInteractArt(_light);
         string name = _light ? _nameLight : _nameDark;
         string label = grows ? (name.Length > 0 ? name + " \u00B7 " : "") + CatGrowth.StageName(CatGrowth.Step(_light)) : name;
-        CatHearts.Show(cx, top, _work, _dpi, !_light, grows ? CatGrowth.Level(_light) : -1, burst, label, note);
+        CatHearts.Show(cx, top, _work, _dpi, !_light, grows ? CatGrowth.Level(_light) : -1, burst, label, note, stamp);
         LogLine($"hearts headcx {cx} headtop {top} burst {burst} work {_work.left}-{_work.right}");
     }
 
@@ -579,10 +627,12 @@ internal static unsafe partial class CatWidget
                 || work.right != _work.right || FlipClock.MascotLight() != _light;
             if (redo) { Evaluate(); return; }
             CatGrowth.Tick();
+            if (BreakTick(now)) return;
             // 보안 습관 보상(1Key 창에서 한 일)은 고양이가 보일 때 알린다. 그 보상으로 커지면 다음 점검(2초 뒤)에 커진다 — 하트가 겹치지 않게
-            if (!_clipOn && !_peekOn && CatGrowth.TakePending(out string note))
+            if (!_clipOn && !_peekOn && !SeqTest && !WalkTest && !PeekTest && !FullTest && CatGrowth.TakePending(out string note, out bool stamp))
             {
-                ShowHearts(true, note: note);
+                ShowHearts(true, note: note, stamp: stamp);
+                if (stamp && HasInteractArt(_light) && ClipIndex("M04") is int pi and >= 0) { LogLine("stamp paw"); StartClip(pi); }   // 출근 도장: 앞발 인사(발도장)
                 _nextClipAt = Math.Max(_nextClipAt, now + 3500);   // 축하하는 동안은 제자리(하트가 빈 곳에 뜨지 않게) — 커지는 것은 다음 점검(2초 뒤)
                 return;
             }

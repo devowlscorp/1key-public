@@ -14,6 +14,8 @@ namespace OneKey;
 /// - 보안 습관 보상(0.5.18, 2026-10-10 사용자: 게임 요소 — 보안 습관 보상부터, 벌칙 없이, 크기와 단순하게): 같은 점수에 더한다.
 ///   백업 파일 만들기 +20(일주일에 한 번) · 마스터 비밀번호 바꾸기 +20(30일에 한 번) · 저장된 비밀번호 바꾸기 +10(하루 세 번까지) ·
 ///   자동 잠금이 켜진 채 그날 처음 잠금 풀기 +5(하루 한 번). 그때는 1Key 창이 열려 고양이가 없으므로, 다음에 고양이가 보일 때 하트와 한 줄로 알린다(TakePending).
+/// - 출근 도장(0.5.19, 사용자: 게임 요소 — 출근 도장): 그날 처음 잠금을 풀 때(또는 잠금 없이 켜 둔 채 날이 바뀐 뒤 처음 점검 때) +5, 연속 일수(주말은 건너뛰어도
+///   이어진다 — 끊기면 1일째부터, 벌칙 없음). 고양이가 앞발 인사를 하며 발도장이 찍히고 "발도장 쾅! 3일째 함께 출근 +5".
 /// - 단계 이름(사용자 B안): 콩떡 → 찹쌀떡 → 모닝빵 → 식빵 → 통식빵 → 대왕식빵(웅크린 고양이 = 식빵).
 /// - 저장: 설정 폴더의 cat-growth.txt, 고양이마다 한 줄("L|D 점수 남은 줄기 시간 동작별 마지막 점수 시각 3개"). 비밀이 아니다. 못 읽으면 0점에서 시작.
 /// </summary>
@@ -34,7 +36,26 @@ internal static class CatGrowth
 
     private static string FilePath => Path.Combine(Config.Dir, "cat-growth.txt");
 
-    public enum Habit { Backup, Master, Password, AutoLock }
+    public enum Habit { Backup, Master, Password, AutoLock, Stamp, Break }
+    private static int _stampDay, _streak, _stampTotal;   // 마지막 도장 날(DateOnly.DayNumber) · 연속 일수 · 모두 몇 번
+
+    /// <summary>오늘 출근 도장을 아직 안 찍었다.</summary>
+    public static bool StampDue { get { Load(); return _stampDay != TodayNumber(); } }
+    public static int Streak { get { Load(); return _streak; } }
+
+    private static int TodayNumber() => DateOnly.FromDateTime(DateTime.Now).DayNumber;
+
+    /// <summary>연속인가: 마지막 도장 다음 날부터 어제까지가 모두 주말이면(또는 없으면) 이어진다.</summary>
+    private static bool Continues(int last, int today)
+    {
+        if (last <= 0 || last >= today) return false;
+        for (int d = last + 1; d < today; d++)
+        {
+            var w = DateOnly.FromDayNumber(d).DayOfWeek;
+            if (w != DayOfWeek.Saturday && w != DayOfWeek.Sunday) return false;
+        }
+        return true;
+    }
     private const long Day = 24L * 3600_000;
     private static long _habBackup, _habMaster;   // 마지막으로 점수를 준 때(UTC 밀리초)
     private static int _pwDay, _pwCount, _alDay;  // 날짜(yyyymmdd, 이 PC 시간) · 그날 비밀번호 바꾸기 점수 횟수 · 자동 잠금 점수 날짜
@@ -55,6 +76,16 @@ internal static class CatGrowth
                 if (_pwCount < 3) { _pwCount++; pts = 10; }
                 break;
             case Habit.AutoLock: if (_alDay != today) { _alDay = today; pts = 5; } break;
+            case Habit.Break: pts = 5; break;   // 쉬는 시간 친구(CatWidget.BreakTick — 한 시간에 한 번까지는 그쪽이 막는다)
+            case Habit.Stamp:
+            {
+                int t = TodayNumber();
+                if (_stampDay == t) break;
+                _streak = Continues(_stampDay, t) ? _streak + 1 : 1;
+                _stampDay = t; _stampTotal++;
+                pts = 5;
+                break;
+            }
         }
         if (pts == 0) return 0;
         var c = Of(light);
@@ -68,14 +99,17 @@ internal static class CatGrowth
     public static bool HasPending => _pending.Count > 0;
 
     /// <summary>아직 고양이가 알리지 않은 보상이 있으면 한 줄(예: "백업 고마워요! +20" — 여럿이면 합쳐서)을 내주고 비운다.</summary>
-    public static bool TakePending(out string note)
+    public static bool TakePending(out string note) => TakePending(out note, out _);
+
+    /// <summary>stamp = 출근 도장이 들어 있다(발도장을 찍고 앞발 인사 — 한 줄은 도장 글, 점수는 모두 더해서).</summary>
+    public static bool TakePending(out string note, out bool stamp)
     {
-        note = "";
+        note = ""; stamp = false;
         if (_pending.Count == 0) return false;
-        int sum = 0; foreach (var p in _pending) sum += p.Points;
-        string msg = _pending.Count > 1 ? T.CatHabitMany : _pending[0].What switch
+        int sum = 0; foreach (var p in _pending) { sum += p.Points; if (p.What == Habit.Stamp) stamp = true; }
+        string msg = stamp ? T.CatStampNote(_streak) : _pending.Count > 1 ? T.CatHabitMany : _pending[0].What switch
         {
-            Habit.Backup => T.CatHabitBackup, Habit.Master => T.CatHabitMaster, Habit.Password => T.CatHabitPassword, _ => T.CatHabitAutolock,
+            Habit.Backup => T.CatHabitBackup, Habit.Master => T.CatHabitMaster, Habit.Password => T.CatHabitPassword, Habit.Break => T.CatBreakBack, _ => T.CatHabitAutolock,
         };
         _pending.Clear();
         note = $"{msg} +{sum}";
@@ -157,6 +191,12 @@ internal static class CatGrowth
                 foreach (string line in File.ReadAllLines(FilePath))
                 {
                     string[] v = line.Trim().Split(' ');
+                    if (v.Length >= 4 && v[0] == "S")   // 출근 도장: S 마지막날 연속 모두
+                    {
+                        int.TryParse(v[1], out _stampDay); int.TryParse(v[2], out _streak); int.TryParse(v[3], out _stampTotal);
+                        if (_stampDay > TodayNumber()) _stampDay = 0;
+                        continue;
+                    }
                     if (v.Length >= 6 && v[0] == "H")   // 보안 습관: H 백업 마스터 비밀번호날짜 그날횟수 자동잠금날짜
                     {
                         long.TryParse(v[1], out _habBackup); long.TryParse(v[2], out _habMaster);
@@ -176,6 +216,12 @@ internal static class CatGrowth
         catch { foreach (var c in _cats) { c.Score = 0; c.Carry = 0; } }
         if (Program.IsTestMode && int.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_SCORE"), out int ts))   // 시험: 처음 점수(두 고양이)
             foreach (var c in _cats) c.Score = Math.Clamp(ts, 0, MaxScore);
+        if (Program.IsTestMode && int.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_STREAK"), out int tsk) && tsk > 0)   // 시험: 어제까지 tsk 일 연속
+        {
+            int y = TodayNumber() - 1;
+            while (DateOnly.FromDayNumber(y).DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) y--;
+            _stampDay = y; _streak = tsk;
+        }
         if (Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_HABIT") is { Length: > 0 } th)   // 시험: 보안 습관 보상을 처음에 받은 것처럼(쉼표로 여럿)
             foreach (string hn in th.Split(',')) if (Enum.TryParse(hn.Trim(), out Habit hh)) AwardHabit(true, hh);
     }
@@ -187,7 +233,7 @@ internal static class CatGrowth
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
             File.WriteAllText(FilePath, Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n");
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n");
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }

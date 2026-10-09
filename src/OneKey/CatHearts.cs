@@ -33,6 +33,8 @@ internal static unsafe class CatHearts
     private static string _note = "";   // 축하 한 줄(보안 습관 보상 · 커졌을 때)
     private static double _noteW;
     private static bool _gauge;         // 하트 줄(자라는 고양이만)
+    private static bool _stamp;         // 한 줄 왼쪽에 빨간 발도장(출근 도장 — 처음 0.25초에 쾅 찍힌다)
+    private const double PawW = 22;     // 논리 px(발도장 자리)
     private static double _ox;      // 창 안 머리 가운데 x(물리 px)
     private static double _nameW;   // 물리 px
     private const double NamePx = 12;
@@ -44,8 +46,9 @@ internal static unsafe class CatHearts
     /// level = 0..5(찬 하트 수, 소수는 다음 하트를 그만큼, 음수 = 하트 줄 없음). burst = 떠오르는 하트. label = 딱지 글(이름 · 단계 이름),
     /// note = 그 위의 축하 한 줄(0.5.18 — "백업 고마워요! +20", "통식빵으로 부풀었어요!").
     /// </summary>
-    public static void Show(int headCx, int headTop, Native.RECT work, int dpi, bool dark, double level, bool burst, string label = "", string note = "")
+    public static void Show(int headCx, int headTop, Native.RECT work, int dpi, bool dark, double level, bool burst, string label = "", string note = "", bool stamp = false)
     {
+        _stamp = stamp && (note ?? "").Length > 0;
         Close();
         nint hInst = Native.GetModuleHandleW(null);
         if (!_registered) { Ctl.RegisterClass(hInst, ClassName, &WndProc, 0); _registered = true; }
@@ -58,7 +61,7 @@ internal static unsafe class CatHearts
         _noteW = _note.Length > 0 ? MeasureName(_note) : 0;
         _totalMs = _note.Length > 0 ? 3000 : 2000;
         double noteRow = _note.Length > 0 ? (NoteH + NoteGap) * _k : 0;
-        _cw = (int)Math.Ceiling(Math.Max(WinW * _k, Math.Max(_nameW + (5 * 11 + 4 * 4 + 16 + 8 + 12) * _k, _noteW + 28 * _k)));
+        _cw = (int)Math.Ceiling(Math.Max(WinW * _k, Math.Max(_nameW + (5 * 11 + 4 * 4 + 16 + 8 + 12) * _k, _noteW + (28 + (_stamp ? PawW : 0)) * _k)));
         _ch = (int)Math.Ceiling(WinH * _k + noteRow);
         _x = Math.Clamp(headCx - _cw / 2, work.left, Math.Max(work.left, work.right - _cw));
         _y = Math.Max(work.top, headTop - _ch - (int)Math.Round(3 * _k));   // 머리 바로 위(겹치지 않게)
@@ -171,6 +174,31 @@ internal static unsafe class CatHearts
         }
     }
 
+    /// <summary>
+    /// 빨간 발도장(큰 볼록 + 발가락 넷) — 가운데 (cx, cy). 처음 0.25초에 1.8배에서 제 크기로 떨어지며 진해지고(쾅) 살짝 기운다, 끝에 흐려진다.
+    /// </summary>
+    private static void Paw(Metal.Surf s, double cx, double cy, double t, double k)
+    {
+        double u = Math.Clamp(t / 250.0, 0, 1), e = u * u;
+        double sc = 1.8 - 0.8 * e, a = Math.Min(1, 0.2 + 0.8 * e);
+        int outAt = _totalMs - FadeOutMs;
+        if (t > outAt) a *= Math.Max(0, 1 - (t - outAt) / FadeOutMs);
+        uint red = _dark ? 0xF0566Eu : 0xD8364Fu;
+        double r = 7.5 * k * sc;                    // 발 크기(반지름 기준)
+        double rot = -0.18;                         // 살짝 기운 도장
+        (double X, double Y) P(double x, double y) => (cx + (x * Math.Cos(rot) - y * Math.Sin(rot)) * r, cy + (x * Math.Sin(rot) + y * Math.Cos(rot)) * r);
+        void Blob(double x, double y, double w, double h)
+        {
+            var (px, py) = P(x, y);
+            Metal.RRect(s, px - w * r / 2, py - h * r / 2, w * r, h * r, Math.Min(w, h) * r / 2, red, a);
+        }
+        Blob(0, 0.35, 1.05, 0.85);                  // 큰 볼록
+        Blob(-0.62, -0.28, 0.42, 0.5);              // 발가락
+        Blob(-0.22, -0.62, 0.42, 0.5);
+        Blob(0.22, -0.62, 0.42, 0.5);
+        Blob(0.62, -0.28, 0.42, 0.5);
+    }
+
     private static uint Pink(bool dark) => dark ? 0xFF7A90u : 0xF0607Au;
 
     private static void Frame()
@@ -202,9 +230,11 @@ internal static unsafe class CatHearts
             if (rowW > 0 || _nameW > 0) Metal.Chip(s, chipX, gy, chipW, chipH, k, _dark);
             if (_note.Length > 0)
             {
-                double nw = _noteW + 2 * padX, nx = Math.Clamp(_ox - nw / 2, 2 * k, Math.Max(2 * k, _cw - nw - 2 * k));
+                double paw = _stamp ? PawW * k : 0;
+                double nw = _noteW + 2 * padX + paw, nx = Math.Clamp(_ox - nw / 2, 2 * k, Math.Max(2 * k, _cw - nw - 2 * k));
                 Metal.Chip(s, nx, 6 * k + drop, nw, NoteH * k, k, _dark);
-                _noteX = nx + padX; _noteY = 6 * k + drop;
+                _noteX = nx + padX + paw; _noteY = 6 * k + drop;
+                if (_stamp) { Metal.Opacity = 1; Paw(s, nx + padX + paw / 2 - 3 * k, 6 * k + NoteH * k / 2, t, k); Metal.Opacity = ga * ChipAlpha; }
             }
             Metal.Opacity = ga;
             _nameX = gx - _nameW - nameGap; _nameY = gy; _nameH = chipH; _gaugeA = ga;

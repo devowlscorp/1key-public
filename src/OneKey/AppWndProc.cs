@@ -688,7 +688,7 @@ internal sealed unsafe partial class App
 
     private void OnTimer(nuint id)
     {
-        if (id == TimerAutoLock) { CheckAutoLock(); SyncWalker(); return; }
+        if (id == TimerAutoLock) { CheckAutoLock(); MaybeStamp(); SyncWalker(); return; }   // 잠그지 않고 켜 둔 채 날이 바뀌어도 출근 도장
         if (id == TimerAnim) { StepHeightAnimation(); return; }
         if (id == TimerSite) { SiteTick(); return; }
         if (id == TimerKbd) { UpdateKbd(); return; }
