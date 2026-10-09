@@ -455,6 +455,7 @@ internal sealed unsafe partial class App
         if (_cfg.FinishUnlock(job))
         {
             MarkActivity();
+            if (_cfg.AutoLockMinutes > 0) CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.AutoLock);   // 고양이 보안 습관 보상(하루 한 번)
             RegisterHotkeys(silent: true);   // 잠긴 채 시작했으면 아직 등록되지 않은 단축키가 있다
             ShowScreen(Screen.List);
             AfterLockWidgetDone();

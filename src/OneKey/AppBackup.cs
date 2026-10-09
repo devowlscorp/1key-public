@@ -131,6 +131,7 @@ internal sealed unsafe partial class App
             return;
         }
         Toast.Show(_hwnd, T.BackupMade(r.path), 4000);
+        CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.Backup);   // 고양이 보안 습관 보상(일주일에 한 번)
         if (_restoreAfterBackup) { _restoreAfterBackup = false; _restorePath = null; _restoreKeepMaster = _cfg.HasMaster && Unlocked; ShowScreen(Screen.Restore); }   // 백업 뒤 복원: 지금 세션으로 다시 정한다(R68-1)
         else ShowScreen(Screen.Settings);   // 들어온 화면(설정)으로(2026-10-06 사용자)
     }

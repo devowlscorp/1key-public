@@ -17,12 +17,16 @@ internal static unsafe partial class CatWidget
     private const int Center = 4, Up = 1;
     private const int HeightLogical = 52, MarginLogical = 18;
     private const int GazeMs = 100, FastMs = 16, FadeMs = 160, CheckMs = 2000, IdleMs = 20000;
-    private const nuint TimerTick = 1, TimerCheck = 2;
+    private const nuint TimerTick = 1, TimerCheck = 2, TimerTop = 3;
+    private const uint TopCheckMs = 100, PanelRetryMs = 500;
 
     private static nint _hwnd, _owner;
     private static uint _clickMsg;
     private static bool _registered, _wanted, _shown, _pressed, _light;
     private static int _showGen, _why = 1, _dpi, _tickMs;
+    /// <summary>키우기 크기 배율(CatGrowth.Scale — 0.5~1). 그림은 이 배율로 만든다.</summary>
+    private static double _scale = 1;
+    private static bool _scaleSet;   // 이번 실행에서 한 번이라도 그림을 만들었다
     // 그림 띠: 9칸(_w × _h), 미리 곱한 알파
     private static nint _mem, _dib, _old, _bits;
     private static int _w, _h;
@@ -48,6 +52,17 @@ internal static unsafe partial class CatWidget
     private const int ClockAppearMs = 750, ClockLeaveMs = 600, ClockPreFlipMs = 700, ClockFlipMs = 600, ClockHoldMs = 5000;
 
     public static bool IsShown => _shown;
+    /// <summary>오른쪽 클릭 메뉴 판(CatMenu)이 열려 있다: 새 동작(걷기·숨기·쉬는 동작)을 시작하지 않는다 — 꼬리가 고양이를 가리키게(0.5.16-C).</summary>
+    internal static bool Hold;
+    internal static bool IsLight => _light;
+    private static string _nameLight = "", _nameDark = "";
+    /// <summary>고양이 이름(설정 — App.SyncWalker 가 넘긴다). 하트 옆에 보인다.</summary>
+    internal static void SetNames(string light, string dark) { _nameLight = light ?? ""; _nameDark = dark ?? ""; }
+    /// <summary>시험 기록(ONEKEY_TEST_CAT_LOG)에 한 줄 — 메뉴 판이 왜 닫혔는지 등.</summary>
+    internal static void TestLog(string s) => LogLine(s);
+    internal static int Dpi => _dpi;
+    /// <summary>보이는 고양이 창의 화면 자리(메뉴 판을 그 위에 띄운다).</summary>
+    internal static bool ScreenRect(out Native.RECT r) { r = default; return _hwnd != 0 && _shown && Native.GetWindowRect(_hwnd, out r); }
     public static void Init(nint owner, uint clickMsg) { _owner = owner; _clickMsg = clickMsg; }
     public static bool AcceptClick(int gen) => _shown && gen == _showGen && !_pressed && EnvOk(out _, out _);
 
@@ -94,10 +109,14 @@ internal static unsafe partial class CatWidget
             return;
         }
         bool light = FlipClock.MascotLight();
-        if (_shown && dpi == _dpi && light == _light && work.left == _work.left && work.right == _work.right && work.bottom == _work.bottom) return;
+        double scale = CatGrowth.Scale(light, HasInteractArt(light));
+        // 1Key 창에서 받은 보상(보안 습관)이 아직 알려지지 않았으면 예전 크기로 다시 나온다 — 하트와 한 줄로 알린 뒤 "부풀었어요"와 함께 커지게(ApplyGrowth)
+        if (CatGrowth.HasPending && _scaleSet && light == _light) scale = _scale;
+        if (_shown && dpi == _dpi && light == _light && scale == _scale && work.left == _work.left && work.right == _work.right && work.bottom == _work.bottom) return;
         if (_shown) Hide(keepCheck: true);
         if (!EnsureWindow()) { _why = 9; SetProps(); return; }
-        if (_mem == 0 || dpi != _dpi || light != _light) { FreeArt(); _dpi = dpi; _light = light; if (!BuildArt()) { FreeArt(); _why = 8; RetryLater(); return; } }
+        if (_mem == 0 || dpi != _dpi || light != _light || scale != _scale) { FreeArt(); _dpi = dpi; _light = light; _scale = scale; if (!BuildArt()) { FreeArt(); _why = 8; RetryLater(); return; } }
+        _scaleSet = true;
         _work = work;
         _posX = int.MinValue;   // 보일 때마다 집에서
         _gaze = _from = GazeNow(Environment.TickCount64); _pending = -1; _fadeStart = 0;
@@ -106,6 +125,8 @@ internal static unsafe partial class CatWidget
         Native.ShowWindow(_hwnd, 4 /* SW_SHOWNOACTIVATE */);
         KeepOnTop();
         Native.KillTimer(_hwnd, TimerCheck);
+        Native.SetTimer(_hwnd, TimerTop, TopCheckMs, 0);   // 작업 표시줄이 위로 올라왔는지(동작 중에도)
+        if (_fgHook == 0) _fgHook = SetWinEventHook(3 /* EVENT_SYSTEM_FOREGROUND */, 3, 0, &OnForeground, 0, 0, 0 /* WINEVENT_OUTOFCONTEXT */);
         _lastCheck = Environment.TickCount64;
         SetTick(GazeMs);
         ScheduleNextClip(Environment.TickCount64);
@@ -116,11 +137,14 @@ internal static unsafe partial class CatWidget
     {
         if (_clipOn || _clipLoading || _peekOn) LogLine($"hide during motion why {_why} wanted {_wanted}");   // 시험 기록: 동작이 중간에 끊긴 이유
         CancelPress();
+        if (CatMenu.IsOpen) CatMenu.Close();
+        CatHearts.Close();
         StopClip();
         if (_clock != ClockPhase.None) { FlipClock.Hide(); _clock = ClockPhase.None; }
         if (_hwnd != 0)
         {
             Native.KillTimer(_hwnd, TimerTick); _tickMs = 0;
+            Native.KillTimer(_hwnd, TimerTop);
             if (!keepCheck) Native.KillTimer(_hwnd, TimerCheck);
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
         }
@@ -132,7 +156,7 @@ internal static unsafe partial class CatWidget
 
     private static void RetryLater()
     {
-        if (EnsureWindow()) Native.SetTimer(_hwnd, TimerCheck, CheckMs, 0);
+        if (EnsureWindow()) Native.SetTimer(_hwnd, TimerCheck, _why == 6 ? PanelRetryMs : CheckMs, 0);   // 시스템 패널 때문이면 닫히는 대로 곧 다시(0.5초마다)
         else _why = 9;
         SetProps();
     }
@@ -192,7 +216,7 @@ internal static unsafe partial class CatWidget
             why = 5;
             if (GetDpiForMonitor(primary, 0 /* MDT_EFFECTIVE_DPI */, out uint dx, out _) != 0 || dx is < 48 or > 480) return false;
             why = 6;
-            if (SystemPanelUp()) return false;
+            if (SystemPanelUp(mi.rcWork, (int)dx)) return false;
             why = 7;
             work = mi.rcWork; dpi = (int)dx;
             int fh = (int)Math.Round(HeightLogical * dpi / 96.0);
@@ -207,23 +231,54 @@ internal static unsafe partial class CatWidget
     [StructLayout(LayoutKind.Sequential)] private struct LASTINPUTINFO { public uint cbSize, dwTime; }
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
 
-    private static bool SystemPanelUp()
+    private static bool SystemPanelUp(Native.RECT work, int dpi)
     {
         nint fg = Native.GetForegroundWindow();
-        if (fg == 0) return true;
+        // 0.5.17-G(2026-10-10 사용자: 작업 표시줄을 누르면 고양이가 사라지는 현상이 여전히 있다): 앞 창이 잠깐 없는 순간(창을 바꾸는 중)과
+        // 작업 표시줄 단추로 창을 바꿀 때 잠깐 앞에 오는 ForegroundStaging 에서는 숨지 않는다 — 숨으면 다시 볼 때까지 2초 넘게 사라져 있었다
+        if (fg == 0) return false;
         string cls = Native.GetClassName(fg);
-        // 작업 표시줄 자체가 앞이면 숨지 않는다(0.5.15-Z, 2026-10-09 사용자: 작업 표시줄을 누르면 고양이가 사라진다 — 예전에는 누른 뒤 5초 숨었다).
-        // 작업 표시줄의 메뉴·점프 목록·미리보기·넘침 영역·달력은 아래의 자기 창 이름으로 숨는다. 눌러서 작업 표시줄이 고양이 위로 올라오면 KeepOnTop 이 되돌린다
-        if (cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
+        // 작업 표시줄 자체가 앞이면 숨지 않는다(0.5.15-Z). 눌러서 작업 표시줄이 고양이 위로 올라오면 KeepOnTop 이 바로 되돌린다(앞 창 알림 + 0.25초 점검)
+        if (cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "ForegroundStaging") return false;
+        // 시작 메뉴·검색·알림/빠른 설정·작업 표시줄 메뉴·넘침 영역·미리보기는 고양이 자리를 덮을 때만 숨는다(가운데 시작 메뉴가 떠도 오른쪽 고양이는 그대로)
         if (cls is "Windows.UI.Core.CoreWindow" or "NotifyIconOverflowWindow" or "TopLevelWindowForOverflowXamlIsland"
-            or "Xaml_WindowedPopupClass" or "#32768" or "XamlExplorerHostIslandWindow" or "MultitaskingViewFrame" or "ForegroundStaging" or "TaskListThumbnailWnd"
-            or "Windows.UI.Input.InputSite.WindowClass" or "ControlCenterWindow" or "LauncherTipWnd") return true;
-        // 떠 있는 팝업 메뉴(#32768)가 하나라도 보이면(다른 앱의 메뉴 포함 — 아래쪽을 가릴 수 있다). 1Key 자신의 메뉴(고양이 오른쪽 클릭·트레이)는 빼고
+            or "Xaml_WindowedPopupClass" or "#32768" or "XamlExplorerHostIslandWindow" or "MultitaskingViewFrame" or "TaskListThumbnailWnd"
+            or "Windows.UI.Input.InputSite.WindowClass" or "ControlCenterWindow" or "LauncherTipWnd") return CoversCat(fg, work, dpi);
+        // 떠 있는 팝업 메뉴(#32768 — 다른 앱의 메뉴)가 고양이 자리를 덮으면. 1Key 자신의 메뉴(트레이)는 빼고
         nint menu = FindWindowW("#32768", null);
         if (menu == 0 || !Native.IsWindowVisible(menu)) return false;
         GetWindowThreadProcessId(menu, out uint pid);
-        return pid != (uint)Environment.ProcessId;
+        return pid != (uint)Environment.ProcessId && CoversCat(menu, work, dpi);
     }
+
+    /// <summary>창이 고양이가 다니는 곳(작업 영역 오른쪽 5분의 1 + 여유, 작업 표시줄 위 선에서 위로 고양이 키의 3배 ~ 화면 아래)을 덮나. 자리를 모르면 true.</summary>
+    private static bool CoversCat(nint h, Native.RECT work, int dpi)
+    {
+        if (!Native.GetWindowRect(h, out Native.RECT r) || r.right <= r.left || r.bottom <= r.top) return true;
+        int m = (int)Math.Round(MarginLogical * dpi / 96.0), ch = (int)Math.Round(HeightLogical * dpi / 96.0);
+        int zl = work.right - (work.right - work.left) / 5 - m, zt = work.bottom - 3 * ch, zr = work.right, zb = work.bottom + 4 * ch;
+        return r.left < zr && r.right > zl && r.top < zb && r.bottom > zt;
+    }
+
+    /// <summary>작업 표시줄이 고양이보다 위에(z 차례) 있나 — 작업 표시줄을 누르면 Windows 가 작업 표시줄을 맨 앞으로 올려 고양이의 앞발 쪽이 뒤로 숨었다.</summary>
+    private static bool TaskbarAbove()
+    {
+        int n = 0;
+        for (nint h = Native.GetWindow(_hwnd, 3 /* GW_HWNDPREV */); h != 0 && n < 64; h = Native.GetWindow(h, 3), n++)
+            if (Native.IsWindowVisible(h) && Native.GetClassName(h) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return true;
+        return false;
+    }
+
+    private static nint _fgHook;
+
+    /// <summary>앞 창이 바뀌었다(작업 표시줄을 눌렀다 등): 고양이를 바로 작업 표시줄 위로.</summary>
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]
+    private static void OnForeground(nint hook, uint ev, nint hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        try { if (_shown && _hwnd != 0 && TaskbarAbove()) KeepOnTop(); } catch { }
+    }
+
+    [DllImport("user32.dll")] private static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint hmod, delegate* unmanaged[Stdcall]<nint, uint, nint, int, int, uint, uint, void> proc, uint idProcess, uint idThread, uint flags);
 
     // ------------------------------------------------------------------ 그림
 
@@ -260,7 +315,7 @@ internal static unsafe partial class CatWidget
     private static int TransMs => _seq.Length > 0 ? _seq.Length * TweenStepMs : FadeMs;
 
     /// <summary>사이 장 띠(60칸)를 표시 크기(_w × _h)로 줄여 따로 둔다. 없거나 실패하면 _tbits = 0(섞기로 돌아간다).</summary>
-    private static void BuildTweens(string th)
+    private static void BuildTweens(string th, uint stillW, uint stillH)
     {
         nint img = 0, bmp = 0, g = 0;
         try
@@ -269,6 +324,8 @@ internal static unsafe partial class CatWidget
             GdipGetImageWidth(img, out uint sw); GdipGetImageHeight(img, out uint sh);
             if (sw < TweenStripCells || sh == 0) return;
             int cw = (int)(sw / TweenStripCells), TW = _w * TweenCells;
+            // 칸 양옆의 잠금 위젯 여백(0.5.17-E — gaze_tweens.py)은 잘라 쓴다: 그림 폭 = 칸 높이 × 정지 그림 비율, 남는 만큼 양옆 여백(여백 없는 옛 띠면 0)
+            float inner = Math.Min(cw, sh * stillW / (float)Math.Max(1u, stillH)), padT = (cw - inner) / 2f;
             if (!MakeDib(TW, _h, out _tmem, out _tdib, out _told, out _tbits)) { _tbits = 0; return; }
             if (GdipCreateBitmapFromScan0(TW, _h, TW * 4, 0xE200B /* PixelFormat32bppPARGB */, _tbits, out bmp) != 0 || bmp == 0) { FreeTweens(); return; }
             if (GdipGetImageGraphicsContext(bmp, out g) != 0) { FreeTweens(); return; }
@@ -276,7 +333,7 @@ internal static unsafe partial class CatWidget
             GdipSetPixelOffsetMode(g, 2 /* HighQuality */);
             GdipGraphicsClear(g, 0);
             for (int i = 0; i < TweenCells; i++)
-                GdipDrawImageRectRectI(g, img, i * _w, 0, _w, _h, i * cw, 0, cw, (int)sh, 2 /* UnitPixel */, 0, 0, 0);
+                GdipDrawImageRectRect(g, img, i * _w, 0, _w, _h, i * cw + padT, 0, inner, sh, 2 /* UnitPixel */, 0, 0, 0);
         }
         catch { FreeTweens(); }
         finally
@@ -309,7 +366,7 @@ internal static unsafe partial class CatWidget
             for (int i = 0; i < Names.Length; i++) if ((imgs[i] = LoadPng($"cat_{th}_{Names[i]}.png")) == 0) return false;
             GdipGetImageWidth(imgs[0], out uint sw); GdipGetImageHeight(imgs[0], out uint sh);
             if (sw == 0 || sh == 0) return false;
-            _h = (int)Math.Round(HeightLogical * _dpi / 96.0);
+            _h = Math.Max(8, (int)Math.Round(HeightLogical * _dpi / 96.0 * _scale));   // 키우기 단계 크기(CatGrowth)
             _w = Math.Max(4, (int)Math.Round(_h * (double)sw / sh));
             int W = _w * Names.Length;
             if (!MakeDib(W, _h, out _mem, out _dib, out _old, out _bits)) return false;
@@ -326,7 +383,7 @@ internal static unsafe partial class CatWidget
             GdipDeleteGraphics(g); g = 0;
             GdipDisposeImage(bmp); bmp = 0;
             if (!MakeDib(_w, _h, out _xmem, out _xdib, out _xold, out _xbits)) return false;
-            BuildTweens(th);
+            BuildTweens(th, sw, sh);
             MeasureSit();   // 동작 그림을 앉은 고양이에 맞춘다(CatClips.cs)
             ok = true;
             return true;
@@ -339,6 +396,45 @@ internal static unsafe partial class CatWidget
             foreach (nint im in imgs) if (im != 0) GdipDisposeImage(im);
             if (!ok) FreeArt();
         }
+    }
+
+    /// <summary>
+    /// 키우기 단계가 바뀌었다(CatGrowth — 점수를 받았거나 시간이 지나 줄었다): 그림을 새 크기로 다시 만들어 그 자리에서(가운데를 맞춰) 바꾼다.
+    /// 동작·숨기·시계 중에는 부르지 않는다(Tick 이 동작 사이에만 부른다 — 쓰다듬기 등으로 커지면 그 동작이 끝난 뒤 커진다).
+    /// </summary>
+    private static void ApplyGrowth()
+    {
+        double s = CatGrowth.Scale(_light, HasInteractArt(_light));
+        if (!_shown || _hwnd == 0 || s == _scale || _clipOn || _clipLoading || _peekOn || _pressed || _clock != ClockPhase.None) return;
+        int d = _dpi, oldW = _w, keepX = _posX;
+        double old = _scale;
+        bool light = _light;
+        LogLine($"grow {_scale:0.00} -> {s:0.00} score {CatGrowth.Score(_light)}");
+        FreeArt(); _dpi = d; _light = light; _scale = s;
+        if (!BuildArt()) { FreeArt(); _why = 8; Hide(keepCheck: true); RetryLater(); return; }
+        if (keepX != int.MinValue) _posX = keepX + (oldW - _w) / 2;   // 가운데를 그대로
+        _from = _gaze; _pending = -1; _seq = Array.Empty<int>();
+        Render();
+        KeepOnTop();
+        SetProps();
+        if (s > old) ShowHearts(true, note: T.CatStageUp(CatGrowth.StageName(CatGrowth.Step(_light))));
+        if (s > old) _nextClipAt = Math.Max(_nextClipAt, Environment.TickCount64 + 3500);   // 커졌다: "통식빵으로 부풀었어요!"
+    }
+
+    /// <summary>
+    /// 머리 위 하트(CatHearts): 지금 단계 하트 줄 + burst 면 떠오르는 하트. 머리 가운데 = 앉은 고양이의 가운데, 맨 위 = topY(동작 중 가장 높은 자리 —
+    /// CatClips.ClipTop) 또는 앉은 고양이의 맨 위.
+    /// </summary>
+    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "")
+    {
+        if (_hwnd == 0 || !_shown || _sitTop < 0) return;
+        int cx = WinX + _sitCx, top = topY != int.MinValue ? topY : WinY + _sitTop;
+        // 딱지 = 이름 · 단계 이름(자라는 고양이만 — 하트 줄도). 자라지 않는 고양이(그림이 아직 없는 검은 고양이)는 이름과 한 줄만
+        bool grows = HasInteractArt(_light);
+        string name = _light ? _nameLight : _nameDark;
+        string label = grows ? (name.Length > 0 ? name + " \u00B7 " : "") + CatGrowth.StageName(CatGrowth.Step(_light)) : name;
+        CatHearts.Show(cx, top, _work, _dpi, !_light, grows ? CatGrowth.Level(_light) : -1, burst, label, note);
+        LogLine($"hearts headcx {cx} headtop {top} burst {burst} work {_work.left}-{_work.right}");
     }
 
     private static bool MakeDib(int w, int h, out nint mem, out nint dib, out nint old, out nint bits)
@@ -482,6 +578,15 @@ internal static unsafe partial class CatWidget
             bool redo = !EnvOk(out Native.RECT work, out int dpi) || dpi != _dpi || work.bottom != _work.bottom || work.left != _work.left
                 || work.right != _work.right || FlipClock.MascotLight() != _light;
             if (redo) { Evaluate(); return; }
+            CatGrowth.Tick();
+            // 보안 습관 보상(1Key 창에서 한 일)은 고양이가 보일 때 알린다. 그 보상으로 커지면 다음 점검(2초 뒤)에 커진다 — 하트가 겹치지 않게
+            if (!_clipOn && !_peekOn && CatGrowth.TakePending(out string note))
+            {
+                ShowHearts(true, note: note);
+                _nextClipAt = Math.Max(_nextClipAt, now + 3500);   // 축하하는 동안은 제자리(하트가 빈 곳에 뜨지 않게) — 커지는 것은 다음 점검(2초 뒤)
+                return;
+            }
+            if (CatGrowth.Scale(_light, HasInteractArt(_light)) != _scale) { ApplyGrowth(); return; }
             KeepOnTop();
         }
         if (_pressed) return;
@@ -745,6 +850,7 @@ internal static unsafe partial class CatWidget
                 case 0x0113:             // WM_TIMER
                     if (wParam == (nint)TimerTick) Tick();
                     else if (wParam == (nint)TimerCheck) { if (_wanted && !_shown) Evaluate(); else Native.KillTimer(hwnd, TimerCheck); }
+                    else if (wParam == (nint)TimerTop) { if (_shown && TaskbarAbove()) { KeepOnTop(); LogLine("taskbar above -> top"); } }
                     return 0;
                 case 0x0084:             // WM_NCHITTEST: 보이지 않을 때는 통과
                     if (!_shown) return -1;
@@ -785,5 +891,6 @@ internal static unsafe partial class CatWidget
     [DllImport("gdiplus.dll")] private static extern int GdipSetPixelOffsetMode(nint graphics, int mode);
     [DllImport("gdiplus.dll")] private static extern int GdipCloneImage(nint image, out nint clone);
     [DllImport("gdiplus.dll")] private static extern int GdipSaveImageToFile(nint image, char* file, Guid* encoder, nint parameters);
+    [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectRect(nint graphics, nint image, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh, int unit, nint attrs, nint cb, nint cbData);
     [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectRectI(nint graphics, nint image, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh, int unit, nint attrs, nint cb, nint cbData);
 }

@@ -224,7 +224,16 @@ internal sealed unsafe partial class App
         Name(T.SetLanguage, y, langLabel);
         Make(Dropdown.ClassName, "", Native.WS_TABSTOP, lx + langLabel, y + (RH - 34) / 2, rx + 6 - lx - langLabel, 34, IdLang);
         Sep(y + RH); y += RH + 1;
-        y = Pair(y, IdLaunchProgNames, T.SetLaunchProgNames, IdLaunchFolderNames, T.SetLaunchFolderNames, true, out _);
+        y = Pair(y, IdLaunchProgNames, T.SetLaunchProgNames, IdLaunchFolderNames, T.SetLaunchFolderNames, false, out _);
+        // 고양이 이름(0.5.17-H, 2026-10-10 사용자: 흰 고양이·검은 고양이 따로 — 예 "시로"·"쿠로"는 자리 표시 글로). 오른쪽 클릭 메뉴 맨 위와 하트 옆에 보인다
+        // 한 줄에 둘을 넣으면 자리 표시 글이 잘려 두 줄로(흰 고양이 · 검은 고양이)
+        int nameW = Math.Min(150, (rx - lx) / 2);
+        Name(T.SetCatNameLight, y, rx - lx - nameW - 8);
+        Tip(CatNameField(IdCatNameLight, T.SetCatNameLightCue, rx - nameW, y, nameW), T.SetCatNameTip);
+        Sep(y + RH); y += RH + 1;
+        Name(T.SetCatNameDark, y, rx - lx - nameW - 8);
+        Tip(CatNameField(IdCatNameDark, T.SetCatNameDarkCue, rx - nameW, y, nameW), T.SetCatNameTip);
+        y += RH;
         _page.Cards.Add((cx, top, cw, y - top));
 
         // 보안: 자동 잠금(이름 · ‹ 숫자 › · 단계 점) + 마스터·백업 버튼
@@ -253,6 +262,16 @@ internal sealed unsafe partial class App
         _page.Cards.Add((cx, top, cw, y - top));
         ExtraSettingsRow(cx, cw, ref y);   // 배포본 전용 추가 화면(App.cs)
         return y;
+    }
+
+    /// <summary>설정의 고양이 이름 칸(줄 가운데, 높이 30, 12자까지, 자리 표시 글 = 예시 이름).</summary>
+    private nint CatNameField(int id, string cue, int x, int rowY, int w)
+    {
+        nint e = Field(id, x, rowY + (MetalUi.SetRowH - 30) / 2, w, 30);
+        if (e == 0) return 0;
+        Native.SetCueBanner(e, cue);
+        Native.SendMessageW(e, 0x00C5 /* EM_LIMITTEXT */, 12, 0);
+        return e;
     }
 
     /// <summary>조각 안의 작은 알약 버튼(높이 28, 줄 가운데). 창은 그늘 자리만큼 크다(MetalUi.Small*).</summary>
@@ -333,6 +352,8 @@ internal sealed unsafe partial class App
         HotkeyBox.Set(C(IdConfirmKey), draft?.ConfirmMods ?? _cfg.ConfirmMods, draft?.ConfirmVk ?? _cfg.ConfirmVk);
         Dropdown.Set(C(IdTheme), ThemeNames, draft?.ThemeIdx ?? _cfg.ThemeMode);
         Dropdown.Set(C(IdLang), LangNames, draft?.LangIdx ?? LangIndex(_cfg.Language));
+        if (C(IdCatNameLight) != 0) Native.SetText(C(IdCatNameLight), draft?.NameLight ?? _cfg.CatNameLight);
+        if (C(IdCatNameDark) != 0) Native.SetText(C(IdCatNameDark), draft?.NameDark ?? _cfg.CatNameDark);
         UpdateSettingsNotes();
     }
 
@@ -346,10 +367,11 @@ internal sealed unsafe partial class App
     }
 
     /// <summary>설정 입력값(또는 초안)이 저장된 값과 다른가. 테마 포함.</summary>
-    private bool SettingsDiffer((bool AutoStart, bool StartMin, bool Admin, int LockIdx, uint ConfirmMods, uint ConfirmVk, int ThemeIdx, int LangIdx, bool ProgNames, bool FolderNames, bool Walker) d)
+    private bool SettingsDiffer((bool AutoStart, bool StartMin, bool Admin, int LockIdx, uint ConfirmMods, uint ConfirmVk, int ThemeIdx, int LangIdx, bool ProgNames, bool FolderNames, bool Walker, string NameLight, string NameDark) d)
         => d.AutoStart != _autostartOn || d.StartMin != _cfg.StartMinimized || d.Admin != _cfg.RequireAdmin || d.LockIdx != AutoLockIndex(_cfg.AutoLockMinutes)
            || d.ConfirmMods != _cfg.ConfirmMods || d.ConfirmVk != _cfg.ConfirmVk || d.ThemeIdx != _cfg.ThemeMode || d.LangIdx != LangIndex(_cfg.Language)
-           || d.ProgNames != ((_cfg.LaunchNames & 1) != 0) || d.FolderNames != ((_cfg.LaunchNames & 2) != 0) || d.Walker != _cfg.Walker;
+           || d.ProgNames != ((_cfg.LaunchNames & 1) != 0) || d.FolderNames != ((_cfg.LaunchNames & 2) != 0) || d.Walker != _cfg.Walker
+           || d.NameLight != _cfg.CatNameLight || d.NameDark != _cfg.CatNameDark;
 
     /// <summary>테마를 고르면 바로 미리 보인다. 설정 화면을 다시 만들면 입력값이 초안으로 옮겨 담기고, ShowScreen 이 초안의 테마를 적용한다.</summary>
     private void PreviewTheme()
@@ -415,13 +437,15 @@ internal sealed unsafe partial class App
         return idx;
     }
 
-    private (bool AutoStart, bool StartMin, bool Admin, int LockIdx, uint ConfirmMods, uint ConfirmVk, int ThemeIdx, int LangIdx, bool ProgNames, bool FolderNames, bool Walker) ReadSettings()
+    private (bool AutoStart, bool StartMin, bool Admin, int LockIdx, uint ConfirmMods, uint ConfirmVk, int ThemeIdx, int LangIdx, bool ProgNames, bool FolderNames, bool Walker, string NameLight, string NameDark) ReadSettings()
     {
         (uint cm, uint cv) = HotkeyBox.Get(C(IdConfirmKey));
         // 자동 실행 스위치: 실제 등록 상태(_autostartOn)에서 바꿨는지만 본다 — 저장값(_cfg.AutoStart)과 비교하지 않는다(허위 변경 확인 방지, Codex R157-2)
         return (C(IdAutoStart) != 0 && Native.IsWindowEnabled(C(IdAutoStart)) ? GetCheck(IdAutoStart) : _autostartOn, GetCheck(IdStartMin), GetCheck(IdAdmin), Math.Clamp(Slider.Get(C(IdAutoLock)), 0, AutoLockChoices.Length - 1), cm, cv,
                 Math.Clamp(Dropdown.Get(C(IdTheme)), 0, ThemeNames.Length - 1), Math.Clamp(Dropdown.Get(C(IdLang)), 0, L.LangCount),
-                GetCheck(IdLaunchProgNames), GetCheck(IdLaunchFolderNames), GetCheck(IdWalker));
+                GetCheck(IdLaunchProgNames), GetCheck(IdLaunchFolderNames), GetCheck(IdWalker),
+                C(IdCatNameLight) != 0 ? Config.CleanCatName(Native.GetWindowText(C(IdCatNameLight))) : _cfg.CatNameLight,
+                C(IdCatNameDark) != 0 ? Config.CleanCatName(Native.GetWindowText(C(IdCatNameDark))) : _cfg.CatNameDark);
     }
 
     /// <summary>확정 키가 쓸 수 있는 조합인지. 문제가 있으면 이유, 없으면 null. 비우면(없음) 칩의 [입력] 버튼만 쓴다.</summary>
@@ -472,15 +496,15 @@ internal sealed unsafe partial class App
             return;
         }
         // 파일에 들어간 뒤에만 설정을 바꾼다. 실패하면 화면의 값은 그대로 두고(초안), 설정은 이전 값으로 남는다.
-        var keep = (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker);
+        var keep = (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker, _cfg.CatNameLight, _cfg.CatNameDark);
         // 자동 실행 스위치를 쓸 수 없으면(설치본이 아님) 저장된 값은 그대로 둔다 — 화면의 스위치는 실제 등록 상태만 보여 주므로 그 값으로 덮으면
         // 다른 설정을 저장할 때 autostart=1 이 0 으로 바뀌었다(settingsro SR03, Codex R157-2 의 뜻)
         bool autostartEditable = C(IdAutoStart) != 0 && Native.IsWindowEnabled(C(IdAutoStart));
-        (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker)
-            = (autostartEditable ? v.AutoStart : _cfg.AutoStart, v.StartMin, v.Admin, AutoLockChoices[v.LockIdx], v.ConfirmMods, v.ConfirmVk, v.ThemeIdx, LangCode(v.LangIdx), (v.ProgNames ? 1 : 0) | (v.FolderNames ? 2 : 0), v.Walker);
+        (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker, _cfg.CatNameLight, _cfg.CatNameDark)
+            = (autostartEditable ? v.AutoStart : _cfg.AutoStart, v.StartMin, v.Admin, AutoLockChoices[v.LockIdx], v.ConfirmMods, v.ConfirmVk, v.ThemeIdx, LangCode(v.LangIdx), (v.ProgNames ? 1 : 0) | (v.FolderNames ? 2 : 0), v.Walker, v.NameLight, v.NameDark);
         if (!_cfg.Save())
         {
-            (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker) = keep;
+            (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker, _cfg.CatNameLight, _cfg.CatNameDark) = keep;
             Msg( SaveFailMsg(), AppTitle, Native.MB_OK | Native.MB_ICONERROR);
             return;
         }

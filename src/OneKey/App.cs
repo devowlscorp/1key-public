@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.16-B";
+    public const string Version = "0.5.18-C";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -53,7 +53,7 @@ internal sealed unsafe partial class App
     private const int InputBtnW = 52, InputBtnH = 28;
     // 목록 카드에 한 번에 보이는 행 수는 _visibleRows (보통 8, 작은 화면에서는 3까지 줄인다, T5). 그보다 많으면 휠·스크롤 막대로 넘긴다.
     private const int ScrollW = 10;           // 카드 오른쪽 스크롤 막대 폭
-    private const int IdLaunchProgNames = 2030, IdLaunchFolderNames = 2031, IdWalker = 2032;   // 설정 › 바로 실행: 띠에 이름 보이기
+    private const int IdLaunchProgNames = 2030, IdLaunchFolderNames = 2031, IdWalker = 2032, IdCatNameLight = 2033, IdCatNameDark = 2034;   // 설정 › 바로 실행: 띠에 이름 보이기
     private const int IdAutoStart = 2001, IdStartMin = 2002, IdAdmin = 2003, IdAutoLock = 2005, IdConfirmKey = 2006, IdConfirmReset = 2007, IdTheme = 2008, IdLang = 2009;
     private static string[] ThemeNames => new[] { T.CommonFollowWindows, T.ThemeLight, T.ThemeDark };
     /// <summary>언어 선택 목록: 0 = Windows 설정 따름(지금 Windows 언어를 괄호로), 1.. = L.Codes 순서. 언어 이름은 그 언어로 쓴다.</summary>
@@ -207,7 +207,7 @@ internal sealed unsafe partial class App
     private string _listFilter = "";         // 검색 칸의 글자 (이름·단축키로 거른다)
     private readonly bool[] _hotkeyFailed = new bool[Config.SlotCount];   // 마지막 등록에서 실패한 슬롯 (목록에 표시)
     /// <summary>목록 화면 설정 부분의 저장하지 않은 값. 접거나 다른 화면에 다녀와도 잃지 않도록 보관하고, 저장하거나 잠그면 버린다.</summary>
-    private (bool AutoStart, bool StartMin, bool Admin, int LockIdx, uint ConfirmMods, uint ConfirmVk, int ThemeIdx, int LangIdx, bool ProgNames, bool FolderNames, bool Walker)? _settingsDraft;
+    private (bool AutoStart, bool StartMin, bool Admin, int LockIdx, uint ConfirmMods, uint ConfirmVk, int ThemeIdx, int LangIdx, bool ProgNames, bool FolderNames, bool Walker, string NameLight, string NameDark)? _settingsDraft;
     private bool _autostartOn;   // 설정 화면을 만들 때 읽은 실제 자동 실행 등록 상태
     // 입력 칩(D안) 대기 상태. _chipSlot >= 0 이면 대기 중이다. 해제는 ReleaseChip 한 곳에서만 한다.
     private nint _chip;
