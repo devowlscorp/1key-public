@@ -191,12 +191,22 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>시작 메뉴·검색·알림/빠른 설정·작업 표시줄 메뉴·넘침 영역 등이 앞에 있으면 true. 앞 창이 없어도 true(모르면 숨김).</summary>
+    [StructLayout(LayoutKind.Sequential)] private struct LASTINPUTINFO { public uint cbSize, dwTime; }
+    [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+
     private static bool SystemPanelUp()
     {
         nint fg = Native.GetForegroundWindow();
         if (fg == 0) return true;
         string cls = Native.GetClassName(fg);
-        if (cls is "Windows.UI.Core.CoreWindow" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "NotifyIconOverflowWindow" or "TopLevelWindowForOverflowXamlIsland"
+        // 작업 표시줄 자체가 앞이면 누르는 중일 때만 숨는다(0.5.15-H): 작업 표시줄을 한 번 누르고 자리를 비우면 그대로 앞에 남아, 고양이가 계속 숨어 있었다.
+        // 입력이 5초 넘게 없으면 보인다(작업 표시줄의 메뉴·점프 목록·미리보기·넘침 영역은 아래의 자기 창 이름으로 숨는다)
+        if (cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
+        {
+            var li = new LASTINPUTINFO { cbSize = (uint)sizeof(LASTINPUTINFO) };
+            return !GetLastInputInfo(ref li) || unchecked((uint)Environment.TickCount - li.dwTime) < 5000;
+        }
+        if (cls is "Windows.UI.Core.CoreWindow" or "NotifyIconOverflowWindow" or "TopLevelWindowForOverflowXamlIsland"
             or "Xaml_WindowedPopupClass" or "#32768" or "XamlExplorerHostIslandWindow" or "MultitaskingViewFrame" or "ForegroundStaging" or "TaskListThumbnailWnd"
             or "Windows.UI.Input.InputSite.WindowClass" or "ControlCenterWindow" or "LauncherTipWnd") return true;
         // 떠 있는 팝업 메뉴(#32768)가 하나라도 보이면(다른 앱의 메뉴 포함 — 아래쪽을 가릴 수 있다)
@@ -303,7 +313,23 @@ internal static unsafe partial class CatWidget
         uint* src = (uint*)_bits, o = (uint*)_xbits;
         for (int y = 0; y < _h; y++)
         {
-            uint* b = src + y * W + _gaze * _w, a = src + y * W + _from * _w, d = o + y * _w;
+            // 숨기(Peek): 그림을 _sink 만큼 아래로(창 아래 끝 = 작업 표시줄 위 선 밑으로 들어간 줄은 그리지 않는다), 발을 기준으로 세로 _squash 배
+            // (1 = 그대로, 웅크리면 1 보다 작게), 옆으로 _lean 만큼(두리번거릴 때 그쪽으로 몸을 살짝)
+            int sy = _squash == 1.0 ? y - _sink : _h - 1 - (int)Math.Round((_h - 1 - (y - _sink)) / _squash);
+            if (sy < 0 || sy >= _h) { new Span<uint>(o + y * _w, _w).Clear(); continue; }
+            uint* b = src + sy * W + _gaze * _w, a = src + sy * W + _from * _w, d = o + y * _w;
+            if (_lean != 0)
+            {
+                for (int x = 0; x < _w; x++)
+                {
+                    int sx = x - _lean;
+                    if (sx < 0 || sx >= _w) { d[x] = 0; continue; }
+                    uint p = a[sx], q = b[sx];
+                    d[x] = !fade ? q : (((p >> 24) * u + (q >> 24) * t) >> 8 << 24) | ((((p >> 16) & 255) * u + ((q >> 16) & 255) * t) >> 8 << 16)
+                         | ((((p >> 8) & 255) * u + ((q >> 8) & 255) * t) >> 8 << 8) | (((p & 255) * u + (q & 255) * t) >> 8);
+                }
+                continue;
+            }
             if (!fade) { for (int x = 0; x < _w; x++) d[x] = b[x]; continue; }
             for (int x = 0; x < _w; x++)
             {
@@ -324,6 +350,7 @@ internal static unsafe partial class CatWidget
     private static int GazeNow(long now)
     {
         if (_clock != ClockPhase.None) return Up;
+        if (_peekOn) return PeekGaze(now);
         if (_wantFront) return Center;   // 다음 동작을 하려고 정면을 본다(CatClips.MaybeStartClip)
         if (!Native.GetCursorPos(out Native.POINT p)) return Center;
         if (p.x != _lastCursor.x || p.y != _lastCursor.y) { _lastCursor = p; _lastMove = now; }
@@ -352,8 +379,9 @@ internal static unsafe partial class CatWidget
         }
         if (_pressed) return;
         var dt = DateTime.Now;
-        if (_clock == ClockPhase.None && ClockDue(dt)) StartClock(dt);
+        if (_clock == ClockPhase.None && ClockDue(dt)) { if (_peekOn) EndPeek(); StartClock(dt); }
         if (_clock != ClockPhase.None) ClockTick(now, dt);
+        bool peekMoved = _peekOn && PeekTick(now);
         // 시선: 같은 쪽이 두 번 이어서 나와야 바꾼다(경계에서 왔다 갔다 하지 않게). 시계가 나오면 바로 위
         int g = GazeNow(now);
         bool fading = _from != _gaze;   // 섞는 중에는 새 시선을 받지 않는다(끝나면 다음 틱에)
@@ -361,13 +389,13 @@ internal static unsafe partial class CatWidget
         else if (!fading && (g == _pending || _clock != ClockPhase.None)) { _from = _gaze; _gaze = g; _fadeStart = now; _pending = -1; }
         else if (!fading) _pending = g;
         bool anim = _from != _gaze;
-        if (anim)
+        if (anim || peekMoved)
         {
             Render();   // 섞기가 끝난 시각이면 Compose 가 새 그림만 그린다
-            if (now - _fadeStart >= FadeMs) _from = _gaze;
+            if (anim && now - _fadeStart >= FadeMs) _from = _gaze;
         }
-        SetTick(anim || _clock != ClockPhase.None ? FastMs : GazeMs);
-        if (!anim && _clock == ClockPhase.None) MaybeStartClip(now);   // 정시 시계 앞(:59:20 부터)에는 시작하지 않는다(MaybeStartClip)
+        SetTick(anim || _peekOn || _clock != ClockPhase.None ? FastMs : GazeMs);
+        if (!anim && !_peekOn && _clock == ClockPhase.None) MaybeStartClip(now);   // 정시 시계 앞(:59:20 부터)에는 시작하지 않는다(MaybeStartClip)
     }
 
     // ------------------------------------------------------------------ 정시 알림
@@ -449,7 +477,8 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestWalkerTimer", _hwnd != 0 && _shown ? 1 : 0);
         Native.SetPropW(_owner, "OneKeyTestCatGaze", _gaze);
         Native.SetPropW(_owner, "OneKeyTestCatLight", _shown ? (_light ? 2 : 1) : 0);
-        Native.SetPropW(_owner, "OneKeyTestCatX", _shown ? WinX : 0);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
+        Native.SetPropW(_owner, "OneKeyTestCatX", _shown ? WinX : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatPeeks", _peekCount);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
     /// <summary>시험: 지정 배율로 밝은·어두운 띠(9장)와, 커서 9자리에 대한 시선 표를 dir 에 남긴다.</summary>

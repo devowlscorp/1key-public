@@ -65,6 +65,7 @@ PowerShell 5.1 에서 `powershell -ExecutionPolicy Bypass -File <스크립트> [
 | `lockseq.ps1` | (기본 회귀 아님, 창 시험) 잠금 위젯 고양이 동작(0.5.15-A): 데모 위젯을 넓혀 `ONEKEY_TEST_LOCK_SEQ=1` 로 이어진 동작 → 깜빡임 → 메롱 → 귀를 600 ms 쉬며 되풀이, 틱마다 기록 → 차례, 모든 걸음이 한 번씩 순서대로 뒤 정면, 늦은 틱 0, 간격 ±2 ms 99 %, 일한 시간(밝음·어두움). `-AnalyzeOnly <log>` | LS00–LS05 × 테마 |
 | `cattheme.ps1` | (창 시험) 작업 표시줄 고양이 색(0.5.15-C): 1Key 테마 밝게 → 회색 고양이, 어둡게 → 검은 고양이(Windows 테마와 상관없이), 시스템 따름 → Windows 작업 표시줄 테마(`SystemUsesLightTheme`). 시험 속성 `OneKeyTestCatLight` 로 읽음 | 4 |
 | `catwalk.ps1` | (기본 회귀 아님, 창 시험) 작업 표시줄 고양이 걷기(0.5.15-D): `ONEKEY_TEST_CAT_WALK=1` 로 걷기만 되풀이하며 틱마다 기록 → 계획한 걸음(돌아서기·걸음 주기·돌아오기)이 한 틱에 한 번씩 순서대로, 걷는 동안 창이 걸음만큼 옮겨지고 돌아서는 동안은 그대로, 범위(오른쪽 5분의 1) 안에서 앞 걷기가 끝난 자리에서 이어짐, 왼쪽은 뒤집힘·양쪽 방향, 늦은 틱 0, ±2 ms 99 %, 일한 시간. `-AnalyzeOnly <log>` | CW00–CW07 |
+| `catpeek.ps1` | (기본 회귀 아님, 창 시험) 작업 표시줄 고양이 숨기(0.5.15-I): `ONEKEY_TEST_CAT_PEEK=1` 로 숨기만 되풀이하며 기록 → 계획한 깊이보다 깊지 않고(자르는 선이 눈 아래 끝보다 아래 — 눈은 늘 보임) 0 으로 돌아옴, 내려간 동안 왼쪽·오른쪽을 보고 그쪽으로 기울었다가 정면, 걸린 시간, 밝음·어두움. `-AnalyzeOnly <log, {tag}=테마>` | CP00–CP03 × 테마 |
 
 `bounce.ps1`·`many.ps1`·`shot2_nofg.ps1`·`inject.ps1`·`mem.ps1` 은 키 큰 흉내 화면(`$TallScreen`)을 써서 목록 행 수가 모니터에 따라 바뀌지 않게 한다. 작은 화면 동작은 `layout.ps1` 이 맡는다.
 
