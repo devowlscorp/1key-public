@@ -55,6 +55,11 @@ internal static unsafe partial class CatWidget
     public static void EnvChanged()
     {
         if (!_wanted) return;
+        // 0.5.15-K: Windows 는 설정 변경 알림(WM_SETTINGCHANGE)을 환경 변수·지역 설정 등 아무 설정에나 보낸다. 보이는 중이고 작업 영역·배율·색이
+        // 그대로면 다시 맞추지 않는다 — 하던 동작(걷기·쉬는 동작·숨기)이 중간에 끊겼다(catseq 에서 79/98 장에서 끊김)
+        if (_shown && EnvOk(out Native.RECT w, out int d) && d == _dpi && w.left == _work.left && w.right == _work.right && w.bottom == _work.bottom
+            && FlipClock.MascotLight() == _light) { LogLine("envchanged same"); KeepOnTop(); return; }
+        LogLine("envchanged redo");
         if (_shown) Hide(keepCheck: true);
         FreeArt();
         Evaluate();
@@ -76,8 +81,8 @@ internal static unsafe partial class CatWidget
         if (!_wanted) { HideAll(); return; }
         if (!EnvOk(out Native.RECT work, out int dpi, out int why))
         {
+            _why = why;   // 숨기 전에(시험 기록에 이유가 남게)
             if (_shown) Hide(keepCheck: true);
-            _why = why;
             RetryLater();
             return;
         }
@@ -102,6 +107,7 @@ internal static unsafe partial class CatWidget
 
     private static void Hide(bool keepCheck)
     {
+        if (_clipOn || _clipLoading || _peekOn) LogLine($"hide during motion why {_why} wanted {_wanted}");   // 시험 기록: 동작이 중간에 끊긴 이유
         CancelPress();
         StopClip();
         if (_clock != ClockPhase.None) { FlipClock.Hide(); _clock = ClockPhase.None; }

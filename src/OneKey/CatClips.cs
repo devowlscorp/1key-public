@@ -8,7 +8,8 @@ namespace OneKey;
 /// 그림: Assets/cat/catclip_&lt;이름&gt;.jpg(미리 곱한 색) + _a.png(투명도) — tools/cat/make_clips.py 가 검사한 장들로 만든다. catclips.txt 한 줄 =
 /// 이름 장수 칸폭 칸높이 앉은고양이가운데x 발선y 앉은키 [x:1 = 쉬는 동작이 아님(걷기 부품)].
 /// 0.5.15-D(2026-10-09 사용자: "아티 버전처럼 다양한 동작으로 돌아다니는 고양이"): 쉬었다가(5~14초, 커서 쪽을 쳐다본다) 걷기 55 % · 쉬는 동작 45 %.
-/// 걷기 = 돌아서기(WT, 앉기 → 서기 → 옆) → 걸음 주기(WL 16장)를 몇 번 되풀이하며 창을 옮김 → 돌아서기를 거꾸로 → 새 자리에 앉아 다시 쳐다본다.
+/// 걷기 = 돌아서기(WT, 앉기 → 서기 → 옆) → 걸음 주기(WL 16장)를 몇 번 되풀이하며 창을 옮김 → 돌아서 앉기(WI, 0.5.15-K 부터 앞으로 재생하는 그림)
+/// → 새 자리에 앉아 다시 쳐다본다.
 /// 다니는 범위는 작업 표시줄 오른쪽 5분의 1(사내판과 같음). 그림은 오른쪽을 보는 것뿐이라 왼쪽으로 갈 때는 좌우를 뒤집는다.
 /// 재생: 고해상도 대기 타이머 스레드가 62.5 ms(16 fps)마다 창에 틱을 보내고, 틱마다 정확히 한 걸음(시간으로 장을 고르지 않는다 — 사내판 131-B 의
 /// 한 장 두 번·다음 장 건너뜀이 없게). 그림 띠는 다른 스레드에서 풀고 줄인 뒤 시작한다(시작 멈춤 없음, 사내판 131-D/E).
@@ -232,10 +233,11 @@ internal static unsafe partial class CatWidget
     /// </summary>
     private static bool StartWalk()
     {
-        int it = ClipIndex("WT"), il = ClipIndex("WL");
+        int it = ClipIndex("WT"), il = ClipIndex("WL"), ii = ClipIndex("WI");
         if (it < 0 || il < 0 || _sitTop < 0) return false;
         var all = Clips();
         var turn = all[it]; var loop = all[il];
+        var back = ii >= 0 ? all[ii] : null;   // 0.5.15-K: 돌아서 앉기를 앞으로 재생하는 그림(없으면 예전처럼 WT 를 거꾸로)
         if (loop.Frames != WalkCycle) return false;
         double k = (_sitBot - _sitTop) / (double)loop.SitH;
         double dx = WalkStripPx * k, cyclePx = dx * WalkCycle;
@@ -264,9 +266,14 @@ internal static unsafe partial class CatWidget
         for (int c = 0; c < cycles; c++)
             for (int i = 0; i < WalkCycle; i++) { moved += dir * dx; steps.Add(new PlayStep(1, i, m, moved, lift)); }
         moved += dir * dx; steps.Add(new PlayStep(1, 0, m, moved, lift));                                // 주기 첫 장(= 끝 다음 장)에서 멈춘다
-        for (int i = turn.Frames - 1; i >= 0; i--) steps.Add(new PlayStep(0, i, m, moved, lift * i / last));     // 거꾸로: 옆 → 서기 → 앉기
+        if (back is not null)   // 옆 서기 → 3/4 → 정면 서기 → 앉기(앞으로 — 사용자: 거꾸로 재생은 강제로 돌리는 것 같다)
+        {
+            int lastB = Math.Max(1, back.Frames - 1);
+            for (int i = 0; i < back.Frames; i++) steps.Add(new PlayStep(2, i, m, moved, lift * (lastB - i) / lastB));
+        }
+        else for (int i = turn.Frames - 1; i >= 0; i--) steps.Add(new PlayStep(0, i, m, moved, lift * i / last));     // 거꾸로: 옆 → 서기 → 앉기
         LogLine($"walkplan dir {dir} cycles {cycles} dx {dx:0.000} from {x} min {MinX} home {HomeX}");
-        StartPlay("walk", new[] { turn, loop }, steps.ToArray());
+        StartPlay("walk", back is not null ? new[] { turn, loop, back } : new[] { turn, loop }, steps.ToArray());
         return true;
     }
 

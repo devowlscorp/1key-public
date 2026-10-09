@@ -10,7 +10,7 @@ Output in src/OneKey/Assets/cat/:
                        0.3.121 way: an RGBA PNG strip was 3-4x bigger)
   catclips.txt         one line per motion: name frames cellW cellH anchorX feetY sitH [x:1 = not a rest motion (walk parts)]
                        anchorX = the sitting cat's centre in the cell, feetY = its feet line from the cell top
-  py -3.12 tools/cat/make_clips.py <final frames dir> <chain dir>
+  py -3.12 tools/cat/make_clips.py <final frames dir> <chain dir> [<turn-back frames dir>]
 """
 import sys, json
 from pathlib import Path
@@ -81,6 +81,11 @@ if __name__ == "__main__":
     ref = bbox(load_c([0])[0])                       # front sit of the chain
     lines.append(strip("WT", load_c(turn), ref, " x:1"))
     lines.append(strip("WL", load_c(cycle), ref, " x:1"))
+    # 0.5.15-K (user: turning back to the front looked forced - WT played backwards): WI = turn back and sit down as forward motion
+    # (docs/design/public-cat-motions/flf/cat_turnback.py: seam walk -> side stand, then S04 -> 3/4 -> front stand -> sit, 2x)
+    if len(sys.argv) > 3:
+        tb = sorted(Path(sys.argv[3]).glob("*.png"))
+        lines.append(strip("WI", [np.asarray(Image.open(p).convert("RGBA")) for p in tb], ref, " x:1"))
     (OUT / "catclips.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     total = sum(p.stat().st_size for p in OUT.glob("catclip_*"))
     print("total", total // 1024, "KB")
