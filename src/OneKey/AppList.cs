@@ -250,12 +250,7 @@ internal sealed unsafe partial class App
         y = LabeledButtons(T.SetRestartAdmin, y, false, (IdRowRestart, T.SetBtnRestart));
         y = LabeledButtons(T.SetAdvanced, y, true, (IdRowAdvanced, T.SetBtnOpen));
         _page.Cards.Add((cx, top, cw, y - top));
-
-        // 후원(2026-10-09 사용자: 사용성을 해치지 않고 거부감 없는 자리): 설정 맨 아래 한 줄. 목록·트레이에는 두지 않고 저절로 열지 않는다(AppSupport.cs)
-        y += Gap;
-        top = y;
-        y = LabeledButtons(T.SupportTitle, y, true, (IdRowSupport, T.SetBtnOpen));
-        _page.Cards.Add((cx, top, cw, y - top));
+        ExtraSettingsRow(cx, cw, ref y);   // 배포본 전용 추가 화면(App.cs)
         return y;
     }
 

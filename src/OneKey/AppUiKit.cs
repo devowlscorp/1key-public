@@ -441,7 +441,7 @@ internal sealed unsafe partial class App
             case Screen.PickProgram: BuildPickProgram(); break;
             case Screen.BackupMake: BuildBackupMake(); break;
             case Screen.Restore: BuildRestore(); break;
-            case Screen.Support: BuildSupport(); break;
+            case Screen.Extra: ExtraBuild(); break;
         }
         KeepCardBorders();
         int height = _page.Height;

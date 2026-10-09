@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.15-P";
+    public const string Version = "0.5.15-Q";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -110,7 +110,14 @@ internal sealed unsafe partial class App
     private const string IcWidget = "\uE776", IcTray = "\uE896";
     private const string IcLock = "", IcAdd = "", IcEye = "", IcEyeOff = "", IcPower = "";
 
-    private enum Screen { Lock, List, Edit, Advanced, Master, Settings, AddKind, LaunchEdit, PickProgram, BackupMake, Restore, Support }
+    private enum Screen { Lock, List, Edit, Advanced, Master, Settings, AddKind, LaunchEdit, PickProgram, BackupMake, Restore, Extra }
+
+    // 배포본 전용 추가 화면(src/OneKey/Extra/ — 저장소에 올리지 않는 폴더). 폴더가 없으면(저장소에서 받아 빌드) 아래 부분 메서드는
+    // 구현이 없어 컴파일러가 부르는 곳까지 지운다: 설정에 줄이 생기지 않고 Screen.Extra 로 가는 길도 없다.
+    partial void ExtraSettingsRow(int cx, int cw, ref int y);
+    partial void ExtraBuild();
+    partial void ExtraCommand(int id, ref bool handled);
+    partial void ExtraPaint(Metal.Surf body, double k);
 
     /// <summary>한 화면을 이루는 컨트롤과 부모가 직접 그리는 장식.</summary>
     private sealed class Page
@@ -132,8 +139,7 @@ internal sealed unsafe partial class App
         /// <summary>새 디자인 잠금 화면의 말풍선 판(논리 px) · 큰 둥근 단추(가운데 x, 위 y, 지름).</summary>
         public (int X, int Y, int W, int H)? Bubble;
         public (int Cx, int Y, int D)? Hero;
-        /// <summary>후원 화면(AppSupport.cs): QR 흰 판(왼쪽 x, 위 y, 한 변) · 고양이 그림(왼쪽 x, 위 y, 높이). 논리 px, 바탕 그림에 그린다.</summary>
-        public (int X, int Y, int S)? Qr;
+        /// <summary>고양이 그림(왼쪽 x, 위 y, 높이 — 작업 표시줄 고양이와 같은 그림, 테마 색). 논리 px, 바탕 그림에 그린다.</summary>
         public (int X, int Y, int H)? Pic;
         public readonly List<(int X, int Y, int W, int H, bool OnCard)> Fields = new();
         public readonly List<nint> FieldEdits = new();   // Fields 와 같은 순서의 입력칸(포커스면 강조 테두리)   // 입력 상자 (카드 위: 연회색 채움 / 바탕 위: 흰색 + 테두리)

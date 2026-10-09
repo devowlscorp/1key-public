@@ -35,3 +35,6 @@ docs/test-logs/
 /work/**
 !/work/**/
 !/work/README.md
+
+# 배포본 전용 추가 화면(설치 파일을 만드는 PC 에만 있는 폴더 — 없으면 앱은 그 화면 없이 빌드된다)
+src/OneKey/Extra/
