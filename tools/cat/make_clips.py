@@ -82,7 +82,7 @@ if __name__ == "__main__":
     lines.append(strip("WT", load_c(turn), ref, " x:1"))
     lines.append(strip("WL", load_c(cycle), ref, " x:1"))
     # 0.5.15-K (user: turning back to the front looked forced - WT played backwards): WI = turn back and sit down as forward motion
-    # (docs/design/public-cat-motions/flf/cat_turnback.py: seam walk -> side stand, then S04 -> 3/4 -> front stand -> sit, 2x)
+    # (work/cat-motions/flf/cat_turnback.py: seam walk -> side stand, then S04 -> 3/4 -> front stand -> sit, 2x)
     if len(sys.argv) > 3:
         tb = sorted(Path(sys.argv[3]).glob("*.png"))
         lines.append(strip("WI", [np.asarray(Image.open(p).convert("RGBA")) for p in tb], ref, " x:1"))
