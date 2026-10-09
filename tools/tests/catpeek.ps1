@@ -16,7 +16,7 @@ Start-Checks -Required $ids
 function Analyze([string]$log, [string]$tag) {
   $plist = New-Object System.Collections.Generic.List[object]; $cur = $null
   foreach ($l in [IO.File]::ReadAllLines($log)) {
-    if ($l -match ' peekstart depth (\d+) hold (\d+) eyebottom (\d+) sitbot (\d+) downms (\d+) upms (\d+) ') { $cur = [pscustomobject]@{ depth = [int]$Matches[1]; hold = [int]$Matches[2]; eye = [int]$Matches[3]; bot = [int]$Matches[4]; down = [int]$Matches[5]; up = [int]$Matches[6]; ev = New-Object System.Collections.Generic.List[object]; ended = $false }; $plist.Add($cur) }
+    if ($l -match ' peekstart depth (\d+) hold (\d+) eyebottom (\d+) cutline (\d+) downms (\d+) upms (\d+) ') { $cur = [pscustomobject]@{ depth = [int]$Matches[1]; hold = [int]$Matches[2]; eye = [int]$Matches[3]; bot = [int]$Matches[4]; down = [int]$Matches[5]; up = [int]$Matches[6]; ev = New-Object System.Collections.Generic.List[object]; ended = $false }; $plist.Add($cur) }
     elseif ($l -match ' peek t (\d+) sink (-?\d+) gaze (\d+) lean (-?\d+) squash (\S+)' -and $cur) { $cur.ev.Add([pscustomobject]@{ t = [int]$Matches[1]; s = [int]$Matches[2]; g = [int]$Matches[3]; lean = [int]$Matches[4]; q = [double]$Matches[5] }) }
     elseif ($l -match ' peekend' -and $cur) { $cur.ended = $true }
   }
@@ -34,7 +34,7 @@ function Analyze([string]$log, [string]$tag) {
     if ([math]::Abs($got - $want) -gt 150) { $b3 += "peek ${i}: $got ms want $want" }
   }
   Check "CP00[$tag]" "True" "$($done.Count -ge $Peeks)" "complete peeks $($done.Count)"
-  Check "CP01[$tag]" "0" "$($b1.Count + $b4.Count)" ("never deeper than planned, back to 0; cut line below the eyes (depth $(($done | ForEach-Object depth) -join ','), eye bottom $(($done | Select-Object -First 1).eye), feet $(($done | Select-Object -First 1).bot))" + $(if ($b1 -or $b4) { " - " + (($b1 + $b4) -join ' | ') }))
+  Check "CP01[$tag]" "0" "$($b1.Count + $b4.Count)" ("never deeper than planned, back to 0; cut line below the eyes (depth $(($done | ForEach-Object depth) -join ','), eye bottom $(($done | Select-Object -First 1).eye), cut line $(($done | Select-Object -First 1).bot))" + $(if ($b1 -or $b4) { " - " + (($b1 + $b4) -join ' | ') }))
   Check "CP02[$tag]" "0" "$($b2.Count)" ("looks left and right while down and leans that way, front before coming up" + $(if ($b2) { " - " + ($b2 -join ' | ') }))
   Check "CP03[$tag]" "0" "$($b3.Count)" ("duration crouch+drop+bounce + hold + rise+land within 150 ms $(($done | ForEach-Object { $_.ev[$_.ev.Count - 1].t }) -join ',')" + $(if ($b3) { " - " + ($b3 -join ' | ') }))
 }

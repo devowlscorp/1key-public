@@ -20,8 +20,8 @@ internal static unsafe partial class CatWidget
 {
     private sealed class ClipInfo { public string Name = ""; public int Frames, CellW, CellH, AnchorX, FeetY, SitH; public bool SeqOnly; }
     private sealed class ClipArt { public ClipInfo Info = null!; public int Gen, CellW, CellH; public uint[] Px = Array.Empty<uint>(); }
-    /// <summary>재생 한 걸음: 어느 그림의 몇 번째 장, 좌우 뒤집기, 시작 자리에서 옆으로 간 거리(px, 걷기).</summary>
-    private readonly record struct PlayStep(int Art, int Cell, bool Mirror, double Dx);
+    /// <summary>재생 한 걸음: 어느 그림의 몇 번째 장, 좌우 뒤집기, 시작 자리에서 옆으로 간 거리(px, 걷기), 위로 올림(px — 앉을 때 내려 둔 만큼을 서면 되돌린다).</summary>
+    private readonly record struct PlayStep(int Art, int Cell, bool Mirror, double Dx, int Lift = 0);
 
     internal static readonly bool SeqTest = Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_SEQ") == "1";
     internal static readonly bool WalkTest = Program.IsTestMode && !SeqTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_WALK") == "1";
@@ -142,15 +142,18 @@ internal static unsafe partial class CatWidget
         _wantFront = false;
         if (_sitTop < 0) { ScheduleNextClip(now); return; }
         // 눈 아래 끝 + 여유까지만 내려간다: 귀·눈은 늘 보인다
-        _peekDepth = Math.Max(1, _sitBot - (EyeBottom() + Math.Max(2, (int)Math.Round(3 * _dpi / 96.0))));
+        _peekDepth = Math.Max(1, PeekCutLine() - (EyeBottom() + Math.Max(2, (int)Math.Round(3 * _dpi / 96.0))));
         bool leftFirst = _rnd.Next(2) == 0;
         int a = leftFirst ? 3 : 5, b = leftFirst ? 5 : 3;   // 왼쪽(3) / 오른쪽(5)
         _peekLook = new[] { (0, Center), (500, a), (1300, Center), (1800, b), (2600, Center) };
         _peekHold = PeekTest ? 3000 : 3000 + _rnd.Next(1500);
         _peekStart = now; _peekOn = true; _sink = 0; _peekCount++;
-        LogLine($"peekstart depth {_peekDepth} hold {_peekHold} eyebottom {EyeBottom()} sitbot {_sitBot} downms {PeekDownMs} upms {PeekUpMs} look {string.Join(",", _peekLook.Select(l => $"{l.At}:{l.Gaze}"))}");
+        LogLine($"peekstart depth {_peekDepth} hold {_peekHold} eyebottom {EyeBottom()} cutline {PeekCutLine()} downms {PeekDownMs} upms {PeekUpMs} look {string.Join(",", _peekLook.Select(l => $"{l.At}:{l.Gaze}"))}");
         SetTick(FastMs);
     }
+
+    /// <summary>숨을 때 그림이 잘리는 줄(창 안, 작업 표시줄 위 선 — 앉을 때 내려 둔 만큼 창 아래 끝보다 위).</summary>
+    private static int PeekCutLine() => _h - SitSinkPx;
 
     /// <summary>정면 그림에서 눈(파란 눈동자)의 아래 끝 줄. 못 찾으면 앉은 키의 52 % 아래.</summary>
     private static int EyeBottom()
@@ -254,12 +257,14 @@ internal static unsafe partial class CatWidget
         if (WalkTest) cycles = Math.Min(cycles, 2);
         bool m = dir < 0;
         var steps = new List<PlayStep>();
-        for (int i = 0; i < turn.Frames; i++) steps.Add(new PlayStep(0, i, m, 0));               // 앉기 → 서기 → 옆
+        // 앉아 있을 때는 SitSinkPx 만큼 내려 앉아 있다(앞발이 작업 표시줄과 겹침). 서서 걸을 때는 네 발이 같은 높이라 선 위로: 돌아서는 동안 고르게 올리고 내린다
+        int lift = SitSinkPx, last = Math.Max(1, turn.Frames - 1);
+        for (int i = 0; i < turn.Frames; i++) steps.Add(new PlayStep(0, i, m, 0, lift * i / last));               // 앉기 → 서기 → 옆
         double moved = 0;
         for (int c = 0; c < cycles; c++)
-            for (int i = 0; i < WalkCycle; i++) { moved += dir * dx; steps.Add(new PlayStep(1, i, m, moved)); }
-        moved += dir * dx; steps.Add(new PlayStep(1, 0, m, moved));                                // 주기 첫 장(= 끝 다음 장)에서 멈춘다
-        for (int i = turn.Frames - 1; i >= 0; i--) steps.Add(new PlayStep(0, i, m, moved));     // 거꾸로: 옆 → 서기 → 앉기
+            for (int i = 0; i < WalkCycle; i++) { moved += dir * dx; steps.Add(new PlayStep(1, i, m, moved, lift)); }
+        moved += dir * dx; steps.Add(new PlayStep(1, 0, m, moved, lift));                                // 주기 첫 장(= 끝 다음 장)에서 멈춘다
+        for (int i = turn.Frames - 1; i >= 0; i--) steps.Add(new PlayStep(0, i, m, moved, lift * i / last));     // 거꾸로: 옆 → 서기 → 앉기
         LogLine($"walkplan dir {dir} cycles {cycles} dx {dx:0.000} from {x} min {MinX} home {HomeX}");
         StartPlay("walk", new[] { turn, loop }, steps.ToArray());
         return true;
@@ -415,7 +420,7 @@ internal static unsafe partial class CatWidget
         if (s.Mirror) anchor = cw - anchor;
         _ccw = cw; _cch = chh;
         _cx = _baseX + _sitCx + (int)Math.Round(s.Dx) - (int)Math.Round(anchor);
-        _cy = WinY + _sitBot - (int)Math.Round(art.Info.FeetY * k);
+        _cy = WinY + _sitBot - (int)Math.Round(art.Info.FeetY * k) - s.Lift;
         _cx = Math.Clamp(_cx, _work.left, Math.Max(_work.left, _work.right - _ccw));
         uint* o = (uint*)_cxbits;
         fixed (uint* px = art.Px)
