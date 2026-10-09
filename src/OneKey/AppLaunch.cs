@@ -1076,13 +1076,22 @@ internal sealed unsafe partial class App
         if (webs.Count > 0) ry = StripRow(webs, 2, ry, webNames, tw, viewL, progs.Count > 0 || folders.Count > 0 ? viewR : topR) + 2;
         int bottom = ry - 2 + StripPad;
         _page.Cards.Add((StripX, top, StripW, bottom - top));
-        nint b = Button(IdStripEdit, _stripEdit ? T.LaunchEditDone : T.LaunchEdit, Btn.Badge | (_stripEdit ? Btn.Expanded : 0), right - BadgeD + BadgeOut, y, BadgeD, BadgeD);
-        if (b != 0)
+        // 새 디자인: 단추 창을 그늘이 다 들어갈 만큼(BadgePad) 크게 하고 둥글게 자른다 — 단추 크기 그대로면 그늘이 창 가장자리에서 잘려 네모가 보였다(2026-10-10 사용자)
+        int bp = _page.Metal ? BadgePad : 0;
+        nint b = Button(IdStripEdit, _stripEdit ? T.LaunchEditDone : T.LaunchEdit, Btn.Badge | (_stripEdit ? Btn.Expanded : 0), right - BadgeD + BadgeOut - bp, y - bp, BadgeD + 2 * bp, BadgeD + 2 * bp);
+        if (b != 0 && bp > 0)
+        {
+            int dd = Scale(BadgeD + 2 * bp);
+            Native.SetWindowRgn(b, Fx.CreateRoundRectRgn(0, 0, dd + 1, dd + 1, dd, dd), true);
+            Native.SetWindowPos(b, 0 /* HWND_TOP */, 0, 0, 0, 0, Native.SWP_NOMOVE_ | Native.SWP_NOSIZE_ | Native.SWP_NOACTIVATE);
+        }
+        else if (b != 0)
         {
             int d = Scale(BadgeD);
-            Native.SetWindowRgn(b, Fx.CreateRoundRectRgn(0, 0, d + 1, d + 1, d, d), true);   // 동그라미 밖은 부모(카드 모서리)가 보이게
+            // 새 디자인: 단추가 바탕 그림 위에 금속 손잡이를 스스로 그린다(그늘까지) — 동그라미로 자르지도, 밑에 원을 깔지도 않는다
+            if (!_page.Metal) Native.SetWindowRgn(b, Fx.CreateRoundRectRgn(0, 0, d + 1, d + 1, d, d), true);   // 동그라미 밖은 부모(카드 모서리)가 보이게
             Native.SetWindowPos(b, 0 /* HWND_TOP */, 0, 0, 0, 0, Native.SWP_NOMOVE_ | Native.SWP_NOSIZE_ | Native.SWP_NOACTIVATE);
-            _stripBadge = (right - BadgeD + BadgeOut, y, BadgeD);
+            if (!_page.Metal) _stripBadge = (right - BadgeD + BadgeOut, y, BadgeD);
         }
         y = bottom + 6;
         if (_stripEdit) y = Footer(T.LaunchEditHint, y - 2) + 4;
@@ -1091,6 +1100,7 @@ internal sealed unsafe partial class App
 
     // StripPad 위아래, StripPadX 좌우(0.3.25: 반으로). 연필 버튼은 상자 위로 BadgeOut 만큼 나와 아래 끝이 첫 줄 칸의 위 여백(아이콘 위 6px)까지만 온다
     private const int StripPad = 8, StripPadX = 4, BadgeD = 28, BadgeOut = 7, ChevW = 10;   // BadgeOut = 버튼의 4분의 1만 상자 밖
+    private const int BadgePad = 7;   // 새 디자인 [편집] 단추 창의 그늘 자리(사방)
 
     /// <summary>띠의 한 줄(가로 스크롤 상태). 좌표는 논리 px, Scroll 은 _stripScroll[Row].</summary>
     private sealed class StripRowInfo
@@ -1535,6 +1545,7 @@ internal static unsafe class Tile
     private static void Paint(nint hwnd)
     {
         _data.TryGetValue(hwnd, out Data? d);
+        if (MetalUi.On(hwnd)) { PaintMetal(hwnd, d); return; }
         bool onCard = d?.OnCard == true && !MetalUi.On(hwnd);   // 새 디자인 화면: 조각도 바탕 그림에 있다
         Ctl.Paint(hwnd, onCard ? Theme.CardBrush : Theme.BgBrush, (dc, w, h) =>
         {
@@ -1563,6 +1574,47 @@ internal static unsafe class Tile
                 // 상자 모서리 [편집] 연필 버튼과 같은 Tinted(옅은 강조 채움 + 강조색 연필), 연필은 7px(2026-10-05 사용자: 14px 는 동그라미 밖으로 나옴)
                 Gdiplus.FillEllipse(dc, w - b, h - b, b, b, Btn.BadgeFill(false));
                 Ctl.Text(dc, Theme.FontIconTiny, "", Theme.AccentLabel, w - b, h - b, w, h, Native.DT_CENTER | Native.DT_VCENTER);   // 연필
+            }
+        });
+    }
+
+    /// <summary>
+    /// 새 디자인 화면의 띠 칸(0.5.19-E, 2026-10-10 사용자: 바로가기 상자 안도 디자인 적용): 올리면 도드라진 작은 조각(<see cref="Metal.SegChip"/>),
+    /// 누르면 파인 홈, 포커스는 흑연 테. 아이콘·이름은 예전과 같은 자리, 글은 금속 화면의 먹색. [편집] 중 표시는 작은 금속 손잡이 + 연필.
+    /// </summary>
+    private static void PaintMetal(nint hwnd, Data? d)
+    {
+        nint st = Ctl.State(hwnd);
+        bool hot = (st & Ctl.StHot) != 0, pressed = (st & Ctl.StPressed) != 0, dark = Theme.IsDark;
+        MetalUi.PaintDib(hwnd, (dc, s, k) =>
+        {
+            int w = s.W, h = s.H;
+            double r = 10 * k;
+            if (pressed) Metal.Well(s, 1 * k, 1 * k, w - 2 * k, h - 3 * k, r, k, dark);
+            else if (hot) Metal.SegChip(s, 1 * k, 1 * k, w - 2 * k, h - 3 * k, k, dark);
+            Metal.GdiFlush();
+            if (Ctl.HasFocusRing(hwnd)) Gdiplus.DrawRoundRect(dc, 1, 1, w - 2, h - 3, (float)r, Metal.Ref(Metal.FocusInk(dark)), (float)Math.Max(1.5, 1.5 * k));
+            int sz = (int)Math.Round(32 * k);
+            bool named = d is not null && d.Name.Length > 0;
+            int iy = named ? (int)Math.Round(6 * k) : (h - sz) / 2;
+            if (d?.Icon is nint ic && ic != 0) Gdiplus.DrawIconSmooth(dc, (w - sz) / 2, iy, sz, ic);
+            if (d?.Bad == true) Ctl.Text(dc, Theme.FontIcon, "\uE7BA", Theme.DangerText, 0, iy, w, iy + sz, Native.DT_CENTER | Native.DT_VCENTER);   // 경고(Warning)
+            if (named)
+            {
+                nint old = Native.SelectObject(dc, Theme.FontSmall);
+                Native.SetTextColor(dc, d!.Bad ? Theme.DangerText : Metal.Ref(Metal.Ink(dark)));
+                var rc = new Native.RECT { left = (int)Math.Round(2 * k), top = iy + sz + (int)Math.Round(3 * k), right = w - (int)Math.Round(2 * k), bottom = h - (int)Math.Round(1 * k) };
+                Native.DrawText(dc, d.Name, ref rc, Native.DT_CENTER | Native.DT_WORDBREAK | Native.DT_NOPREFIX | 0x8000 /* DT_END_ELLIPSIS */ | 0x2000 /* DT_EDITCONTROL */);
+                Native.SelectObject(dc, old);
+            }
+            if (d?.Edit == true)
+            {
+                // [편집] 표시(2026-10-10 사용자: 아이콘과 겹치는 위·아래, 이름 있는 줄은 글 아래에 있던 자리를 통일): 모든 칸에서 아이콘 오른쪽 아래 모서리, 아이콘 위에
+                double bd = 18 * k, bx = (w - sz) / 2.0 + sz - bd * 0.62, by = iy + sz - bd * 0.62;
+                Metal.GdiFlush();
+                Metal.Knob(s, bx, by, bd, k, dark, 0);
+                Metal.GdiFlush();
+                Ctl.Text(dc, Theme.FontIconTiny, "\uE70F", Metal.Ref(Metal.InkIcon(dark)), (int)Math.Round(bx), (int)Math.Round(by), (int)Math.Round(bx + bd), (int)Math.Round(by + bd), Native.DT_CENTER | Native.DT_VCENTER);   // 연필
             }
         });
     }

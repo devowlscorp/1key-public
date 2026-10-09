@@ -471,7 +471,7 @@ launch.itemOverLimit	30개를 넘은 항목	item beyond the limit of 30	超过 3
 launch.itemUnsupported	이 판에서 지원하지 않는 종류	kind not supported in this version	此版本不支持的类型	この版では対応していない種類	loại không được hỗ trợ trong phiên bản này
 launch.networkExe	네트워크 위치의 프로그램은 지원하지 않습니다	programs on a network location are not supported	不支持网络位置上的程序	ネットワーク上のプログラムには対応していません	không hỗ trợ chương trình ở vị trí mạng
 add.title	무엇을 추가할까요?	What do you want to add?	要添加什么？	何を追加しますか？	Bạn muốn thêm gì?
-add.groupText	넣을 글	Text to type	要输入的文字	入力する文言	Văn bản để nhập
+add.groupText	폼 채우기	Form fill	填写表单	フォーム入力	Điền biểu mẫu
 add.password	자주 사용하는 문구	Frequently used text	常用文字	よく使う文言	Văn bản hay dùng
 add.passwordSub	한 칸에 넣을 내용 하나(비밀번호·문장)	One entry for one field (a password or a sentence)	填入一个输入框的一项内容（密码或句子）	1 つの欄に入れる内容（パスワード・文）	Một nội dung cho một ô (mật khẩu hoặc câu)
 add.login	사이트·앱 로그인	Site / app login	网站·应用登录	サイト・アプリのログイン	Đăng nhập trang web / ứng dụng

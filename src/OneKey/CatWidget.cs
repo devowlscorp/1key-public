@@ -627,6 +627,7 @@ internal static unsafe partial class CatWidget
                 || work.right != _work.right || FlipClock.MascotLight() != _light;
             if (redo) { Evaluate(); return; }
             CatGrowth.Tick();
+            if (CatMenu.IsOpen) { KeepOnTop(); return; }   // 메뉴 판이 열려 있는 동안은 하트·쉬자·커지기를 미룬다(판 위에 겹치지 않게)
             if (BreakTick(now)) return;
             // 보안 습관 보상(1Key 창에서 한 일)은 고양이가 보일 때 알린다. 그 보상으로 커지면 다음 점검(2초 뒤)에 커진다 — 하트가 겹치지 않게
             if (!_clipOn && !_peekOn && !SeqTest && !WalkTest && !PeekTest && !FullTest && CatGrowth.TakePending(out string note, out bool stamp))

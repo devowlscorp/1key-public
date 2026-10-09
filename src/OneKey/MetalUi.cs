@@ -380,6 +380,30 @@ internal static unsafe class MetalUi
             int w = s.W, h = s.H;
             switch (kind)
             {
+                case Btn.Badge:
+                {
+                    // 바로 실행 띠 상자 모서리의 [편집](0.5.19-E, 2026-10-10 사용자: 연필 버튼만 예전 모양): 머리줄 단추와 같은 금속 손잡이 + 연필,
+                    // 편집 중이면 [저장]과 같은 흑연 알약 + 흰 체크. 창이 그늘 자리를 품도록 단추는 창보다 조금 작다
+                    bool on = (style & Btn.Expanded) != 0;
+                    // 창은 단추 + 사방 그늘 자리(AppLaunch.BadgePad 7) — 단추는 가운데, 그늘(아래로 더 길다)을 위해 1px 위로
+                    double d = 26 * k, x = (w - d) / 2, y = (h - d) / 2 - 1 * k;
+                    if (on) Metal.AccentPill(s, x, y, d, d, k, dark, state);
+                    else Metal.Knob(s, x, y, d, k, dark, state);
+                    uint ink = on ? Metal.OnAccent(dark) : Metal.InkIcon(dark);
+                    Ctl.Text(dc, Theme.FontIconSmall, on ? "\uE73E" : "\uE70F", Metal.Ref(ink), R(x), R(y), R(x + d), R(y + d), Native.DT_CENTER | Native.DT_VCENTER);   // CheckMark / Edit
+                    if (focus) Ring(dc, x, y, d, d, d / 2, k);
+                    break;
+                }
+                case Btn.Nudge:
+                {
+                    // 띠 끝의 넘기기(‹ ›): 도드라진 작은 조각(누르면 파인 홈) + 꺾쇠
+                    double x = 1 * k, y = 1 * k, bw = w - 2 * k, bh = h - 3 * k, r = Math.Min(8 * k, bw / 2);
+                    if (state == 2) Metal.Well(s, x, y, bw, bh, r, k, dark);
+                    else Metal.SegChip(s, x, y, bw, bh, k, dark);
+                    Ctl.Text(dc, Theme.FontIconSmall, text, Metal.Ref(enabled ? Metal.InkIcon(dark) : Metal.InkSub(dark)), R(x), R(y), R(x + bw), R(y + bh), Native.DT_CENTER | Native.DT_VCENTER);
+                    if (focus) Ring(dc, x, y, bw, bh, r, k);
+                    break;
+                }
                 case Btn.Knob:
                 {
                     double d = KnobD * k, x = KnobPadX * k, y = KnobPadTop * k;
