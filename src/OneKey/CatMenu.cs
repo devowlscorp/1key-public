@@ -20,8 +20,9 @@ internal static unsafe class CatMenu
     public readonly record struct Item(int Id, string Text, string Note = "");
 
     // 논리 px
-    private const double Pad = 10, Radius = 16, TailW = 18, TailH = 9, Gap = 3, FontPx = 13.5;
-    private const double CellH = 36, CellNoteH = 46, CellGap = 6, GroupGap = 10, CellPadX = 14, MinInner = 196;
+    // 0.5.19-I(2026-10-10 사용자: 버튼과 판의 가로 여백이 커서 타이트하게): 판 여백 10 → 8, 칸 사이 6 → 5, 칸 안 좌우 14 → 10, 칸 폭은 묶음마다 따로
+    private const double Pad = 8, Radius = 16, TailW = 18, TailH = 9, Gap = 3, FontPx = 13.5;
+    private const double CellH = 36, CellNoteH = 46, CellGap = 5, GroupGap = 8, CellPadX = 10, MinInner = 150;
     private const double MarX = 30, MarTop = 16, MarBot = 46;   // 판 그늘(0 12px 26px)이 들어갈 자리
     private const int AnimMs = 130, Rise = 6;
     private const double NoteScale = 0.85;   // 오른쪽 작은 글 크기(본문 대비)
@@ -64,6 +65,7 @@ internal static unsafe class CatMenu
     public static bool Show(Item[] items, Native.RECT anchor, int dpi, bool dark, Action<int> onPick, string title = "")
     {
         Close("reopen");
+        CatHearts.Close();   // 하트가 메뉴 판 위에 겹쳐 글이 가렸다(2026-10-10 사용자) — 메뉴가 열리면 하트는 닫고, 열려 있는 동안 새 하트는 미룬다(CatWidget)
         if (items.Length == 0) return false;
         Gdiplus.Init();
         nint hInst = Native.GetModuleHandleW(null);
@@ -74,7 +76,8 @@ internal static unsafe class CatMenu
         for (int i = 0; i < items.Length; i++) (_labels[i], _mnemonic[i]) = Strip(items[i].Text);
 
         // 크기: 칸 폭 = 모든 칸에서 가장 긴 글(이름 · 아래 작은 글) + 양옆 여백. 묶음마다 판 안 폭을 같게 나눈다
-        double k = _k, cellNeed = 0, titleW = 0;
+        double k = _k, titleW = 0;
+        var need = new double[items.Length];   // 칸마다 글 폭 + 좌우 여백(묶음의 칸 폭 = 그 묶음에서 가장 넓은 것)
         if (!Fonts(out nint fam, out nint font, out nint fmt)) return false;
         try
         {
@@ -85,7 +88,7 @@ internal static unsafe class CatMenu
                 if (items[i].Id == 0) continue;
                 double w = Measure(g, _labels[i], font, fmt) * 1.06;   // 버튼 글은 굵게(약간 넓다)
                 if (items[i].Note.Length > 0) w = Math.Max(w, Measure(g, items[i].Note, font, fmt) * NoteScale);
-                cellNeed = Math.Max(cellNeed, w + 2 * CellPadX * k);
+                need[i] = w + 2 * CellPadX * k;
             }
             if (_title.Length > 0) titleW = Measure(g, "♥ " + _title, font, fmt) * 1.1 + 24 * k;   // 굵은 글 몫
             GdipDeleteGraphics(g); Native.ReleaseDC(0, dc);
@@ -96,7 +99,7 @@ internal static unsafe class CatMenu
         if (groups[^1].Count == 0) groups.RemoveAt(groups.Count - 1);
         int Cols(List<int> grp) => grp.Count == 3 ? 3 : Math.Min(2, grp.Count);
         double inner = Math.Max(MinInner * k, titleW), gap = CellGap * k;
-        foreach (var grp in groups) inner = Math.Max(inner, Cols(grp) * cellNeed + (Cols(grp) - 1) * gap);
+        foreach (var grp in groups) inner = Math.Max(inner, Cols(grp) * grp.Max(i => need[i]) + (Cols(grp) - 1) * gap);
         inner = Math.Ceiling(inner);
         _pw = inner + 2 * Pad * k;
         double h = Pad * k + (_title.Length > 0 ? (TitleH + 6) * k : 0);   // 맨 위 고양이 이름 줄(설정에서 지은 이름 — 고를 수 없는 줄) + 구분선 아래 여백

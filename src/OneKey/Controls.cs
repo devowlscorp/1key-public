@@ -260,7 +260,7 @@ internal static unsafe class Btn
     {
         uint style = Ctl.Style(hwnd);
         uint kind = style & KindMask;
-        if (kind is Knob or PillInput or PillMain || (kind == Borderless && (style & Link) != 0) || (kind is Bordered or Prominent or DangerBordered or Icon && MetalUi.On(hwnd))) { MetalUi.PaintButton(hwnd, style, kind); return; }
+        if (kind is Knob or PillInput or PillMain || (kind == Borderless && (style & Link) != 0) || (kind is Bordered or Prominent or DangerBordered or Icon or Badge or Nudge && MetalUi.On(hwnd))) { MetalUi.PaintButton(hwnd, style, kind); return; }
         bool onCard = (style & OnCard) != 0;
         // 목록 행의 짝 버튼이면 줄이 강조될 때 버튼 둘레도 같은 색으로(줄 강조가 버튼 칸에서 끊기지 않게)
         bool band = onCard && Ctl.Partner.ContainsKey(hwnd) && Ctl.BandHot(hwnd);
