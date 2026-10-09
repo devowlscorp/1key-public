@@ -9,7 +9,7 @@ namespace OneKey;
 /// <see cref="Blink"/> 천천히 눈 깜빡임, <see cref="Blep"/> 작은 혀 메롱, <see cref="Ears"/> 귀 내렸다 올리기(마스터 비밀번호가 틀렸을 때).
 /// 작은 동작은 장마다 다른 그림(16 fps 실제 장면 — 예전 둘러보기는 정지 그림 11장을 2~8걸음씩 붙여 뚝뚝 끊겼다).
 /// 그림은 작업 표시줄 고양이(CatWidget)의 시선 그림 + 입 그림 + 작은 동작의 바뀐 네모(lockclip_*.jpg + _a.png, 정면 그림 위에 덮는다 —
-/// docs/design/public-cat-motions/lock/lock_build.py). 귀를 옆으로 펴면 그림 칸 밖으로 나가므로 칸 양옆에 <see cref="Pad"/> 만큼 여백을 둔다.
+/// work/cat-motions/lock/lock_build.py). 귀를 옆으로 펴면 그림 칸 밖으로 나가므로 칸 양옆에 <see cref="Pad"/> 만큼 여백을 둔다.
 /// 색은 위젯(앱) 테마를 따른다. 입 그림이 없으면 야옹·이어진 동작은 비고 부르는 쪽은 둘러보기를 쓴다.
 /// </summary>
 internal static unsafe class MascotGreet
