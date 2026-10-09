@@ -30,7 +30,7 @@ internal sealed unsafe partial class App
     /// <summary>목록 윗줄의 작은 마스코트 단추(위젯 모드를 켰을 때 (−) 자리): 창을 트레이로 내린다 — 그러면 마스코트가 나온다.</summary>
     private bool WidgetButton => _cfg.Walker && _cfg.HasMaster;
 
-    private const int IdCatOpen = 3201, IdCatLock = 3202, IdCatSettings = 3203, IdCatHide = 3204;
+    private const int IdCatOpen = 3201, IdCatLock = 3202, IdCatSettings = 3203, IdCatHide = 3204, IdCatPet = 3211, IdCatTreat = 3212, IdCatPlay = 3213;
 
     /// <summary>
     /// 고양이 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자: 고양이에 오른쪽 클릭으로 무언가 할 수 있게 — 사람과 주고받는 동작(쓰다듬기·츄르·놀아 주기)은
@@ -45,6 +45,11 @@ internal sealed unsafe partial class App
         try
         {
             bool locked = LockedWalker;
+            // 사람과 주고받는 동작(0.5.16, 2026-10-09 사용자: 츄르 주기·쓰다듬기·놀아 주기) — 그림이 있을 때만(밝은 고양이)
+            bool any = false;
+            foreach (var (id, clip, label) in new[] { (IdCatPet, "I1", T.CatMenuPet), (IdCatTreat, "I2", T.CatMenuTreat), (IdCatPlay, "I3", T.CatMenuPlay) })
+                if (CatWidget.CanInteract(clip)) { fixed (char* p = label) Native.AppendMenuW(menu, Native.MF_STRING, (nuint)id, p); any = true; }
+            if (any) Native.AppendMenuW(menu, Native.MF_SEPARATOR, 0, null);
             fixed (char* p = locked ? T.TrayUnlock : T.TrayOpen) Native.AppendMenuW(menu, Native.MF_STRING, IdCatOpen, p);
             if (!locked)
             {
@@ -59,6 +64,9 @@ internal sealed unsafe partial class App
             if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestCatMenu", cmd);
             switch (cmd)
             {
+                case IdCatPet: CatWidget.Interact("I1"); break;
+                case IdCatTreat: CatWidget.Interact("I2"); break;
+                case IdCatPlay: CatWidget.Interact("I3"); break;
                 case IdCatOpen: OnWalkerClick(gen); break;
                 case IdCatLock: if (Unlocked) LockNow(); break;
                 case IdCatSettings: ShowMainWindow(); if (Unlocked && !OnLockScreen) ShowScreen(Screen.Settings); break;

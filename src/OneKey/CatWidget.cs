@@ -32,7 +32,8 @@ internal static unsafe partial class CatWidget
     // 이웃한 두 시선(가로·세로·대각 한 칸) 20쌍마다 RIFE 사이 장 3장(1/4·2/4·3/4) = 60칸 띠(cat_<테마>_tw.png, work/cat-motions/flf/gaze_tweens.py).
     // 멀리 돌 때는 한 칸씩 지나간다(왼쪽 → 정면 → 오른쪽). 한 칸 = 사이 3장 + 도착 그림, 장마다 TweenStepMs. 띠가 없으면 예전처럼 섞기
     private static nint _tmem, _tdib, _told, _tbits;
-    private const int TweenCells = 60, TweenStepMs = 40;
+    // 띠(cat_<테마>_tw.jpg + _tw_a.png, 192 높이)는 66칸: 0~59 = 시선 20쌍, 60~65 = 입 모양 2쌍(잠금 위젯의 야옹 — MascotGreet)
+    internal const int TweenCells = 60, TweenStripCells = 66, TweenStepMs = 40;
     private static int[] _seq = Array.Empty<int>();   // 0..8 = 시선 그림, -1-i = 사이 장 i
     private static Native.RECT _work;
     private static int _gaze = Center, _from = Center, _pending = -1;
@@ -211,19 +212,17 @@ internal static unsafe partial class CatWidget
         nint fg = Native.GetForegroundWindow();
         if (fg == 0) return true;
         string cls = Native.GetClassName(fg);
-        // 작업 표시줄 자체가 앞이면 누르는 중일 때만 숨는다(0.5.15-H): 작업 표시줄을 한 번 누르고 자리를 비우면 그대로 앞에 남아, 고양이가 계속 숨어 있었다.
-        // 입력이 5초 넘게 없으면 보인다(작업 표시줄의 메뉴·점프 목록·미리보기·넘침 영역은 아래의 자기 창 이름으로 숨는다)
-        if (cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
-        {
-            var li = new LASTINPUTINFO { cbSize = (uint)sizeof(LASTINPUTINFO) };
-            return !GetLastInputInfo(ref li) || unchecked((uint)Environment.TickCount - li.dwTime) < 5000;
-        }
+        // 작업 표시줄 자체가 앞이면 숨지 않는다(0.5.15-Z, 2026-10-09 사용자: 작업 표시줄을 누르면 고양이가 사라진다 — 예전에는 누른 뒤 5초 숨었다).
+        // 작업 표시줄의 메뉴·점프 목록·미리보기·넘침 영역·달력은 아래의 자기 창 이름으로 숨는다. 눌러서 작업 표시줄이 고양이 위로 올라오면 KeepOnTop 이 되돌린다
+        if (cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
         if (cls is "Windows.UI.Core.CoreWindow" or "NotifyIconOverflowWindow" or "TopLevelWindowForOverflowXamlIsland"
             or "Xaml_WindowedPopupClass" or "#32768" or "XamlExplorerHostIslandWindow" or "MultitaskingViewFrame" or "ForegroundStaging" or "TaskListThumbnailWnd"
             or "Windows.UI.Input.InputSite.WindowClass" or "ControlCenterWindow" or "LauncherTipWnd") return true;
-        // 떠 있는 팝업 메뉴(#32768)가 하나라도 보이면(다른 앱의 메뉴 포함 — 아래쪽을 가릴 수 있다)
+        // 떠 있는 팝업 메뉴(#32768)가 하나라도 보이면(다른 앱의 메뉴 포함 — 아래쪽을 가릴 수 있다). 1Key 자신의 메뉴(고양이 오른쪽 클릭·트레이)는 빼고
         nint menu = FindWindowW("#32768", null);
-        return menu != 0 && Native.IsWindowVisible(menu);
+        if (menu == 0 || !Native.IsWindowVisible(menu)) return false;
+        GetWindowThreadProcessId(menu, out uint pid);
+        return pid != (uint)Environment.ProcessId;
     }
 
     // ------------------------------------------------------------------ 그림
@@ -266,10 +265,10 @@ internal static unsafe partial class CatWidget
         nint img = 0, bmp = 0, g = 0;
         try
         {
-            if ((img = LoadPng($"cat_{th}_tw.png")) == 0) return;
+            if ((img = LoadPremulStrip($"cat_{th}_tw")) == 0) return;
             GdipGetImageWidth(img, out uint sw); GdipGetImageHeight(img, out uint sh);
-            if (sw < TweenCells || sh == 0) return;
-            int cw = (int)(sw / TweenCells), TW = _w * TweenCells;
+            if (sw < TweenStripCells || sh == 0) return;
+            int cw = (int)(sw / TweenStripCells), TW = _w * TweenCells;
             if (!MakeDib(TW, _h, out _tmem, out _tdib, out _told, out _tbits)) { _tbits = 0; return; }
             if (GdipCreateBitmapFromScan0(TW, _h, TW * 4, 0xE200B /* PixelFormat32bppPARGB */, _tbits, out bmp) != 0 || bmp == 0) { FreeTweens(); return; }
             if (GdipGetImageGraphicsContext(bmp, out g) != 0) { FreeTweens(); return; }
@@ -388,7 +387,14 @@ internal static unsafe partial class CatWidget
         var size = new SIZE { cx = _w, cy = _h };
         var zero = new Native.POINT();
         var blend = new BLENDFUNCTION { BlendOp = 0, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = 1 /* AC_SRC_ALPHA */ };
-        return UpdateLayeredWindow(_hwnd, 0, ref dst, ref size, _xmem, ref zero, 0, ref blend, 2 /* ULW_ALPHA */);
+        bool done = UpdateLayeredWindow(_hwnd, 0, ref dst, ref size, _xmem, ref zero, 0, ref blend, 2 /* ULW_ALPHA */);
+        if (FullTest)
+        {
+            long since = Environment.TickCount64 - _fadeStart;
+            int code = _from != _gaze && _seq.Length > 0 ? _seq[(int)Math.Min(_seq.Length - 1, Math.Max(0, since / TweenStepMs))] : _gaze;
+            DumpWin(_xbits, _w, _h, _w, WinX, WinY, $"still gaze {_gaze} from {_from} code {code} sink {_sink} squash {_squash:0.000} lean {_lean}");
+        }
+        return done;
     }
 
     private static bool Compose()
@@ -410,7 +416,7 @@ internal static unsafe partial class CatWidget
         int W = stride;
         uint* gz = (uint*)_bits; int GW = _w * Names.Length;
         // 숨는 동안 자르는 선: 처음에는 창 아래 끝(앞발이 작업 표시줄과 겹친 그대로), 내려가기 시작하면 작업 표시줄 위 선까지 올라온다(그 밑으로 숨는다)
-        int cutY = _sink <= 0 ? _h : _h - (int)Math.Round(SitSinkPx * Math.Min(1.0, _sink / (double)Math.Max(1, SitSinkPx)));
+        int cutY = PeekCutLine();   // 0.5.15-Y: 앞발 아래(창 아래 끝)에서 자른다 — CatClips.PeekCutLine
         for (int y = 0; y < _h; y++)
         {
             // 숨기(Peek): 그림을 _sink 만큼 아래로(창 아래 끝 = 작업 표시줄 위 선 밑으로 들어간 줄은 그리지 않는다), 발을 기준으로 세로 _squash 배
@@ -451,6 +457,7 @@ internal static unsafe partial class CatWidget
     {
         if (_clock != ClockPhase.None) return Up;
         if (_peekOn) return PeekGaze(now);
+        if (FullGazeNow(now) is int fg) return fg;   // 전체 시험의 고개 돌리기 차례
         if (_wantFront) return Center;   // 다음 동작을 하려고 정면을 본다(CatClips.MaybeStartClip)
         if (!Native.GetCursorPos(out Native.POINT p)) return Center;
         if (p.x != _lastCursor.x || p.y != _lastCursor.y) { _lastCursor = p; _lastMove = now; }
@@ -625,6 +632,49 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>실행 파일에 그 PNG 가 들어 있는가.</summary>
+    /// <summary>
+    /// 미리 곱한 색 JPEG(&lt;name&gt;.jpg) + 투명도 PNG(&lt;name&gt;_a.png)를 한 장의 PARGB GDI+ 비트맵으로(동작 그림 띠·사이 장 띠와 같은 저장 —
+    /// RGBA PNG 보다 3~4배 작다). 없거나 크기가 다르면 0. 받은 쪽이 GdipDisposeImage.
+    /// </summary>
+    internal static nint LoadPremulStrip(string name)
+    {
+        nint col = 0, alp = 0, bmp = 0;
+        try
+        {
+            if ((col = LoadPng($"{name}.jpg")) == 0 || (alp = LoadPng($"{name}_a.png")) == 0) return 0;
+            GdipGetImageWidth(col, out uint w); GdipGetImageHeight(col, out uint h);
+            GdipGetImageWidth(alp, out uint aw); GdipGetImageHeight(alp, out uint ah);
+            if (w == 0 || h == 0 || aw != w || ah != h) return 0;
+            if (GdipCreateBitmapFromScan0((int)w, (int)h, 0, 0xE200B /* PARGB */, 0, out bmp) != 0 || bmp == 0) return 0;
+            var rc = new GpRect { X = 0, Y = 0, Width = (int)w, Height = (int)h };
+            var cd = new BitmapData(); var ad = new BitmapData(); var dd = new BitmapData();
+            if (GdipBitmapLockBits(col, ref rc, 1, 0x26200A, &cd) != 0) return 0;
+            if (GdipBitmapLockBits(alp, ref rc, 1, 0x26200A, &ad) != 0) { GdipBitmapUnlockBits(col, &cd); return 0; }
+            if (GdipBitmapLockBits(bmp, ref rc, 2 /* WriteOnly */, 0xE200B, &dd) != 0) { GdipBitmapUnlockBits(col, &cd); GdipBitmapUnlockBits(alp, &ad); return 0; }
+            for (int y = 0; y < (int)h; y++)
+            {
+                uint* c = (uint*)((byte*)cd.Scan0 + y * cd.Stride), a = (uint*)((byte*)ad.Scan0 + y * ad.Stride), d = (uint*)((byte*)dd.Scan0 + y * dd.Stride);
+                for (int x = 0; x < (int)w; x++)
+                {
+                    uint av = (a[x] >> 16) & 255, cv = c[x];
+                    if (av < 8) { d[x] = 0; continue; }
+                    uint r = Math.Min((cv >> 16) & 255, av), gg = Math.Min((cv >> 8) & 255, av), bb = Math.Min(cv & 255, av);   // JPEG 오차로 투명도를 넘지 않게
+                    d[x] = (av << 24) | (r << 16) | (gg << 8) | bb;
+                }
+            }
+            GdipBitmapUnlockBits(col, &cd); GdipBitmapUnlockBits(alp, &ad); GdipBitmapUnlockBits(bmp, &dd);
+            nint ok = bmp; bmp = 0;
+            return ok;
+        }
+        catch { return 0; }
+        finally
+        {
+            if (col != 0) GdipDisposeImage(col);
+            if (alp != 0) GdipDisposeImage(alp);
+            if (bmp != 0) GdipDisposeImage(bmp);
+        }
+    }
+
     internal static bool HasPng(string name) => typeof(CatWidget).Assembly.GetManifestResourceInfo(name) is not null;
 
     /// <summary>LoadPng 로 받은 이미지를 놓는다.</summary>
@@ -719,6 +769,7 @@ internal static unsafe partial class CatWidget
     [DllImport("user32.dll")] private static extern nint MonitorFromRect(ref Native.RECT rc, uint flags);
     [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint FindWindowW(string? cls, string? title);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint hwnd, out uint pid);
     [DllImport("user32.dll")] private static extern bool UpdateLayeredWindow(nint hwnd, nint hdcDst, ref Native.POINT pptDst, ref SIZE psize, nint hdcSrc, ref Native.POINT pptSrc, uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
     [DllImport("gdi32.dll")] private static extern nint CreateDIBSection(nint hdc, ref BIH bmi, uint usage, out nint bits, nint section, uint offset);
     [DllImport("shlwapi.dll", EntryPoint = "#12")] private static extern nint SHCreateMemStream(byte* pInit, uint cbInit);

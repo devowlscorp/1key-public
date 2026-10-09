@@ -26,7 +26,55 @@ internal static unsafe partial class CatWidget
 
     internal static readonly bool SeqTest = Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_SEQ") == "1";
     internal static readonly bool WalkTest = Program.IsTestMode && !SeqTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_WALK") == "1";
-    private const int ClipTickMs = 62, BlendFrames = 3, SeqGapMs = 600;
+    /// <summary>
+    /// 시험(ONEKEY_TEST_CAT_FULL=1, 2026-10-09 사용자: 움직이는 동작 + 좌우 이동을 하나로 붙여 전체 장에서 크기·비율 왜곡, 변신하듯 몸이 바뀌는 순간,
+    /// 지체·단절, 털 색을 시험): 한 번 실행으로 고개 돌리기(9방향, 가까이·멀리) → 쉬는 동작 6개 → 왼쪽·오른쪽·왼쪽 걷기 → 숨기를 차례로 하고,
+    /// ONEKEY_TEST_CAT_DUMP 폴더에 화면으로 내보낸 모든 장(시선 그림·동작·숨기)을 창 자리와 함께 남긴다(tools/tests/catfull.ps1 이 검사).
+    /// </summary>
+    internal static readonly bool FullTest = Program.IsTestMode && !SeqTest && !WalkTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_FULL") == "1";
+    private static int _fullStep, _forceDir;
+    private static long _fullGazeStart = -1;
+    /// <summary>고개 돌리기 시험의 시선 차례(시작부터 ms, 시선): 이웃 한 칸씩 한 바퀴 뒤 멀리(왼↔오, 대각 끝↔끝).</summary>
+    private static readonly (int At, int Gaze)[] FullGaze =
+    {
+        (0, 4), (700, 3), (1400, 0), (2100, 1), (2800, 2), (3500, 5), (4200, 8), (4900, 7), (5600, 6), (6300, 3),
+        (7000, 5), (7900, 0), (8800, 8), (9700, 4),
+    };
+    private const int FullGazeMs = 10500;
+
+    /// <summary>전체 시험의 지금 시선(고개 돌리기 차례 중이면). 아니면 null.</summary>
+    internal static int? FullGazeNow(long now)
+    {
+        if (!FullTest || _fullGazeStart < 0 || now - _fullGazeStart >= FullGazeMs) return null;
+        long t = now - _fullGazeStart; int g = 4;
+        foreach (var (at, gz) in FullGaze) if (t >= at) g = gz;
+        return g;
+    }
+
+    /// <summary>전체 시험의 다음 차례.</summary>
+    private static void FullNext(long now)
+    {
+        if (now < _nextClipAt || (_fullGazeStart >= 0 && now - _fullGazeStart < FullGazeMs + 600)) return;
+        if (_fullStep > 0 && (_gaze != Center || _from != _gaze)) { _wantFront = true; return; }   // 실제처럼 정면을 본 뒤에 시작
+        _wantFront = false;
+        var all = Clips();
+        var rest = Enumerable.Range(0, all.Length).Where(i => !all[i].SeqOnly).ToArray();
+        int step = _fullStep++;
+        LogLine($"fullstep {step}");
+        if (step == 0) { _fullGazeStart = now; SetTick(FastMs); return; }
+        _fullGazeStart = -1;
+        int k = step - 1;
+        if (k < rest.Length) { StartClip(rest[k]); return; }
+        k -= rest.Length;
+        if (k < 3) { _forceDir = k == 1 ? 1 : -1; if (!StartWalk()) ScheduleNextClip(now); _forceDir = 0; return; }
+        if (k == 3) { StartPeek(now); return; }
+        if (k >= 4 && k < 7) { int ix = ClipIndex(new[] { "I1", "I2", "I3" }[k - 4]); if (ix >= 0) { StartClip(ix); return; } ScheduleNextClip(now); return; }
+        Native.SetPropW(_owner, "OneKeyTestCatFullDone", 1);
+        _nextClipAt = long.MaxValue;
+    }
+    // BlendFrames: 동작 처음·끝 몇 장을 쉬는 그림과 섞을지. 0.5.15-Y 부터 0 — 쉬는 그림과 동작 첫·끝 장은 다른 그림이라 섞으면 윤곽이 두 겹이 되고
+    // 다른 고양이로 바뀌듯 보였다(전체 시험, 사용자: 변신하듯). 대신 그림 띠 앞뒤에 RIFE 로 이은 사이 장이 들어 있다(work/cat-motions/flf/cat_edges.py)
+    private const int ClipTickMs = 62, BlendFrames = 0, SeqGapMs = 600;
     private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
     /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
     /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).
@@ -106,6 +154,16 @@ internal static unsafe partial class CatWidget
     {
         if (_clipOn || _clipLoading || _clock != ClockPhase.None || _pressed || _hwnd == 0) { _wantFront = false; return; }
         if (SeqTest) { if (now >= _nextClipAt) StartClip(NextSeq()); return; }
+        // 오른쪽 클릭 메뉴의 쓰다듬기·츄르·놀아 주기(0.5.16): 쉬는 중이면 정면을 본 뒤 바로(다른 동작 중이면 끝난 뒤 — 위의 문에서 기다린다)
+        if (_interact is string iname && !_peekOn)
+        {
+            _wantFront = true;
+            if (_gaze != Center || _from != _gaze) return;
+            _wantFront = false; _interact = null;
+            int ix = ClipIndex(iname);
+            if (ix >= 0) { LogLine($"interact {iname}"); StartClip(ix); return; }
+        }
+        if (FullTest) { FullNext(now); return; }
         var dt = DateTime.Now;
         if (_peekOn || now < _nextClipAt || (dt.Minute == 59 && dt.Second >= 20)) { _wantFront = false; return; }
         if (PeekTest || !_light) { StartPeek(now); return; }   // 검은 고양이는 아직 동작 그림이 없어 숨기만(시선 그림으로 된다)
@@ -123,13 +181,26 @@ internal static unsafe partial class CatWidget
         StartClip(rest[_rnd.Next(rest.Length)]);
     }
 
+    private static string? _interact;
+
+    /// <summary>상호작용 동작(I1 쓰다듬기 · I2 츄르 주기 · I3 놀아 주기)을 할 수 있나: 밝은 고양이(동작 그림은 밝은 고양이뿐)이고 그림이 있을 때.</summary>
+    internal static bool CanInteract(string name) => _shown && _light && ClipIndex(name) >= 0;
+
+    /// <summary>상호작용 동작을 시킨다(메뉴). 쉬는 중이면 정면을 본 뒤 바로, 걷거나 다른 동작 중이면 그 동작이 끝난 뒤.</summary>
+    internal static void Interact(string name)
+    {
+        if (!CanInteract(name)) return;
+        _interact = name;
+        SetTick(GazeMs);
+    }
+
     private static int NextSeq() { var all = Clips(); if (all.Length == 0) return -1; int i = _seqNext % all.Length; _seqNext = i + 1; return i; }
 
-    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest ? SeqGapMs : _light ? 2_500 + _rnd.Next(4_500) : 15_000 + _rnd.Next(20_000));   // 동작 사이 쉬기 2.5~7초(0.5.15-R, 5~14초에서)
+    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest || FullTest ? SeqGapMs : _light ? 2_500 + _rnd.Next(4_500) : 15_000 + _rnd.Next(20_000));   // 동작 사이 쉬기 2.5~7초(0.5.15-R, 5~14초에서)
 
     // ------------------------------------------------------------------ 숨기(작업 표시줄 선 밑으로 쏙 — 눈만 내밀고 두리번거렸다가 올라온다)
     // 사내판의 매달리기 자리(그림 없이 시선 그림으로 — 밝은·검은 고양이 모두). 틱마다 _sink(그림을 아래로 내린 px)와 시선만 바꾼다
-    internal static readonly bool PeekTest = Program.IsTestMode && !SeqTest && !WalkTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_PEEK") == "1";
+    internal static readonly bool PeekTest = Program.IsTestMode && !SeqTest && !WalkTest && !FullTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_PEEK") == "1";
     // 0.5.15-G(사용자: 수직으로 가라앉아 이상, 눈이 살짝 가려짐 — 눈은 가려지면 안 된다): 웅크렸다가(세로 0.93배) 중력처럼 쏙 떨어지고 바닥에서 한 번
     // 튀고, 두리번거릴 때는 그쪽으로 몸을 살짝 기울이고, 올라올 때는 빠르게 솟았다가 착지하며 한 번 웅크린다. 깊이는 눈 아래 끝 + 여유까지만
     private const int PeekCrouchMs = 160, PeekDropMs = 240, PeekBounceMs = 200, PeekRiseMs = 260, PeekLandMs = 220;
@@ -157,7 +228,10 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>숨을 때 그림이 잘리는 줄(창 안, 작업 표시줄 위 선 — 앉을 때 내려 둔 만큼 창 아래 끝보다 위).</summary>
-    private static int PeekCutLine() => _h - SitSinkPx;
+    // 0.5.15-Y(사용자: 쪼그려 앉을 때 앞발이 작업 표시줄 앞으로 나왔다가 잠깐 사라졌다가 다시 나온다): 앉은 고양이는 앞발이 작업 표시줄 앞에 걸쳐 있는데,
+    // 숨기 시작하면 자르는 선이 작업 표시줄 위 선으로 바로 올라가 앞발이 몸보다 먼저 뒤로 사라졌다. 자르는 선을 앞발 아래(창 아래 끝)에 둔다 —
+    // 작업 표시줄 앞에 있던 고양이가 그 자리에서 아래로 들어간다.
+    private static int PeekCutLine() => _h;
 
     /// <summary>정면 그림에서 눈(파란 눈동자)의 아래 끝 줄. 못 찾으면 앉은 키의 52 % 아래.</summary>
     private static int EyeBottom()
@@ -256,10 +330,12 @@ internal static unsafe partial class CatWidget
             dir = pos > 0.8 ? (_rnd.Next(4) == 0 ? 1 : -1) : pos < 0.2 ? (_rnd.Next(4) == 0 ? -1 : 1) : _rnd.Next(2) == 0 ? -1 : 1;
             if ((dir < 0 ? roomL : roomR) < cyclePx) dir = -dir;
         }
+        if (_forceDir != 0 && (_forceDir < 0 ? roomL : roomR) >= cyclePx) dir = _forceDir;   // 전체 시험: 왼쪽·오른쪽을 차례로
         int r = _rnd.Next(100);
         int cycles = r < 20 ? 3 + _rnd.Next(2) : r < 70 ? 5 + _rnd.Next(3) : 8 + _rnd.Next(3);   // 0.5.15-R: 한 걸음씩 더   // 돌아서기·돌아오기가 3.4초씩이라 걷는 쪽을 길게
         cycles = Math.Max(1, Math.Min(cycles, (int)Math.Floor((dir < 0 ? roomL : roomR) / cyclePx)));
         if (WalkTest) cycles = Math.Min(cycles, 2);
+        if (FullTest) cycles = Math.Min(cycles, 3);
         bool m = dir < 0;
         var steps = new List<PlayStep>();
         // 앉아 있을 때는 SitSinkPx 만큼 내려 앉아 있다(앞발이 작업 표시줄과 겹침). 서서 걸을 때는 네 발이 같은 높이라 선 위로: 돌아서는 동안 고르게 올리고 내린다
@@ -462,7 +538,9 @@ internal static unsafe partial class CatWidget
         var size = new SIZE { cx = cw, cy = chh };
         var zero = new Native.POINT();
         var blend = new BLENDFUNCTION { BlendOp = 0, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = 1 };
-        return UpdateLayeredWindow(_hwnd, 0, ref dst, ref size, _cxmem, ref zero, 0, ref blend, 2);
+        bool done = UpdateLayeredWindow(_hwnd, 0, ref dst, ref size, _cxmem, ref zero, 0, ref blend, 2);
+        if (FullTest) DumpWin(_cxbits, cw, chh, S, _cx, _cy, $"clip {_playName} {i} art {s.Art} cell {s.Cell} m {(s.Mirror ? 1 : 0)} lift {s.Lift} blend {t}");
+        return done;
     }
 
     // ------------------------------------------------------------------ 틱 스레드(사내판 WalkerPrep 과 같은 방식)
@@ -522,7 +600,7 @@ internal static unsafe partial class CatWidget
 
     // ------------------------------------------------------------------ 시험 기록(사내판 WalkerTest 와 같은 줄 모양 — catseq.ps1 이 읽는다)
 
-    private static readonly string? LogPath = SeqTest || WalkTest || PeekTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
+    private static readonly string? LogPath = SeqTest || WalkTest || PeekTest || FullTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _logQ = new();
     private static long _logLastFlush, _lastTickTs;
     private static int _logFlushing, _pushN, _pushFail, _lateN;
@@ -594,7 +672,27 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>시험(ONEKEY_TEST_CAT_DUMP=폴더): 내보낸 그림(화면이 아니라 동작 창의 그림 자체)을 PNG 로 — 사람이 눈으로 볼 때만, 시간 시험과 따로 돌린다.</summary>
-    private static readonly string? DumpDir = SeqTest || WalkTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_DUMP") : null;
+    private static readonly string? DumpDir = SeqTest || WalkTest || FullTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_DUMP") : null;
+    private static int _dumpN;
+
+    /// <summary>전체 시험: 화면으로 내보낸 장 하나(미리 곱한 알파 그림 + 창 자리 + 무엇인지)를 차례 번호로 남긴다.</summary>
+    internal static void DumpWin(nint bits, int w, int h, int stride, int x, int y, string what)
+    {
+        if (!FullTest || DumpDir is null || bits == 0) return;
+        nint bmp = 0;
+        try
+        {
+            Directory.CreateDirectory(DumpDir);
+            if (GdipCreateBitmapFromScan0(w, h, stride * 4, 0xE200B, bits, out bmp) != 0 || bmp == 0) return;
+            Guid png = new("557CF406-1A04-11D3-9A73-0000F81EF32E");
+            int n = _dumpN++;
+            fixed (char* fp = Path.Combine(DumpDir, $"{n:00000}.png")) GdipSaveImageToFile(bmp, fp, &png, 0);
+            File.AppendAllText(Path.Combine(DumpDir, "frames.txt"),
+                $"{n} {Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency} {x} {y} {w} {h} work {_work.left},{_work.top},{_work.right},{_work.bottom} sit {_sitTop}-{_sitBot} sink {SitSinkPx} {what}" + Environment.NewLine);
+        }
+        catch { }
+        finally { if (bmp != 0) GdipDisposeImage(bmp); }
+    }
 
     private static void DumpClipFrame(string name, int f)
     {
