@@ -161,9 +161,17 @@ internal static unsafe partial class CatWidget
             if (_gaze != Center || _from != _gaze) return;
             _wantFront = false; _interact = null;
             int ix = ClipIndex(iname);
-            if (ix >= 0) { LogLine($"interact {iname}"); StartClip(ix); return; }
+            if (ix >= 0)
+            {
+                bool got = CatGrowth.Award(_light, iname);   // 키우기 점수(3분에 한 번) — 받았으면 하트가 떠오른다, 못 받았으면 하트 줄만
+                LogLine($"interact {iname} award {got} score {CatGrowth.Score(_light)}");
+                _heartsPending = got ? 2 : 1;   // 동작이 시작될 때(OnClipReady) 그 동작의 가장 높은 머리 위에
+                StartClip(ix);
+                return;
+            }
         }
         if (FullTest) { FullNext(now); return; }
+        if (Hold) { _wantFront = false; return; }   // 메뉴 판이 열려 있는 동안은 제자리(CatMenu)
         var dt = DateTime.Now;
         if (_peekOn || now < _nextClipAt || (dt.Minute == 59 && dt.Second >= 20)) { _wantFront = false; return; }
         if (PeekTest || !_light) { StartPeek(now); return; }   // 검은 고양이는 아직 동작 그림이 없어 숨기만(시선 그림으로 된다)
@@ -184,14 +192,38 @@ internal static unsafe partial class CatWidget
     private static string? _interact;
 
     /// <summary>상호작용 동작(I1 쓰다듬기 · I2 츄르 주기 · I3 놀아 주기)을 할 수 있나: 밝은 고양이(동작 그림은 밝은 고양이뿐)이고 그림이 있을 때.</summary>
-    internal static bool CanInteract(string name) => _shown && _light && ClipIndex(name) >= 0;
+    internal static bool CanInteract(string name) => _shown && HasInteractArt(_light) && ClipIndex(name) >= 0;
+
+    /// <summary>그 색 고양이에게 상호작용 그림이 있나(키우기도 이것을 따른다 — CatGrowth). 동작 그림은 아직 밝은 고양이뿐: 검은 고양이 그림이 들어오면 여기만 바꾼다.</summary>
+    internal static bool HasInteractArt(bool light) => light && ClipIndex("I1") >= 0;
 
     /// <summary>상호작용 동작을 시킨다(메뉴). 쉬는 중이면 정면을 본 뒤 바로, 걷거나 다른 동작 중이면 그 동작이 끝난 뒤.</summary>
     internal static void Interact(string name)
     {
         if (!CanInteract(name)) return;
         _interact = name;
+        CutWalk();
         SetTick(GazeMs);
+    }
+
+    /// <summary>
+    /// 걷는 중에 상호작용을 시키면(0.5.16-E, 사용자: 이동 중에 메뉴로 동작을 시키면 작동하지 않는다 — 걷기가 끝날 때까지 최대 13초쯤 기다렸다):
+    /// 남은 걸음 주기를 건너뛰고 다음 주기 첫 장(발이 이어지는 자리)에서 바로 돌아서 앉는다. 앉으면 MaybeStartClip 이 그 동작을 시작한다.
+    /// 이미 돌아서 앉는 중이면 그대로.
+    /// </summary>
+    private static void CutWalk()
+    {
+        if (!_clipOn || _playName != "walk" || _steps.Length == 0) return;
+        int backStart = Array.FindLastIndex(_steps, s => s.Art == 1) + 1;   // 돌아서 앉기의 첫 걸음
+        if (backStart <= 0 || backStart >= _steps.Length) return;
+        int cur = Math.Max(0, _clipFrame), j = -1;
+        for (int i = cur + 1; i < backStart - 1; i++) if (_steps[i].Art == 1 && _steps[i].Cell == 0) { j = i; break; }
+        if (j < 0) return;
+        double moved = _steps[j].Dx;
+        var tail = new PlayStep[_steps.Length - backStart];
+        for (int i = 0; i < tail.Length; i++) tail[i] = _steps[backStart + i] with { Dx = moved };
+        _steps = _steps[..(j + 1)].Concat(tail).ToArray();
+        LogLine($"walkcut at {cur} stop {j} steps {_steps.Length}");
     }
 
     private static int NextSeq() { var all = Clips(); if (all.Length == 0) return -1; int i = _seqNext % all.Length; _seqNext = i + 1; return i; }
@@ -217,13 +249,13 @@ internal static unsafe partial class CatWidget
         _wantFront = false;
         if (_sitTop < 0) { ScheduleNextClip(now); return; }
         // 눈 아래 끝 + 여유까지만 내려간다: 귀·눈은 늘 보인다
-        _peekDepth = Math.Max(1, PeekCutLine() - (EyeBottom() + Math.Max(2, (int)Math.Round(3 * _dpi / 96.0))));
+        _peekDepth = Math.Max(1, PeekLine() - (EyeBottom() + Math.Max(2, (int)Math.Round(3 * _dpi / 96.0))));
         bool leftFirst = _rnd.Next(2) == 0;
         int a = leftFirst ? 3 : 5, b = leftFirst ? 5 : 3;   // 왼쪽(3) / 오른쪽(5)
         _peekLook = new[] { (0, Center), (500, a), (1300, Center), (1800, b), (2600, Center) };
         _peekHold = PeekTest ? 3000 : 3000 + _rnd.Next(1500);
         _peekStart = now; _peekOn = true; _sink = 0; _peekCount++;
-        LogLine($"peekstart depth {_peekDepth} hold {_peekHold} eyebottom {EyeBottom()} cutline {PeekCutLine()} downms {PeekDownMs} upms {PeekUpMs} look {string.Join(",", _peekLook.Select(l => $"{l.At}:{l.Gaze}"))}");
+        LogLine($"peekstart depth {_peekDepth} hold {_peekHold} eyebottom {EyeBottom()} cutline {PeekLine()} downms {PeekDownMs} upms {PeekUpMs} look {string.Join(",", _peekLook.Select(l => $"{l.At}:{l.Gaze}"))}");
         SetTick(FastMs);
     }
 
@@ -231,7 +263,13 @@ internal static unsafe partial class CatWidget
     // 0.5.15-Y(사용자: 쪼그려 앉을 때 앞발이 작업 표시줄 앞으로 나왔다가 잠깐 사라졌다가 다시 나온다): 앉은 고양이는 앞발이 작업 표시줄 앞에 걸쳐 있는데,
     // 숨기 시작하면 자르는 선이 작업 표시줄 위 선으로 바로 올라가 앞발이 몸보다 먼저 뒤로 사라졌다. 자르는 선을 앞발 아래(창 아래 끝)에 둔다 —
     // 작업 표시줄 앞에 있던 고양이가 그 자리에서 아래로 들어간다.
-    private static int PeekCutLine() => _h;
+    // 0.5.16-E(사용자: 고양이가 작업 표시줄 중간까지 내려와 있다): 자르는 선을 창 아래 끝에 고정했더니 숨는 고양이가 작업 표시줄 위 선 밑으로 들어가
+    // 작업 표시줄 위에 눈까지 보였다. 이제 처음에는 창 아래 끝(앞발 그대로)에서 자르고, 내려간 만큼 선이 올라와 앉아 내려 둔 만큼(SitSinkPx)
+    // 내려가면 작업 표시줄 위 선에서 자른다. 깊이(눈 아래 끝까지)도 작업 표시줄 위 선 기준(0.5.15 와 같음).
+    private static int PeekCutLine() => _h - Math.Min(Math.Max(0, _sink), SitSinkPx);
+
+    /// <summary>작업 표시줄 위 선(창 안 y): 앉은 고양이는 SitSinkPx 만큼 그 아래까지 내려 앉아 있다.</summary>
+    private static int PeekLine() => _h - SitSinkPx;
 
     /// <summary>정면 그림에서 눈(파란 눈동자)의 아래 끝 줄. 못 찾으면 앉은 키의 52 % 아래.</summary>
     private static int EyeBottom()
@@ -443,6 +481,8 @@ internal static unsafe partial class CatWidget
         _arts = arts; _baseX = WinX;
         _clipOn = true; _clipFrame = -1;
         LogClipStart(_playName, _steps);
+        if (_heartsPending > 0 && _playName.StartsWith('I')) ShowHearts(_heartsPending == 2, ClipTop(arts[0]));
+        _heartsPending = 0;
         if (!StartTicks(ClipTickMs)) { EndClip(); return; }
         _lastTickTs = Stopwatch.GetTimestamp();   // 첫 틱의 간격 = 시작부터(시작 멈춤 재기)
     }
@@ -475,8 +515,23 @@ internal static unsafe partial class CatWidget
         SetProps();
     }
 
+    /// <summary>0 없음 · 1 하트 줄만 · 2 떠오르는 하트까지 — 상호작용 동작이 시작되면 띄운다.</summary>
+    private static int _heartsPending;
+
+    /// <summary>동작 그림 전체에서 고양이가 가장 높이 올라가는 줄의 화면 y(첫 걸음 자리 기준 — 일어서는 동작이면 선 머리 위).</summary>
+    private static int ClipTop(ClipArt a)
+    {
+        int W = a.CellW * a.Info.Frames, minY = a.CellH;
+        for (int y = 0; y < minY; y++)
+            for (int x = 0; x < W; x++)
+                if ((a.Px[y * W + x] >> 24) > 64) { minY = y; break; }
+        double k = a.CellW / (double)a.Info.CellW;
+        return WinY + _sitBot - (int)Math.Round(a.Info.FeetY * k) + minY;
+    }
+
     private static void StopClip()
     {
+        _heartsPending = 0;
         _clipGen++; _clipLoading = false; _ready = null; _wantFront = false;
         _peekOn = false; _sink = 0; _lean = 0; _squash = 1.0;   // 숨기도 멈춘다(보일 때 다시 제자리)
         if (_clipOn) { StopTicks(); _clipOn = false; _arts = Array.Empty<ClipArt>(); }
@@ -600,7 +655,8 @@ internal static unsafe partial class CatWidget
 
     // ------------------------------------------------------------------ 시험 기록(사내판 WalkerTest 와 같은 줄 모양 — catseq.ps1 이 읽는다)
 
-    private static readonly string? LogPath = SeqTest || WalkTest || PeekTest || FullTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
+    private static readonly string? LogPath = SeqTest || WalkTest || PeekTest || FullTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log")
+        : Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp2 ? lp2 : null;   // 보통 시험 방식에서도 기록(키우기 시험)
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _logQ = new();
     private static long _logLastFlush, _lastTickTs;
     private static int _logFlushing, _pushN, _pushFail, _lateN;

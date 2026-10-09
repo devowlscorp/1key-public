@@ -24,7 +24,11 @@ internal sealed unsafe partial class App
     private bool LockedWalker => _lockedWalker && OnLockScreen && !_createMode && _cfg.HasMaster && !_recoveryOnly && !_exiting
         && !LockWidget.IsShown && !Native.IsWindowVisible(_hwnd);
 
-    private void SyncWalker() => CatWidget.SetWanted(WalkerWanted);
+    private void SyncWalker()
+    {
+        CatWidget.SetNames(_cfg.CatNameLight, _cfg.CatNameDark);   // 하트 옆 이름(설정)
+        CatWidget.SetWanted(WalkerWanted);
+    }
 
 
     /// <summary>목록 윗줄의 작은 마스코트 단추(위젯 모드를 켰을 때 (−) 자리): 창을 트레이로 내린다 — 그러면 마스코트가 나온다.</summary>
@@ -33,13 +37,35 @@ internal sealed unsafe partial class App
     private const int IdCatOpen = 3201, IdCatLock = 3202, IdCatSettings = 3203, IdCatHide = 3204, IdCatPet = 3211, IdCatTreat = 3212, IdCatPlay = 3213;
 
     /// <summary>
-    /// 고양이 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자: 고양이에 오른쪽 클릭으로 무언가 할 수 있게 — 사람과 주고받는 동작(쓰다듬기·츄르·놀아 주기)은
-    /// 그림이 오면 위에 더한다). 트레이 메뉴와 같은 Windows 메뉴: [1Key 열기] [지금 잠금](잠금이 풀려 있을 때) [설정…] / [고양이 숨기기].
-    /// 잠긴 채 위젯 모드면 [잠금 해제] / [고양이 숨기기].
+    /// 고양이 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자: 고양이에 오른쪽 클릭으로 무언가 할 수 있게): [쓰다듬기] [츄르 주기] [놀아 주기](밝은 고양이) /
+    /// [1Key 열기] [지금 잠금](잠금이 풀려 있을 때) [설정…] / [고양이 숨기기]. 잠긴 채 위젯 모드면 [잠금 해제] / [고양이 숨기기].
+    /// 0.5.16-C(사용자: Windows 메뉴가 고양이를 가린다 — 위쪽으로, 메인 화면처럼 입체적으로): 고양이 머리 위의 금속 판(CatMenu). 판을 못 띄우면 예전 Windows 메뉴.
     /// </summary>
     private void OnWalkerMenu(int gen)
     {
         if (!WalkerWanted || !CatWidget.AcceptClick(gen)) return;
+        if (CatWidget.ScreenRect(out Native.RECT cat))
+        {
+            bool lockedNow = LockedWalker;
+            var items = new List<CatMenu.Item>();
+            foreach (var (id, clip, label) in new[] { (IdCatPet, "I1", T.CatMenuPet), (IdCatTreat, "I2", T.CatMenuTreat), (IdCatPlay, "I3", T.CatMenuPlay) })
+                if (CatWidget.CanInteract(clip))
+                {
+                    int wait = CatGrowth.WaitMinutes(CatWidget.IsLight, clip);   // 키우기 점수를 다시 받을 때까지(동작은 지금도 한다)
+                    items.Add(new(id, label, wait > 0 ? T.CatMenuWait(wait) : ""));
+                }
+            if (items.Count > 0) items.Add(new(0, ""));
+            // 아래 버튼(0.5.18-B, 사용자: 짧게 — 열기 · 잠금 · 설정 · 숨기기, 2×2). 잠겨 있으면 열기(잠금 위젯) · 숨기기
+            items.Add(new(IdCatOpen, T.CatMenuOpen));
+            if (!lockedNow)
+            {
+                if (_cfg.HasMaster) items.Add(new(IdCatLock, T.CatMenuLock));
+                items.Add(new(IdCatSettings, T.CatMenuSettings));
+            }
+            items.Add(new(IdCatHide, T.CatMenuHide));
+            string title = CatWidget.IsLight ? _cfg.CatNameLight : _cfg.CatNameDark;   // 맨 위에 고양이 이름(설정, 비면 없음)
+            if (CatMenu.Show(items.ToArray(), cat, CatWidget.Dpi, !CatWidget.IsLight, cmd => OnWalkerCommand(cmd, gen), title)) return;
+        }
         nint menu = Native.CreatePopupMenu();
         if (menu == 0) return;
         try
@@ -61,28 +87,34 @@ internal sealed unsafe partial class App
             Native.GetCursorPos(out Native.POINT pt);
             Native.SetForegroundWindow(_hwnd);
             int cmd = Native.TrackPopupMenu(menu, Native.TPM_RIGHTBUTTON | Native.TPM_RETURNCMD | Native.TPM_BOTTOMALIGN, pt.x, pt.y, 0, _hwnd, 0);
-            if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestCatMenu", cmd);
-            switch (cmd)
-            {
-                case IdCatPet: CatWidget.Interact("I1"); break;
-                case IdCatTreat: CatWidget.Interact("I2"); break;
-                case IdCatPlay: CatWidget.Interact("I3"); break;
-                case IdCatOpen: OnWalkerClick(gen); break;
-                case IdCatLock: if (Unlocked) LockNow(); break;
-                case IdCatSettings: ShowMainWindow(); if (Unlocked && !OnLockScreen) ShowScreen(Screen.Settings); break;
-                case IdCatHide:
-                    _walkerHidden = true;
-                    SyncWalker();
-                    ShowBalloon(AppTitle, T.CatHiddenNote, Native.NIIF_INFO);
-                    break;
-            }
+            OnWalkerCommand(cmd, gen);
         }
         finally { Native.DestroyMenu(menu); }
     }
 
-    private void OnWalkerClick(int gen)
+    private void OnWalkerCommand(int cmd, int gen)
     {
-        if (!WalkerWanted || !CatWidget.AcceptClick(gen)) return;   // 그사이 잠김·끔·창이 보임·다시 보임(낡은 클릭)·환경 부적합이면 무시(Codex R83-2)
+        if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestCatMenu", cmd);
+        switch (cmd)
+        {
+            case IdCatPet: CatWidget.Interact("I1"); break;
+            case IdCatTreat: CatWidget.Interact("I2"); break;
+            case IdCatPlay: CatWidget.Interact("I3"); break;
+            case IdCatOpen: OnWalkerClick(gen, fromMenu: true); break;
+            case IdCatLock: if (Unlocked) LockNow(); break;
+            case IdCatSettings: ShowMainWindow(); if (Unlocked && !OnLockScreen) ShowScreen(Screen.Settings); break;
+            case IdCatHide:
+                _walkerHidden = true;
+                SyncWalker();
+                ShowBalloon(AppTitle, T.CatHiddenNote, Native.NIIF_INFO);
+                break;
+        }
+    }
+
+    private void OnWalkerClick(int gen, bool fromMenu = false)
+    {
+        // 메뉴에서 고른 [열기]는 고양이 클릭 검사를 다시 하지 않는다(메뉴 판이 닫힌 직후에는 앞 창이 없어 EnvOk 가 숨김으로 본다)
+        if (!WalkerWanted || (!fromMenu && !CatWidget.AcceptClick(gen))) return;   // 그사이 잠김·끔·창이 보임·다시 보임(낡은 클릭)·환경 부적합이면 무시(Codex R83-2)
         bool locked = LockedWalker;
         _lockedWalker = false;
         ShowMainWindow();   // 잠겨 있으면 잠금 위젯(ShowMainWindow → ShowLockWidget)

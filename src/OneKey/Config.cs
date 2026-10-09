@@ -113,6 +113,17 @@ internal sealed class Config
     public bool StartMinimized = true;
     /// <summary>창을 닫으면 작업 표시줄 위에 마스코트(선택, 기본 꺼짐). 예전 판이 이 설정 파일을 저장하면 이 값은 사라져 꺼짐으로 돌아간다(Codex 09:43 — 모르는 키는 보존하지 않음).</summary>
     public bool Walker;
+    /// <summary>작업 표시줄 고양이 이름(0.5.17-H, 2026-10-10 사용자: 설정에서 흰 고양이·검은 고양이 따로). 비면 이름 없음. <see cref="CleanCatName"/> 을 거친 값.</summary>
+    public string CatNameLight = "", CatNameDark = "";
+
+    /// <summary>고양이 이름: 줄바꿈·제어 문자 빼고 앞뒤 빈칸 없이 12자까지.</summary>
+    public static string CleanCatName(string s)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (char ch in s ?? "") if (!char.IsControl(ch)) sb.Append(ch);
+        string t = sb.ToString().Trim();
+        return t.Length > 12 ? t[..12].TrimEnd() : t;
+    }
     public bool RequireAdmin;
     public int KeyDelayMs = 20;      // 글자 사이 지연
     public int PreDelayMs = 80;      // 입력 시작 전 지연
@@ -256,6 +267,8 @@ internal sealed class Config
         sb.Append($"autostart={(AutoStart ? 1 : 0)}\n");
         sb.Append($"startmin={(StartMinimized ? 1 : 0)}\n");
         if (Walker) sb.Append("walker=1\n");
+        if (CatNameLight.Length > 0) sb.Append($"catname_light={CatNameLight}\n");
+        if (CatNameDark.Length > 0) sb.Append($"catname_dark={CatNameDark}\n");
         sb.Append($"admin={(RequireAdmin ? 1 : 0)}\n");
         sb.Append($"keydelay={KeyDelayMs}\n");
         sb.Append($"predelay={PreDelayMs}\n");
@@ -388,6 +401,8 @@ internal sealed class Config
                 case "autostart": AutoStart = val == "1"; break;
                 case "startmin": StartMinimized = val == "1"; break;
                 case "walker": Walker = val == "1"; break;
+            case "catname_light": CatNameLight = CleanCatName(val); break;
+            case "catname_dark": CatNameDark = CleanCatName(val); break;
                 case "admin": RequireAdmin = val == "1"; break;
                 case "keydelay": KeyDelayMs = Math.Clamp((int)ParseU(val), 0, 500); break;
                 case "predelay": PreDelayMs = Math.Clamp((int)ParseU(val), 0, 3000); break;

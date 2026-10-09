@@ -714,6 +714,25 @@ internal static unsafe class LockWidget
         }
         finally { GdipDeleteGraphics(g); }
         Push();
+        DumpFrame();
+    }
+
+    private static readonly string? DumpDir = SeqTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_LOCK_DUMP") : null;
+    private static int _dumpN;
+
+    /// <summary>시험 전용(ONEKEY_TEST_LOCK_SEQ=1 + ONEKEY_TEST_LOCK_DUMP=폴더): 그린 위젯 장 전체(미리 곱한 BGRA)와 그 장의 고양이 칸 번호 — 화면을 찍지 않고 떨림을 잰다. 처음 400장.</summary>
+    private static void DumpFrame()
+    {
+        if (DumpDir is null || DumpDir.Length == 0 || _bits == 0 || _dumpN >= 400) return;
+        try
+        {
+            Directory.CreateDirectory(DumpDir);
+            float mw = MasW;
+            using var f = File.Create(Path.Combine(DumpDir, $"f{_dumpN++:0000}.bgra"));
+            f.Write(System.Text.Encoding.ASCII.GetBytes($"{_cw} {_ch} {GreetCell()} {_frame} {S(W / 2 - mw / 2)} {S(MasTop)} {S(mw)} {S(MasH)} {Environment.TickCount64}\n"));
+            f.Write(new ReadOnlySpan<byte>((void*)_bits, _cw * _ch * 4));
+        }
+        catch { }
     }
 
     // ---- 마스코트 그늘: 그림 장의 투명도를 가우스로 흐려(σ = 흐림/2) 아래로 6px. 장마다 한 번 계산해 둔다(인사 중에도 가볍게)
@@ -1039,10 +1058,11 @@ internal static unsafe class LockWidget
                     {
                         GdipGetImageWidth(tw, out uint tsw); GdipGetImageHeight(tw, out uint tsh);
                         int tcw = (int)(tsw / (uint)nt);
-                        double sx = dw / (double)_spriteW;   // 정지 그림 칸 = 여백 + 그림 + 여백
-                        int px = (int)Math.Round(MascotGreet.Pad * sx), iw = Math.Max(1, (int)Math.Round((_spriteW - 2 * MascotGreet.Pad) * sx));
+                        // 0.5.17-E(사용자: 넓은 잠금 화면에서 야옹할 때 전체적으로 떨린다): 사이 장 칸에는 정지 그림 칸과 같은 여백이 들어 있다(gaze_tweens.py) —
+                        // 정지 그림과 똑같이 칸 전체를 정수 자리에 그린다. 예전에는 여백 없는 칸을 정지 그림 안쪽 실수 자리(5.7 px)에 그렸는데 GDI+ 가 자리를 정수로
+                        // 반올림해 사이 장이 0.5~0.7 px 오른쪽에 놓였고, 정지 그림 ↔ 사이 장이 바뀔 때마다 몸 전체가 반 화소씩 왔다 갔다 했다(lock_jitter.py)
                         for (int k = 0; k < nt; k++)
-                            GdipDrawImageRectRectI(sg, tw, (n + k) * dw + px, 0, iw, dh, k * tcw, 0, tcw, (int)tsh, 2, 0, 0, 0);
+                            GdipDrawImageRectRectI(sg, tw, (n + k) * dw, 0, dw, dh, k * tcw, 0, tcw, (int)tsh, 2, 0, 0, 0);
                         GdipDisposeImage(tw);
                         Frames = n + nt;
                     }

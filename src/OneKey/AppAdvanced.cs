@@ -192,6 +192,7 @@ internal sealed unsafe partial class App
             return;
         }
         ShowScreen(Screen.Settings);   // 들어온 화면(설정)으로(2026-10-06 사용자)
+        CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.Master);   // 고양이 보안 습관 보상(30일에 한 번)
         // 예전 비밀번호로 열리는 사본(.bak)이 있으면 지울지 묻는다(기본 아니요, 자동으로 지우지 않음 — 2026-10-05 보안 진단 후속)
         Config.BackupFile[] baks = Config.BackupFiles();   // 물을 때 본 목록만 지운다(S36-2)
         if (baks.Length > 0 && Msg(T.MasterBakAsk(baks.Length), AppTitle, Native.MB_YESNO | Native.MB_ICONQUESTION | Native.MB_DEFBUTTON2) == Native.IDYES)

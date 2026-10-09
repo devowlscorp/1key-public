@@ -259,6 +259,8 @@ internal sealed unsafe partial class App
             return;
         }
         _editDirty = false;
+        if (keep.Password.Length > 0 && e.Password.Length > 0 && e.Password != keep.Password)
+            CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.Password);   // 고양이 보안 습관 보상: 저장된 비밀번호를 바꿨다(하루 세 번까지)
         _quietHotkeyReport = true;
         try { ShowScreen(Screen.List); }   // 여기서 단축키가 다시 등록된다 (결과는 아래에서 한 번만 보여 준다)
         finally { _quietHotkeyReport = false; }
