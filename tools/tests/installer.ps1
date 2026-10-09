@@ -133,7 +133,7 @@ function RealState() {
 }
 function BuildSetup([string]$out, [string]$startDir) {
   if (Test-Path $out) { Remove-Item $out -Force }
-  if ($nsis) { & $nsis -V1 "-DVERSION=$ver" "-DTESTSUFFIX=.t" "-DTESTSTARTUP=$startDir" "-DSRC=$exe" "-DOUT=$out" ("-DICON=" + (Join-Path $repo "src\OneKey\app.ico")) (Join-Path $repo "installer\1Key.nsi") | Out-Null }
+  if ($nsis) { & $nsis -V1 "-DVERSION=$ver" ("-DVERNUM=" + ($ver -replace '-.*$', '')) "-DTESTSUFFIX=.t" "-DTESTSTARTUP=$startDir" "-DSRC=$exe" "-DOUT=$out" ("-DICON=" + (Join-Path $repo "src\OneKey\app.ico")) (Join-Path $repo "installer\1Key.nsi") | Out-Null }
 }
 
 $real0 = RealState

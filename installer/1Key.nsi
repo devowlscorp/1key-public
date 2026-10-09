@@ -423,6 +423,10 @@ Section "1Key"
     Call CleanupOld
   ${EndIf}
   !endif
+  ; 작업 표시줄에 고정한 1Key 아이콘을 새 그림으로(0.5.15-N, 2026-10-09 사용자: 설치해도 작업 표시줄 아이콘이 안 바뀜): 같은 경로의 exe 아이콘이
+  ; 바뀌어도 고정 항목은 캐시해 둔 그림을 계속 쓴다. 셸에 '이 파일이 바뀜' + '아이콘 연결 바뀜'을 알려 다시 읽게 한다(설정을 바꾸지 않는다)
+  System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x5, w "$INSTDIR\1Key.exe", p 0)'
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'
 SectionEnd
 
 Section "Uninstall"
