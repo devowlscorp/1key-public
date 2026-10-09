@@ -73,7 +73,9 @@ if __name__ == "__main__":
     meta = json.loads((chain / "chain.json").read_text(encoding="utf-8"))["frames"]
     labs = [lab for lab, _ in meta]
     m03 = labs.index("M03")
-    turn = list(range(0, m03))                       # M02 + seam
+    # 0.5.15-F (user: the stand-up-and-turn took 3.4 s each way): M02 at every second frame (2x, still even spacing - the way M08 was
+    # sped up), the 3-frame RIFE seam into the walk at full rate -> 29 frames, 1.8 s
+    turn = list(range(0, m03 - 3, 2)) + list(range(m03 - 3, m03))
     cycle = list(range(m03, m03 + 16))
     load_c = lambda ids: [np.asarray(Image.open(chain / "chain" / f"{i:04d}.png").convert("RGBA")) for i in ids]
     ref = bbox(load_c([0])[0])                       # front sit of the chain

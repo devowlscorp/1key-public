@@ -104,11 +104,14 @@ internal static unsafe partial class CatWidget
         if (_clipOn || _clipLoading || _clock != ClockPhase.None || _pressed || _hwnd == 0) { _wantFront = false; return; }
         if (SeqTest) { if (now >= _nextClipAt) StartClip(NextSeq()); return; }
         var dt = DateTime.Now;
-        if (!_light || now < _nextClipAt || (dt.Minute == 59 && dt.Second >= 20)) { _wantFront = false; return; }
+        if (_peekOn || now < _nextClipAt || (dt.Minute == 59 && dt.Second >= 20)) { _wantFront = false; return; }
+        if (PeekTest || !_light) { StartPeek(now); return; }   // 검은 고양이는 아직 동작 그림이 없어 숨기만(시선 그림으로 된다)
         _wantFront = true;
         if (_gaze != Center || _from != _gaze) return;
         _wantFront = false;
-        if ((WalkTest || _rnd.Next(100) < 55) && StartWalk()) return;
+        int pick = WalkTest ? 0 : _rnd.Next(100);
+        if (pick >= 85) { StartPeek(now); return; }                // 숨기 15 %
+        if (pick < 50 && StartWalk()) return;                      // 걷기 50 %
         if (WalkTest) { ScheduleNextClip(now); return; }
         var all = Clips();
         var rest = Enumerable.Range(0, all.Length).Where(i => !all[i].SeqOnly && i != _clipLast).ToArray();
@@ -118,7 +121,96 @@ internal static unsafe partial class CatWidget
 
     private static int NextSeq() { var all = Clips(); if (all.Length == 0) return -1; int i = _seqNext % all.Length; _seqNext = i + 1; return i; }
 
-    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest ? SeqGapMs : 5_000 + _rnd.Next(9_000));
+    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest ? SeqGapMs : _light ? 5_000 + _rnd.Next(9_000) : 15_000 + _rnd.Next(20_000));
+
+    // ------------------------------------------------------------------ 숨기(작업 표시줄 선 밑으로 쏙 — 눈만 내밀고 두리번거렸다가 올라온다)
+    // 사내판의 매달리기 자리(그림 없이 시선 그림으로 — 밝은·검은 고양이 모두). 틱마다 _sink(그림을 아래로 내린 px)와 시선만 바꾼다
+    internal static readonly bool PeekTest = Program.IsTestMode && !SeqTest && !WalkTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_PEEK") == "1";
+    // 0.5.15-G(사용자: 수직으로 가라앉아 이상, 눈이 살짝 가려짐 — 눈은 가려지면 안 된다): 웅크렸다가(세로 0.93배) 중력처럼 쏙 떨어지고 바닥에서 한 번
+    // 튀고, 두리번거릴 때는 그쪽으로 몸을 살짝 기울이고, 올라올 때는 빠르게 솟았다가 착지하며 한 번 웅크린다. 깊이는 눈 아래 끝 + 여유까지만
+    private const int PeekCrouchMs = 160, PeekDropMs = 240, PeekBounceMs = 200, PeekRiseMs = 260, PeekLandMs = 220;
+    private const int PeekDownMs = PeekCrouchMs + PeekDropMs + PeekBounceMs, PeekUpMs = PeekRiseMs + PeekLandMs;
+    private static bool _peekOn;
+    private static long _peekStart;
+    private static int _peekHold, _sink, _peekDepth, _lean;
+    private static double _squash = 1.0;
+    private static (int At, int Gaze)[] _peekLook = Array.Empty<(int, int)>();
+    private static int _peekCount, _peekLastGaze = -1;
+
+    private static void StartPeek(long now)
+    {
+        _wantFront = false;
+        if (_sitTop < 0) { ScheduleNextClip(now); return; }
+        // 눈 아래 끝 + 여유까지만 내려간다: 귀·눈은 늘 보인다
+        _peekDepth = Math.Max(1, _sitBot - (EyeBottom() + Math.Max(2, (int)Math.Round(3 * _dpi / 96.0))));
+        bool leftFirst = _rnd.Next(2) == 0;
+        int a = leftFirst ? 3 : 5, b = leftFirst ? 5 : 3;   // 왼쪽(3) / 오른쪽(5)
+        _peekLook = new[] { (0, Center), (500, a), (1300, Center), (1800, b), (2600, Center) };
+        _peekHold = PeekTest ? 3000 : 3000 + _rnd.Next(1500);
+        _peekStart = now; _peekOn = true; _sink = 0; _peekCount++;
+        LogLine($"peekstart depth {_peekDepth} hold {_peekHold} eyebottom {EyeBottom()} sitbot {_sitBot} downms {PeekDownMs} upms {PeekUpMs} look {string.Join(",", _peekLook.Select(l => $"{l.At}:{l.Gaze}"))}");
+        SetTick(FastMs);
+    }
+
+    /// <summary>정면 그림에서 눈(파란 눈동자)의 아래 끝 줄. 못 찾으면 앉은 키의 52 % 아래.</summary>
+    private static int EyeBottom()
+    {
+        int W = _w * Names.Length, bottom = -1;
+        uint* src = (uint*)_bits;
+        for (int y = 0; y < _h * 3 / 4; y++)
+            for (int x = 0; x < _w; x++)
+            {
+                uint p = src[y * W + Center * _w + x]; uint a = p >> 24;
+                if (a < 200) continue;
+                int r = (int)((p >> 16) & 255), g = (int)((p >> 8) & 255), b = (int)(p & 255);
+                if (b > r + 18 && b > g + 4) bottom = y;
+            }
+        return bottom >= 0 ? bottom : _sitTop + (_sitBot - _sitTop) * 52 / 100;
+    }
+
+    /// <summary>숨기 한 틱: 웅크리기 → 떨어지기(중력) → 튀기 → 그대로(두리번, 기울이기) → 솟기 → 착지 웅크리기. 그림이 바뀌었으면 true.</summary>
+    private static bool PeekTick(long now)
+    {
+        long t = now - _peekStart;
+        int s, lean = 0; double q = 1.0;
+        int d = _peekDepth, bounce = Math.Max(1, d / 6);
+        if (t < PeekCrouchMs) { double v = t / (double)PeekCrouchMs; q = 1 - 0.07 * Math.Sin(v * Math.PI / 2); s = 0; }                // 웅크린다
+        else if ((t -= PeekCrouchMs) < PeekDropMs) { double v = t / (double)PeekDropMs; s = (int)Math.Round(d * v * v); q = 0.93 + 0.07 * v; }   // 쏙(가속)
+        else if ((t -= PeekDropMs) < PeekBounceMs) { double v = t / (double)PeekBounceMs; s = d - (int)Math.Round(bounce * Math.Sin(v * Math.PI) * (1 - 0.5 * v)); }   // 바닥에서 위로 한 번 튄다(눈 아래 끝보다 더 내려가지 않는다)
+        else if ((t -= PeekBounceMs) < _peekHold)
+        {
+            s = d;
+            int g = _gaze;   // 지금 그리는 시선(섞기와 함께 바뀌게)
+            lean = g == 3 ? -Math.Max(1, _w / 24) : g == 5 ? Math.Max(1, _w / 24) : 0;   // 보는 쪽으로 살짝
+        }
+        else if ((t -= _peekHold) < PeekRiseMs) { double v = t / (double)PeekRiseMs; s = (int)Math.Round(d * (1 - (1 - (1 - v) * (1 - v)))); }   // 솟는다(감속)
+        else if ((t -= PeekRiseMs) < PeekLandMs) { double v = t / (double)PeekLandMs; s = 0; q = 1 - 0.06 * Math.Sin(v * Math.PI); }   // 착지하며 웅크렸다 편다
+        else { EndPeek(); return true; }
+        long tt = now - _peekStart;
+        if (s == _sink && _gaze == _peekLastGaze && lean == _lean && Math.Abs(q - _squash) < 0.002) return false;
+        bool moved = s != _sink || lean != _lean || Math.Abs(q - _squash) >= 0.002;
+        _sink = s; _lean = lean; _squash = q; _peekLastGaze = _gaze;
+        LogLine($"peek t {tt} sink {s} gaze {_gaze} lean {lean} squash {q:0.000}");
+        return moved;
+    }
+
+    /// <summary>숨는 동안의 시선: 내려가는 동안·올라오는 동안은 정면, 그 사이는 정해 둔 차례(왼쪽·정면·오른쪽·정면).</summary>
+    private static int PeekGaze(long now)
+    {
+        long t = now - _peekStart - PeekDownMs;
+        if (t < 0 || t >= _peekHold) return Center;
+        int g = Center;
+        foreach (var (at, gz) in _peekLook) if (t >= at) g = gz;
+        return g;
+    }
+
+    private static void EndPeek()
+    {
+        _peekOn = false; _sink = 0; _lean = 0; _squash = 1.0;
+        LogLine("peekend");
+        ScheduleNextClip(Environment.TickCount64);
+        SetProps();
+    }
 
     /// <summary>쉬는 동작(또는 차례 시험의 그림) 하나: 그 그림의 모든 장을 차례로, 제자리에서.</summary>
     private static void StartClip(int index)
@@ -295,6 +387,7 @@ internal static unsafe partial class CatWidget
     private static void StopClip()
     {
         _clipGen++; _clipLoading = false; _ready = null; _wantFront = false;
+        _peekOn = false; _sink = 0; _lean = 0; _squash = 1.0;   // 숨기도 멈춘다(보일 때 다시 제자리)
         if (_clipOn) { StopTicks(); _clipOn = false; _arts = Array.Empty<ClipArt>(); }
         FreeClipDib();
     }
@@ -414,7 +507,7 @@ internal static unsafe partial class CatWidget
 
     // ------------------------------------------------------------------ 시험 기록(사내판 WalkerTest 와 같은 줄 모양 — catseq.ps1 이 읽는다)
 
-    private static readonly string? LogPath = SeqTest || WalkTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
+    private static readonly string? LogPath = SeqTest || WalkTest || PeekTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_LOG") is { Length: > 0 } lp ? lp : Path.Combine(Path.GetTempPath(), "1Key-cat-timing.log") : null;
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _logQ = new();
     private static long _logLastFlush, _lastTickTs;
     private static int _logFlushing, _pushN, _pushFail, _lateN;
