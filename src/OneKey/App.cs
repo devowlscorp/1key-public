@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.15-Q";
+    public const string Version = "0.5.15-W";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -141,6 +141,8 @@ internal sealed unsafe partial class App
         public (int Cx, int Y, int D)? Hero;
         /// <summary>고양이 그림(왼쪽 x, 위 y, 높이 — 작업 표시줄 고양이와 같은 그림, 테마 색). 논리 px, 바탕 그림에 그린다.</summary>
         public (int X, int Y, int H)? Pic;
+        /// <summary>Pic 자리에 그릴 그림(빌드에 든 PNG 이름). 비었으면 고양이(테마 색).</summary>
+        public string PicName = "";
         public readonly List<(int X, int Y, int W, int H, bool OnCard)> Fields = new();
         public readonly List<nint> FieldEdits = new();   // Fields 와 같은 순서의 입력칸(포커스면 강조 테두리)   // 입력 상자 (카드 위: 연회색 채움 / 바탕 위: 흰색 + 테두리)
         public readonly List<(int X, int Y, int W)> Separators = new();          // 카드 안 구분선

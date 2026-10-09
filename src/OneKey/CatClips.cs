@@ -29,8 +29,9 @@ internal static unsafe partial class CatWidget
     private const int ClipTickMs = 62, BlendFrames = 3, SeqGapMs = 600;
     private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
     /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
-    /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).</summary>
-    private const double WalkStripPx = 2.95;
+    /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).
+    /// 0.5.15-R: 옆모습 그림이 정면보다 작게 그려져 있어(사용자: 커졌다 작아졌다) 걷기를 1.16배로 키웠다 → 보폭도 1.16배(3.42).</summary>
+    private const double WalkStripPx = 3.42;
     private const int WalkCycle = 16;
 
     private static ClipInfo[]? _clips;
@@ -112,8 +113,9 @@ internal static unsafe partial class CatWidget
         if (_gaze != Center || _from != _gaze) return;
         _wantFront = false;
         int pick = WalkTest ? 0 : _rnd.Next(100);
-        if (pick >= 85) { StartPeek(now); return; }                // 숨기 15 %
-        if (pick < 50 && StartWalk()) return;                      // 걷기 50 %
+        // 0.5.15-R(2026-10-09 사용자: 웅크리고 앉아 있는 시간이 너무 많다, 좀 돌아다니게): 숨기 15 → 10 %, 걷기 50 → 65 %, 쉬는 동작 25 %
+        if (pick >= 90) { StartPeek(now); return; }                // 숨기 10 %
+        if (pick < 65 && StartWalk()) return;                      // 걷기 65 %
         if (WalkTest) { ScheduleNextClip(now); return; }
         var all = Clips();
         var rest = Enumerable.Range(0, all.Length).Where(i => !all[i].SeqOnly && i != _clipLast).ToArray();
@@ -123,7 +125,7 @@ internal static unsafe partial class CatWidget
 
     private static int NextSeq() { var all = Clips(); if (all.Length == 0) return -1; int i = _seqNext % all.Length; _seqNext = i + 1; return i; }
 
-    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest ? SeqGapMs : _light ? 5_000 + _rnd.Next(9_000) : 15_000 + _rnd.Next(20_000));
+    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest ? SeqGapMs : _light ? 2_500 + _rnd.Next(4_500) : 15_000 + _rnd.Next(20_000));   // 동작 사이 쉬기 2.5~7초(0.5.15-R, 5~14초에서)
 
     // ------------------------------------------------------------------ 숨기(작업 표시줄 선 밑으로 쏙 — 눈만 내밀고 두리번거렸다가 올라온다)
     // 사내판의 매달리기 자리(그림 없이 시선 그림으로 — 밝은·검은 고양이 모두). 틱마다 _sink(그림을 아래로 내린 px)와 시선만 바꾼다
@@ -255,7 +257,7 @@ internal static unsafe partial class CatWidget
             if ((dir < 0 ? roomL : roomR) < cyclePx) dir = -dir;
         }
         int r = _rnd.Next(100);
-        int cycles = r < 20 ? 2 + _rnd.Next(2) : r < 70 ? 4 + _rnd.Next(3) : 7 + _rnd.Next(3);   // 돌아서기·돌아오기가 3.4초씩이라 걷는 쪽을 길게
+        int cycles = r < 20 ? 3 + _rnd.Next(2) : r < 70 ? 5 + _rnd.Next(3) : 8 + _rnd.Next(3);   // 0.5.15-R: 한 걸음씩 더   // 돌아서기·돌아오기가 3.4초씩이라 걷는 쪽을 길게
         cycles = Math.Max(1, Math.Min(cycles, (int)Math.Floor((dir < 0 ? roomL : roomR) / cyclePx)));
         if (WalkTest) cycles = Math.Min(cycles, 2);
         bool m = dir < 0;

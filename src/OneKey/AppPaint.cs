@@ -182,7 +182,7 @@ internal sealed unsafe partial class App
         }
         if (_page.Pic is { } pic)   // 고양이 그림(작업 표시줄 고양이와 같은 그림, 테마 색)
         {
-            nint img = CatWidget.LoadPng(Theme.IsDark ? "cat_dark_center.png" : "cat_light_center.png");
+            nint img = CatWidget.LoadPng(_page.PicName.Length > 0 ? _page.PicName : Theme.IsDark ? "cat_dark_center.png" : "cat_light_center.png");
             if (img != 0) { Gdiplus.DrawImageSmooth(dc, img, (int)Math.Round(pic.X * k), Yp(pic.Y), (int)Math.Round(pic.H * k), (int)Math.Round(pic.H * k)); CatWidget.FreeImage(img); }
         }
         if (!_page.ListHeader) return;

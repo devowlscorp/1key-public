@@ -499,7 +499,10 @@ internal static unsafe class MetalUi
             Metal.RRect(s, tx + col, ty + 10 * k, Math.Max(1, Math.Round(k)), th - 20 * k, 0, Metal.Divider(dark));
             bool noKey = key.Length == 0;
             Text(dc, 10, false, noKey ? T.ListTitle : mod, Metal.InkSub(dark), tx + 2 * k, ty + 9.25 * k, tx + col - 2 * k, ty + 23.75 * k, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
-            Text(dc, 16, true, noKey ? "—" : key, noKey ? Metal.InkSub(dark) : Metal.Ink(dark), tx, ty + 24.75 * k, tx + col, ty + 47.9 * k, Native.DT_CENTER | Native.DT_VCENTER);
+            // 키 이름이 칸보다 길면(ScrollLock·PrintScreen 등, 2026-10-09 사용자: 왼쪽 단축키 이름이 잘림) 들어갈 때까지 글자를 줄인다(16 → 11)
+            int keySize = 16;
+            if (!noKey) while (keySize > 11 && TextWidth(dc, keySize, true, key) > col - 8 * k) keySize--;
+            Text(dc, keySize, true, noKey ? "—" : key, noKey ? Metal.InkSub(dark) : Metal.Ink(dark), tx, ty + 24.75 * k, tx + col, ty + 47.9 * k, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
             double x = tx + col + 1 + 14 * k, right = w - 6 * k;
             if ((style & Row.EditHint) != 0 && enabled && (hot || focus || Native.GetFocus() == hwnd))
             {

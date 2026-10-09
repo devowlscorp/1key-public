@@ -28,6 +28,12 @@ internal static unsafe partial class CatWidget
     private static int _w, _h;
     // 내보낼 그림(_w × _h)
     private static nint _xmem, _xdib, _xold, _xbits;
+    // 고개 돌리기 사이 장(0.5.15-R, 2026-10-09 사용자: "고개를 돌릴 때 딱딱 끊어지고 잔상도 있다" — 두 시선 그림을 0.16초 겹쳐 바꿨다):
+    // 이웃한 두 시선(가로·세로·대각 한 칸) 20쌍마다 RIFE 사이 장 3장(1/4·2/4·3/4) = 60칸 띠(cat_<테마>_tw.png, work/cat-motions/flf/gaze_tweens.py).
+    // 멀리 돌 때는 한 칸씩 지나간다(왼쪽 → 정면 → 오른쪽). 한 칸 = 사이 3장 + 도착 그림, 장마다 TweenStepMs. 띠가 없으면 예전처럼 섞기
+    private static nint _tmem, _tdib, _told, _tbits;
+    private const int TweenCells = 60, TweenStepMs = 40;
+    private static int[] _seq = Array.Empty<int>();   // 0..8 = 시선 그림, -1-i = 사이 장 i
     private static Native.RECT _work;
     private static int _gaze = Center, _from = Center, _pending = -1;
     private static long _fadeStart, _lastMove, _lastCheck;
@@ -222,6 +228,75 @@ internal static unsafe partial class CatWidget
 
     // ------------------------------------------------------------------ 그림
 
+    /// <summary>쌍 번호: a &lt; b 이고 두 칸이 체비쇼프 거리 1 인 쌍을 (a, b) 차례로 센 번호(gaze_tweens.py 의 PAIRS 와 같다). 이웃이 아니면 -1.</summary>
+    private static readonly int[] TweenPair = MakeTweenPairs();
+    private static int[] MakeTweenPairs()
+    {
+        var t = new int[81]; Array.Fill(t, -1); int n = 0;
+        for (int a = 0; a < 9; a++)
+            for (int b = a + 1; b < 9; b++)
+                if (Math.Max(Math.Abs(a / 3 - b / 3), Math.Abs(a % 3 - b % 3)) == 1) { t[a * 9 + b] = t[b * 9 + a] = n++; }
+        return t;
+    }
+
+    /// <summary>from → to 로 고개를 돌리는 장들: 한 칸씩(가로·세로 함께 움직여 대각도 한 칸) 사이 3장 + 도착 시선. 사이 장 띠가 없으면 빈 배열.</summary>
+    private static int[] TweenPath(int from, int to)
+    {
+        if (_tbits == 0 || from == to) return Array.Empty<int>();
+        var seq = new List<int>();
+        int cur = from;
+        while (cur != to)
+        {
+            int r = cur / 3 + Math.Sign(to / 3 - cur / 3), c = cur % 3 + Math.Sign(to % 3 - cur % 3), next = r * 3 + c;
+            int p = TweenPair[cur * 9 + next];
+            if (p < 0) return Array.Empty<int>();
+            for (int j = 0; j < 3; j++) seq.Add(-1 - (3 * p + (cur < next ? j : 2 - j)));
+            seq.Add(next);
+            cur = next;
+        }
+        return seq.ToArray();
+    }
+
+    /// <summary>시선을 바꾸는 데 걸리는 시간: 사이 장이 있으면 장 수 × TweenStepMs, 없으면 섞기 FadeMs.</summary>
+    private static int TransMs => _seq.Length > 0 ? _seq.Length * TweenStepMs : FadeMs;
+
+    /// <summary>사이 장 띠(60칸)를 표시 크기(_w × _h)로 줄여 따로 둔다. 없거나 실패하면 _tbits = 0(섞기로 돌아간다).</summary>
+    private static void BuildTweens(string th)
+    {
+        nint img = 0, bmp = 0, g = 0;
+        try
+        {
+            if ((img = LoadPng($"cat_{th}_tw.png")) == 0) return;
+            GdipGetImageWidth(img, out uint sw); GdipGetImageHeight(img, out uint sh);
+            if (sw < TweenCells || sh == 0) return;
+            int cw = (int)(sw / TweenCells), TW = _w * TweenCells;
+            if (!MakeDib(TW, _h, out _tmem, out _tdib, out _told, out _tbits)) { _tbits = 0; return; }
+            if (GdipCreateBitmapFromScan0(TW, _h, TW * 4, 0xE200B /* PixelFormat32bppPARGB */, _tbits, out bmp) != 0 || bmp == 0) { FreeTweens(); return; }
+            if (GdipGetImageGraphicsContext(bmp, out g) != 0) { FreeTweens(); return; }
+            GdipSetInterpolationMode(g, 7 /* HighQualityBicubic */);
+            GdipSetPixelOffsetMode(g, 2 /* HighQuality */);
+            GdipGraphicsClear(g, 0);
+            for (int i = 0; i < TweenCells; i++)
+                GdipDrawImageRectRectI(g, img, i * _w, 0, _w, _h, i * cw, 0, cw, (int)sh, 2 /* UnitPixel */, 0, 0, 0);
+        }
+        catch { FreeTweens(); }
+        finally
+        {
+            if (g != 0) GdipDeleteGraphics(g);
+            if (bmp != 0) GdipDisposeImage(bmp);
+            if (img != 0) GdipDisposeImage(img);
+        }
+    }
+
+    private static void FreeTweens()
+    {
+        if (_tmem != 0 && _told != 0) Native.SelectObject(_tmem, _told);
+        if (_tdib != 0) Native.DeleteObject(_tdib);
+        if (_tmem != 0) Native.DeleteDC(_tmem);
+        _tmem = _tdib = _told = _tbits = 0;
+        _seq = Array.Empty<int>();
+    }
+
     /// <summary>테마에 맞는 9장을 표시 크기(높이 HeightLogical)로 줄여 한 띠에. 원본은 바로 해제.</summary>
     private static bool BuildArt()
     {
@@ -252,6 +327,7 @@ internal static unsafe partial class CatWidget
             GdipDeleteGraphics(g); g = 0;
             GdipDisposeImage(bmp); bmp = 0;
             if (!MakeDib(_w, _h, out _xmem, out _xdib, out _xold, out _xbits)) return false;
+            BuildTweens(th);
             MeasureSit();   // 동작 그림을 앉은 고양이에 맞춘다(CatClips.cs)
             ok = true;
             return true;
@@ -291,6 +367,7 @@ internal static unsafe partial class CatWidget
         if (_dib != 0) Native.DeleteObject(_dib);
         if (_mem != 0) Native.DeleteDC(_mem);
         _mem = _dib = _old = _bits = 0;
+        FreeTweens();
         _dpi = 0;
     }
 
@@ -318,10 +395,20 @@ internal static unsafe partial class CatWidget
     {
         if (_bits == 0 || _xbits == 0) return false;
         long since = Environment.TickCount64 - _fadeStart;
-        bool fade = _from != _gaze && since < FadeMs;
-        uint t = fade ? (uint)(since * 256 / FadeMs) : 256, u = 256 - t;
-        int W = _w * Names.Length;
+        // 고개 돌리기: 사이 장이 있으면 지금 장 하나를 그대로(섞지 않는다 — 두 얼굴이 겹쳐 보이던 잔상), 없으면 예전처럼 두 그림을 섞는다
+        int cell = _gaze, stride = _w * Names.Length;
         uint* src = (uint*)_bits, o = (uint*)_xbits;
+        bool tween = _from != _gaze && _seq.Length > 0 && _tbits != 0;
+        if (tween)
+        {
+            int code = _seq[(int)Math.Min(_seq.Length - 1, Math.Max(0, since / TweenStepMs))];
+            if (code < 0) { src = (uint*)_tbits; stride = _w * TweenCells; cell = -1 - code; }
+            else cell = code;
+        }
+        bool fade = !tween && _from != _gaze && since < FadeMs;
+        uint t = fade ? (uint)(since * 256 / FadeMs) : 256, u = 256 - t;
+        int W = stride;
+        uint* gz = (uint*)_bits; int GW = _w * Names.Length;
         // 숨는 동안 자르는 선: 처음에는 창 아래 끝(앞발이 작업 표시줄과 겹친 그대로), 내려가기 시작하면 작업 표시줄 위 선까지 올라온다(그 밑으로 숨는다)
         int cutY = _sink <= 0 ? _h : _h - (int)Math.Round(SitSinkPx * Math.Min(1.0, _sink / (double)Math.Max(1, SitSinkPx)));
         for (int y = 0; y < _h; y++)
@@ -330,7 +417,7 @@ internal static unsafe partial class CatWidget
             // (1 = 그대로, 웅크리면 1 보다 작게), 옆으로 _lean 만큼(두리번거릴 때 그쪽으로 몸을 살짝)
             int sy = _squash == 1.0 ? y - _sink : _h - 1 - (int)Math.Round((_h - 1 - (y - _sink)) / _squash);
             if (sy < 0 || sy >= _h || y >= cutY) { new Span<uint>(o + y * _w, _w).Clear(); continue; }
-            uint* b = src + sy * W + _gaze * _w, a = src + sy * W + _from * _w, d = o + y * _w;
+            uint* b = src + sy * W + cell * _w, a = gz + sy * GW + _from * _w, d = o + y * _w;
             if (_lean != 0)
             {
                 for (int x = 0; x < _w; x++)
@@ -399,13 +486,13 @@ internal static unsafe partial class CatWidget
         int g = GazeNow(now);
         bool fading = _from != _gaze;   // 섞는 중에는 새 시선을 받지 않는다(끝나면 다음 틱에)
         if (g == _gaze) _pending = -1;
-        else if (!fading && (g == _pending || _clock != ClockPhase.None)) { _from = _gaze; _gaze = g; _fadeStart = now; _pending = -1; }
+        else if (!fading && (g == _pending || _clock != ClockPhase.None)) { _from = _gaze; _gaze = g; _fadeStart = now; _pending = -1; _seq = TweenPath(_from, _gaze); }
         else if (!fading) _pending = g;
         bool anim = _from != _gaze;
         if (anim || peekMoved)
         {
             Render();   // 섞기가 끝난 시각이면 Compose 가 새 그림만 그린다
-            if (anim && now - _fadeStart >= FadeMs) _from = _gaze;
+            if (anim && now - _fadeStart >= TransMs) _from = _gaze;
         }
         SetTick(anim || _peekOn || _clock != ClockPhase.None ? FastMs : GazeMs);
         if (!anim && !_peekOn && _clock == ClockPhase.None) MaybeStartClip(now);   // 정시 시계 앞(:59:20 부터)에는 시작하지 않는다(MaybeStartClip)
@@ -590,6 +677,11 @@ internal static unsafe partial class CatWidget
                     }
                     return 0;
                 }
+                case 0x0204:             // WM_RBUTTONDOWN
+                    return 0;
+                case 0x0205:             // WM_RBUTTONUP: 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자) — 앱이 메뉴를 띄운다(lParam 1)
+                    if (_shown && _owner != 0 && !_pressed && EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 1);
+                    return 0;
                 case 0x0215:             // WM_CAPTURECHANGED
                     _pressed = false;
                     return 0;

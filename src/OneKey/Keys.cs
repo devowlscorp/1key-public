@@ -6,6 +6,14 @@ internal static class Keys
     /// <summary>(가상 키 코드, 표시 이름) 목록. 첫 항목은 "없음".</summary>
     public static readonly (uint Vk, string Name)[] All = Build();
 
+    /// <summary>목록 조각의 단축키 칸에 쓰는 짧은 이름 — 키보드에 새겨진 약어(2026-10-09 사용자: ScrollLock·PrintScreen 은 ScrLk·PrtSc 처럼).
+    /// 칸이 좁아 긴 이름이 잘렸다. 저장 값·편집 화면·읽기 프로그램 이름은 그대로 긴 이름.</summary>
+    public static string Short(string name) => name switch
+    {
+        "PrintScreen" => "PrtSc", "ScrollLock" => "ScrLk", "NumLock" => "NumLk", "PageUp" => "PgUp", "PageDown" => "PgDn",
+        "Insert" => "Ins", "Delete" => "Del", "Backspace" => "Bksp", _ => name,
+    };
+
     private static (uint, string)[] Build()
     {
         var list = new List<(uint, string)> { (0u, "") };   // 이름이 언어에 따라 바뀌는 키(없음·숫자패드·메뉴)는 NameOf 가 그때 언어로 만든다

@@ -117,7 +117,7 @@ internal sealed unsafe partial class App
             // 탭 순서: 행 → 그 행의 [입력].
             int wy = y - MetalUi.TileMarginTop, rx = tileX - MetalUi.TileMarginX, bx = tileX + tileW + MetalUi.TileMarginX - zoneW;
             nint r = Make(Row.ClassName, s.DisplayName(i), Row.Tile | Row.SquareRight | Row.EditHint | Native.WS_TABSTOP, rx, wy, bx - rx, MetalUi.TileWinH, IdRowSlot + i);
-            if (r != 0) Row.SetPlate(r, s.DisplayName(i), plateSub, mod, key);
+            if (r != 0) Row.SetPlate(r, s.DisplayName(i), plateSub, mod, Keys.Short(key));
             nint b = Button(IdRowInput + i, T.CommonInput, Btn.PillInput, bx, wy, zoneW, MetalUi.TileWinH);
             if (b != 0 && !s.HasPassword) Native.EnableWindow(b, false);   // 내용이 없는 항목은 넣을 것이 없다
             if (r != 0 && b != 0) { Ctl.Partner[r] = b; Ctl.Partner[b] = r; }   // 행이나 버튼 어느 쪽에 마우스가 있어도 조각 전체 강조
@@ -148,7 +148,8 @@ internal sealed unsafe partial class App
         if (used.Count == 0)
             y = Footer(T.ListIntro, y);
 
-        // 아래 줄(시안): 왼쪽 [+ 추가] 알약, 오른쪽 "설정 ›" 글 링크. 버튼 id 는 예전 그대로(IdRowAdd · IdRowSettings — 하네스·포커스 규약)
+        // 아래 줄(시안): 왼쪽 [+ 추가] 알약, 오른쪽 [설정] 알약(0.5.15-R, 2026-10-09 사용자: 설정 진입 버튼만 다른 버튼과 달리 글 링크 — 시안의 "설정 ›" 링크를
+        // [+ 추가]와 같은 알약으로). 버튼 id 는 예전 그대로(IdRowAdd · IdRowSettings — 하네스·포커스 규약)
         int by = y + 14;
         string addText = "+ " + T.ListAdd;
         int addW = LabelW(Theme.Sized(13, true), addText) + 36;
@@ -157,8 +158,8 @@ internal sealed unsafe partial class App
         var draft = _settingsDraft;
         bool draftDirty = draft is { } d0 && SettingsDiffer(d0);
         string setText = draftDirty ? T.ListSettings + " \u00B7 " + T.ListSettingsDirty : T.ListSettings;
-        int setW = Math.Min(WinW - 44 - addW - 16, LabelW(Theme.Sized(13, false), setText + " \u203A") + 24);
-        nint set = Button(IdRowSettings, setText, Btn.Borderless | Btn.Link, WinW - 22 + 12 - setW, by + 2, setW, 32);
+        int setW = Math.Min(WinW - 44 - addW - 16, BarPillW(setText, 72));
+        nint set = BarPill(IdRowSettings, setText, Btn.PillMain, WinW - 22 - setW, by, setW);
         if (set != 0 && !draftDirty) Tip(set, T.ListSettingsSummary);
         _page.Height = by + MetalUi.PillMainH + 16;
     }
