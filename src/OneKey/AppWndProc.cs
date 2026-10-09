@@ -184,7 +184,7 @@ internal sealed unsafe partial class App
                 return 0;
 
             case WM_WALKER_CLICK:
-                OnWalkerClick((int)wParam);
+                if (lParam == 1) OnWalkerMenu((int)wParam); else OnWalkerClick((int)wParam);
                 return 0;
 
             case Native.WM_TEST_GC:

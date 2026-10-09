@@ -598,6 +598,7 @@ internal sealed unsafe partial class App
     private void ShowMainWindow()
     {
         ReleaseChip();   // 본창을 다시 열면 입력 대기는 끝난다
+        _walkerHidden = false;   // 고양이 메뉴의 [고양이 숨기기]는 다음에 창을 열 때까지(AppWalker.cs)
         if (OnLockScreen && ShowLockWidget(activate: true)) { MarkActivity(); return; }   // 잠겨 있으면 마스코트 위젯(사용자가 연 경우만)
         Native.ShowWindow(_hwnd, Native.SW_RESTORE);
         Native.SetForegroundWindow(_hwnd);
