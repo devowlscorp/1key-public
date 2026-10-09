@@ -5,14 +5,18 @@ namespace OneKey;
 /// <summary>
 /// 후원 화면(2026-10-09 사용자: 사용성을 해치지 않고 거부감 없는 자리에). 설정 맨 아래 [후원하기 · 열기]에서만 들어온다 — 목록 머리줄·트레이 메뉴에
 /// 단추를 두지 않고, 저절로 뜨거나 다시 알리지 않는다. 화면을 그리는 데 네트워크를 쓰지 않는다(QR 은 빌드에 든 그림).
-/// 위에서부터: ① 고양이 + "1Key가 도움이 됐다면" + 한 문단 ② 휴대폰으로 후원 — 카카오페이 QR(흰 판, 어두운 테마에서도 흰 바탕),
-/// 브라우저에서 열기 [열기] ③ 아래 [닫기]. 열 수 있는 주소는 SupportLinks.Allowed 뿐(이어 붙인 주소 없음), 여는 길은 바로 실행의 웹 주소와 같다
+/// 위에서부터: ① 고양이 + "1Key가 도움이 됐다면" + 한 문단 ② GitHub 에서 별 주기 [열기](모든 언어 — 돈이 들지 않는 응원을 먼저)
+/// ③ 휴대폰으로 후원 — 카카오페이 QR(흰 판, 어두운 테마에서도 흰 바탕), 브라우저에서 열기 [열기]
+/// ④ 필요한 걸 사실 때(한국어 화면만 — 한국 서비스) 쿠팡·마이리얼트립 [자세히] → 확인 상자(경제적 이해관계 문구를 강조 줄로, 가는 곳,
+/// 1Key 는 아무것도 모으지 않음) [브라우저에서 열기]/[취소] ⑤ 아래 [닫기]. 제휴 링크는 상자를 거치지 않고는 열리지 않는다(문구를 먼저 보게).
+/// 열 수 있는 주소는 SupportLinks.Allowed 뿐(이어 붙인 주소 없음), 여는 길은 바로 실행의 웹 주소와 같다
 /// (기본 브라우저, Launcher — 관리자 권한 1Key 에서도 보통 권한으로). 시험 모드는 실제로 열지 않고 config 폴더 support-open.txt 에 적는다.
 /// Esc·‹·[닫기] = 설정으로.
 /// </summary>
 internal sealed unsafe partial class App
 {
     private const int IdSupBack = 2501, IdSupOpen = 2502, IdSupClose = 2503, IdRowSupport = 2504;
+    private const int IdSupCoupang = 2505, IdSupMyRealTrip = 2506, IdSupGitHub = 2507;
     private const int SupQrTile = 184;   // QR 흰 판(논리 px). 모듈은 늘 정수 픽셀(DPI 마다 다시 잼)
 
     private static bool[]? _qrMods;
@@ -41,7 +45,24 @@ internal sealed unsafe partial class App
         _page.Pic = (lx, top + (y - top - PicH) / 2, PicH);
         _page.Cards.Add((Mx, top, Mw, y - top));
 
-        // ② 휴대폰으로 후원
+        // 한 줄: 제목·설명 + 오른쪽 둥근 단추. 읽기 프로그램 이름 = "제목 — 설명"(무엇을 여는지 말한다)
+        int PillRow(int id, string title, string sub, string btn, int at)
+        {
+            int ow = LabelW(Theme.Sized(12, true), btn) + 28, textW = rx - lx - ow - 12;
+            Label(title, lx, at + 8, textW, 20, Theme.Sized(13.5, true), ink, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+            Label(sub, lx, at + 28, textW, 18, Theme.Sized(11.5, false), note, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+            nint b = SmallPill(id, btn, rx - ow, at + 6, ow);
+            if (b != 0) { CtlAcc.SetName(b, title + " — " + sub); Tip(b, sub); }
+            return at + MetalUi.SetRowH + 12;
+        }
+
+        // ② GitHub 에서 별 주기(모든 언어)
+        y += MetalUi.TileGap + 4;
+        top = y;
+        y = PillRow(IdSupGitHub, T.SupportGithub, T.SupportGithubNote, T.SetBtnOpen, y + 4) + 4;
+        _page.Cards.Add((Mx, top, Mw, y - top));
+
+        // ③ 휴대폰으로 후원
         y += MetalUi.TileGap + 4;
         top = y;
         y += 14;
@@ -60,14 +81,28 @@ internal sealed unsafe partial class App
         _page.Separators.Add((lx, y, rx - lx));
         y += 1;
         // 브라우저에서 열기 — 카카오페이 송금 페이지  [열기]
-        int ow = LabelW(Theme.Sized(12, true), T.SetBtnOpen) + 28;
-        int rowH = MetalUi.SetRowH + 12, textW = rx - lx - ow - 12;
-        Label(T.SupportBrowser, lx, y + 8, textW, 20, Theme.Sized(13.5, true), ink, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
-        Label(T.SupportBrowserNote, lx, y + 28, textW, 18, Theme.Sized(11.5, false), note, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
-        nint open = SmallPill(IdSupOpen, T.SetBtnOpen, rx - ow, y + 6, ow);
-        if (open != 0) { CtlAcc.SetName(open, T.SupportBrowser + " — " + T.SupportBrowserNote); Tip(open, T.SupportBrowserNote); }
-        y += rowH;
+        y = PillRow(IdSupOpen, T.SupportBrowser, T.SupportBrowserNote, T.SetBtnOpen, y);
         _page.Cards.Add((Mx, top, Mw, y - top));
+
+        // ④ 필요한 걸 사실 때(한국어 화면만): 제휴 링크 — [자세히]는 문구 상자를 먼저 띄운다
+        if (L.Current == Lang.Ko)
+        {
+            y += MetalUi.TileGap + 4;
+            top = y;
+            y += 14;
+            Label(T.SupportShop, lx, y, rx - lx, 22, Theme.Sized(13.5, true), ink, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS);
+            y += 24;
+            int sh = TextH(Theme.Sized(12, false), T.SupportShopNote, rx - lx) + 2;
+            Label(T.SupportShopNote, lx, y, rx - lx, sh, Theme.Sized(12, false), note, true, Native.SS_LEFT, vcenter: false);
+            y += sh + 8;
+            _page.Separators.Add((lx, y, rx - lx));
+            y += 1;
+            y = PillRow(IdSupCoupang, T.SupportCoupang, T.SupportCoupangNote, T.SupportBtnMore, y);
+            _page.Separators.Add((lx, y, rx - lx));
+            y += 1;
+            y = PillRow(IdSupMyRealTrip, T.SupportMrt, T.SupportMrtNote, T.SupportBtnMore, y);
+            _page.Cards.Add((Mx, top, Mw, y - top));
+        }
 
         MetalDial(metalTop, ref y);
         _page.BarTop = y;
@@ -89,9 +124,21 @@ internal sealed unsafe partial class App
             Native.SetPropW(_hwnd, "OneKeyTestSupportOpen", ++_testSupportOpen);
             return;
         }
-        var it = new LaunchItem { Id = "support", Kind = "url", Name = T.SupportKakao, Target = url, Browser = "default", Valid = true };
+        string name = which switch { SupportLinks.IxCoupang => T.SupportCoupang, SupportLinks.IxMyRealTrip => T.SupportMrt, SupportLinks.IxGitHub => "GitHub", _ => T.SupportKakao };
+        var it = new LaunchItem { Id = "support", Kind = "url", Name = name, Target = url, Browser = "default", Valid = true };
         if (Launcher.Unconsumed is int done and not 0) OnLaunchDone(done);
         if (Launcher.Start(it, 0, false, "", _hwnd, WM_LAUNCH_DONE) is null) LaunchToast(Launcher.Result.Busy, it.Name);
+    }
+
+    /// <summary>
+    /// 제휴 링크 [자세히]: 경제적 이해관계 문구(공정위 추천·보증 심사지침 — 쿠팡은 지정 문구 그대로, 마이리얼트립은 "수수료 지급"이 든 확정 표현)를
+    /// 강조 줄로 먼저 보이고, [브라우저에서 열기]를 눌렀을 때만 연다. 한국어 화면에서만(그 밖의 언어에는 단추가 없다).
+    /// </summary>
+    private void ShowAffiliate(int which)
+    {
+        if (_cur != Screen.Support || L.Current != Lang.Ko) return;
+        string body = which == SupportLinks.IxCoupang ? T.SupportCoupangBody : T.SupportMrtBody;
+        if (Dialog.Show(_hwnd, body, T.SupportTitle, Native.MB_OKCANCEL, okText: T.SupportBrowser) == 1) OpenSupportLink(which);
     }
 
     private int _testSupportOpen;

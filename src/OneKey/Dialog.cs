@@ -39,6 +39,9 @@ internal static unsafe class Dialog
     /// </summary>
     public const string WarnMark = "! ", TipMark = "> ", ArtMark = "@";
     private const int BulletIndent = 14;
+    /// <summary>주의·도움말 줄은 기호(아이콘 글꼴, 약 16px)가 글머리보다 넓다: 그만큼 더 들여 쓴다. 기호 칸과 글 칸이 겹치면
+    /// 기호 칸 바탕이 첫 글자를 덮는다(0.5.15-O: 제휴 상자의 "이 포스팅은"이 "기 포스팅은"처럼 보였다).</summary>
+    private const int MarkExtra = 6;
 
     private static nint Child(nint parent, string cls, string text, uint style, uint ex, int x, int y, int w, int h, int id, nint font)
     {
@@ -96,8 +99,9 @@ internal static unsafe class Dialog
             int x = S(Pad), cw = st.W - 2 * S(Pad);
             if (b.Bullet != 0)
             {
-                Native.SetWindowPos(b.Bullet, 0, x, top, st.Indent, Math.Min(b.H, S(20)), 0x0004 | 0x0010 | (show ? 0x0040u : 0x0080u));   // NOZORDER|NOACTIVATE|SHOW/HIDE
-                x += st.Indent; cw -= st.Indent;
+                int bi = b.Kind is 3 or 4 ? st.Indent + S(MarkExtra) : st.Indent;   // 주의·도움말 기호는 더 넓다
+                Native.SetWindowPos(b.Bullet, 0, x, top, bi, Math.Min(b.H, S(20)), 0x0004 | 0x0010 | (show ? 0x0040u : 0x0080u));   // NOZORDER|NOACTIVATE|SHOW/HIDE
+                x += bi; cw -= bi;
             }
             Native.SetWindowPos(b.Ctl, 0, x, top, cw, b.H, 0x0004 | 0x0010 | (show ? 0x0040u : 0x0080u));
             if (b.Kind == 1 && b.Section >= 0)
@@ -228,7 +232,7 @@ internal static unsafe class Dialog
             {
                 var b = blocks[i];
                 bool ind = b.Kind is KBullet or KWarn or KTip;
-                int hh = b.Kind == KArt ? S(HelpArt.Height) : Measure(b.Text, b.Kind == KHead ? Theme.FontStrong : Theme.FontBody, ind ? indent : 0);
+                int hh = b.Kind == KArt ? S(HelpArt.Height) : Measure(b.Text, b.Kind == KHead ? Theme.FontStrong : Theme.FontBody, !ind ? 0 : b.Kind is KWarn or KTip ? indent + S(MarkExtra) : indent);
                 if (foldable && b.Kind == KHead) hh = Math.Max(hh, S(HeadH));   // 접는 제목은 누르는 버튼이라 조금 높게
                 blocks[i] = (b.Text, b.Kind, hh);
                 if (foldable && b.Kind != KHead && sectionOf[i] > 0) continue;   // 처음에는 첫 섹션만 펼침
@@ -324,8 +328,9 @@ internal static unsafe class Dialog
                     else if (b.Kind is KWarn or KTip)
                     {
                         // 주의·도움말: 기호 자리에 경고·전구 표시(아이콘 글꼴), 본문은 그 색으로
-                        bullet = HelpArt.Create(hwnd, b.Kind == KWarn ? "mark:warn" : "mark:tip", bx0, by0, indent + S(4), Math.Min(b.H, S(20)));
-                        bx0 += indent; bw -= indent;
+                        int markW = indent + S(MarkExtra);
+                        bullet = HelpArt.Create(hwnd, b.Kind == KWarn ? "mark:warn" : "mark:tip", bx0, by0, markW, Math.Min(b.H, S(20)));
+                        bx0 += markW; bw -= markW;
                     }
                     if (b.Kind == KArt)
                     {
@@ -365,7 +370,7 @@ internal static unsafe class Dialog
             {
                 Native.MB_YESNO => new[] { (IDYES, T.CommonYes), (IDNO, T.CommonNo) },
                 Native.MB_YESNOCANCEL => new[] { (IDYES, T.CommonYes), (IDNO, T.CommonNo), (IDCANCEL, T.CommonCancel) },   // Esc·× = 취소(아니요가 아님)
-                Native.MB_OKCANCEL => new[] { (IDOK, T.CommonOk), (IDCANCEL, T.CommonCancel) },
+                Native.MB_OKCANCEL => new[] { (IDOK, okText), (IDCANCEL, T.CommonCancel) },   // okText: 예) 제휴 상자의 [브라우저에서 열기]
                 _ => extraText is null ? new[] { (IDOK, okText) } : new[] { (IDEXTRA, extraText), (IDOK, okText) },
             };
             int defIndex = (flags & Native.MB_DEFBUTTON2) != 0 && buttons.Length > 1 ? 1 : 0;
@@ -373,6 +378,7 @@ internal static unsafe class Dialog
             st.DefaultId = buttons[defIndex].Id;
             int by = h - S(Pad) - S(BtnH);
             int bx = w - S(Pad) - S(BtnW);
+            bool wideOk = (flags & 0xF) == Native.MB_OKCANCEL && okText != T.CommonOk;
             nint defHwnd = 0;
             for (int i = buttons.Length - 1; i >= 0; i--)
             {
@@ -380,7 +386,7 @@ internal static unsafe class Dialog
                 nint b;
                 fixed (char* bc = Btn.ClassName) fixed (char* bt = buttons[i].Text)
                 {
-                    int bw = buttons[i].Id == IDEXTRA ? S(BtnW + 40) : S(BtnW);   // 추가 버튼 글("라이선스 보기")은 더 길다
+                    int bw = buttons[i].Id == IDEXTRA ? S(BtnW + 40) : buttons[i].Id == IDOK && wideOk ? S(BtnW + 60) : S(BtnW);   // 추가 버튼 글("라이선스 보기")·확인/취소 상자의 바꾼 확인 글("브라우저에서 열기")은 더 길다
                     b = Native.CreateWindowExW(0, bc, bt, kind, bx + S(BtnW) - bw, by, bw, S(BtnH), hwnd, buttons[i].Id, Native.GetModuleHandleW(null), 0);
                     bx -= bw - S(BtnW);
                 }

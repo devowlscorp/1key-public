@@ -28,8 +28,9 @@ internal static unsafe partial class CatWidget
     internal static readonly bool WalkTest = Program.IsTestMode && !SeqTest && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_WALK") == "1";
     private const int ClipTickMs = 62, BlendFrames = 3, SeqGapMs = 600;
     private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
-    /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼. 앞발이 땅을 미는 빠르기(약 4.5)와 거의 움직이지 않는 뒷발 사이.</summary>
-    private const double WalkStripPx = 3.6;
+    /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
+    /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).</summary>
+    private const double WalkStripPx = 2.95;
     private const int WalkCycle = 16;
 
     private static ClipInfo[]? _clips;
