@@ -223,6 +223,35 @@ internal static unsafe class Gdiplus
         finally { GdipDeleteGraphics(g); }
     }
 
+    /// <summary>
+    /// 이미지를 한 색으로 칠한 실루엣(투명도 alpha 배)으로 그린다 — 고양이 앨범의 아직 못 본 칸·아직 안 된 단계(0.5.20). colorref 는 0x00BBGGRR.
+    /// </summary>
+    public static void DrawImageTinted(nint dc, nint img, int x, int y, int w, int h, uint colorref, float alpha)
+    {
+        if (img == 0 || w <= 0 || h <= 0 || GdipCreateFromHDC(dc, out nint g) != 0) return;
+        nint attr = 0;
+        try
+        {
+            GdipSetInterpolationMode(g, 7); GdipSetPixelOffsetMode(g, 4);
+            if (GdipCreateImageAttributes(out attr) != 0) return;
+            float* m = stackalloc float[25];
+            for (int i = 0; i < 25; i++) m[i] = 0;
+            m[18] = alpha;                                                                       // 알파 × alpha
+            m[20] = (colorref & 0xFF) / 255f; m[21] = ((colorref >> 8) & 0xFF) / 255f; m[22] = ((colorref >> 16) & 0xFF) / 255f;   // 색은 한 가지
+            m[24] = 1;
+            GdipSetImageAttributesColorMatrix(attr, 0, true, m, null, 0);
+            GdipGetImageWidth(img, out uint iw); GdipGetImageHeight(img, out uint ih);
+            GdipDrawImageRectRectI(g, img, x, y, w, h, 0, 0, (int)iw, (int)ih, UnitPixel, attr, 0, 0);
+        }
+        finally { if (attr != 0) GdipDisposeImageAttributes(attr); GdipDeleteGraphics(g); }
+    }
+
+    [DllImport("gdiplus.dll")] private static extern int GdipCreateImageAttributes(out nint attr);
+    [DllImport("gdiplus.dll")] private static extern int GdipDisposeImageAttributes(nint attr);
+    [DllImport("gdiplus.dll")] private static extern int GdipSetImageAttributesColorMatrix(nint attr, int type, bool enable, float* matrix, float* gray, int flags);
+    [DllImport("gdiplus.dll")] private static extern int GdipGetImageWidth(nint image, out uint w);
+    [DllImport("gdiplus.dll")] private static extern int GdipGetImageHeight(nint image, out uint h);
+    [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectRectI(nint graphics, nint image, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh, int unit, nint attr, nint cb, nint cbData);
     [DllImport("gdiplus.dll")] private static extern int GdipCreateBitmapFromScan0(int w, int h, int stride, int format, byte* scan0, out nint bitmap);
     [DllImport("gdiplus.dll")] private static extern int GdipDisposeImage(nint image);
     [DllImport("gdiplus.dll")] private static extern int GdipDrawImageRectI(nint graphics, nint image, int x, int y, int w, int h);

@@ -37,7 +37,43 @@ internal static class CatGrowth
     private static string FilePath => Path.Combine(Config.Dir, "cat-growth.txt");
 
     public enum Habit { Backup, Master, Password, AutoLock, Stamp, Break }
-    private static int _stampDay, _streak, _stampTotal;   // 마지막 도장 날(DateOnly.DayNumber) · 연속 일수 · 모두 몇 번
+    private static int _stampDay, _streak, _stampTotal;
+    private static int _introCount, _introDay; private static bool _clicked;   // 처음 말풍선(0.5.20): 보인 날 수 · 마지막 날 · 오른쪽 클릭을 해 봤나
+
+    /// <summary>"오른쪽 클릭하면 같이 놀 수 있어요" 를 오늘 보일까: 아직 한 번도 오른쪽 클릭하지 않았고, 서로 다른 날 세 번까지.</summary>
+    // 앨범(0.5.20, 2026-10-10 사용자 · Codex 그림 12장): 고양이가 그 장면을 처음 보여 준 날
+    public static readonly string[] AlbumKeys = { "wave", "groom", "belly", "meow", "wall", "stretch", "walk", "peek", "pet", "treat", "play", "stamp" };
+    private static readonly Dictionary<string, int> _seen = new();
+    public static bool IsSeen(string key) { Load(); return _seen.ContainsKey(key); }
+    public static int SeenCount { get { Load(); return AlbumKeys.Count(_seen.ContainsKey); } }
+    /// <summary>처음 본 장면이면 적어 두고 true.</summary>
+    public static bool MarkSeen(string key) { Load(); if (_seen.ContainsKey(key) || Array.IndexOf(AlbumKeys, key) < 0) return false; _seen[key] = TodayNumber(); Save(); return true; }
+    public static string? AlbumKeyOfClip(string clip) => clip switch
+    {
+        "M04" => "wave", "M05" => "groom", "M07" => "belly", "M08" => "meow", "M12" => "wall", "M17" => "stretch", "walk" => "walk", "I1" => "pet", "I2" => "treat", "I3" => "play", _ => null,
+    };
+    public static string AlbumName(string key) => key switch
+    {
+        "wave" => T.CatAlbumWave, "groom" => T.CatAlbumGroom, "belly" => T.CatAlbumBelly, "meow" => T.CatAlbumMeow, "wall" => T.CatAlbumWall, "stretch" => T.CatAlbumStretch,
+        "walk" => T.CatAlbumWalk, "peek" => T.CatAlbumPeek, "pet" => T.CatMenuPet, "treat" => T.CatMenuTreat, "play" => T.CatMenuPlay, "stamp" => T.CatAlbumStamp, _ => key,
+    };
+
+    public static bool IntroDue { get { Load(); return !_clicked && _introCount < 3 && _introDay != Today(); } }
+    public static void IntroShown() { Load(); _introCount++; _introDay = Today(); Save(); }
+    /// <summary>고양이를 오른쪽 클릭했다(말풍선은 다시 안 나온다).</summary>
+    public static void MarkClicked() { Load(); if (_clicked) return; _clicked = true; Save(); }
+
+    // 수첩(0.5.20): 지금 상태
+    public static int StampTotal { get { Load(); return _stampTotal; } }
+    public static int PasswordToday { get { Load(); return _pwDay == Today() ? _pwCount : 0; } }
+    /// <summary>그 보안 습관 점수를 다시 받을 때까지 남은 날(0 = 지금).</summary>
+    public static int WaitDays(Habit h)
+    {
+        Load();
+        long last = h == Habit.Backup ? _habBackup : h == Habit.Master ? _habMaster : 0, span = h == Habit.Backup ? 7 * Day : 30 * Day;
+        long left = last + span - NowMs();
+        return last == 0 || left <= 0 ? 0 : (int)Math.Ceiling(left / (double)Day);
+    }   // 마지막 도장 날(DateOnly.DayNumber) · 연속 일수 · 모두 몇 번
 
     /// <summary>오늘 출근 도장을 아직 안 찍었다.</summary>
     public static bool StampDue { get { Load(); return _stampDay != TodayNumber(); } }
@@ -191,6 +227,16 @@ internal static class CatGrowth
                 foreach (string line in File.ReadAllLines(FilePath))
                 {
                     string[] v = line.Trim().Split(' ');
+                    if (v.Length >= 1 && v[0] == "A")   // 앨범: A 이름:날 …
+                    {
+                        foreach (string kv in v.Skip(1)) { string[] p = kv.Split(':'); if (p.Length == 2 && int.TryParse(p[1], out int dn) && Array.IndexOf(AlbumKeys, p[0]) >= 0) _seen[p[0]] = dn; }
+                        continue;
+                    }
+                    if (v.Length >= 4 && v[0] == "T")   // 처음 말풍선: T 보인 수 마지막날 클릭함
+                    {
+                        int.TryParse(v[1], out _introCount); int.TryParse(v[2], out _introDay); _clicked = v[3] == "1";
+                        continue;
+                    }
                     if (v.Length >= 4 && v[0] == "S")   // 출근 도장: S 마지막날 연속 모두
                     {
                         int.TryParse(v[1], out _stampDay); int.TryParse(v[2], out _streak); int.TryParse(v[3], out _stampTotal);
@@ -222,6 +268,8 @@ internal static class CatGrowth
             while (DateOnly.FromDayNumber(y).DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) y--;
             _stampDay = y; _streak = tsk;
         }
+        if (Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_SEEN") is { Length: > 0 } ts2)   // 시험: 이미 본 앨범 장면(쉼표로)
+            foreach (string k in ts2.Split(',')) if (Array.IndexOf(AlbumKeys, k.Trim()) >= 0) _seen[k.Trim()] = TodayNumber();
         if (Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_HABIT") is { Length: > 0 } th)   // 시험: 보안 습관 보상을 처음에 받은 것처럼(쉼표로 여럿)
             foreach (string hn in th.Split(',')) if (Enum.TryParse(hn.Trim(), out Habit hh)) AwardHabit(true, hh);
     }
@@ -233,7 +281,7 @@ internal static class CatGrowth
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
             File.WriteAllText(FilePath, Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n");
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n");
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }

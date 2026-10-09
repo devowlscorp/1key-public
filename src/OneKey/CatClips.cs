@@ -255,6 +255,7 @@ internal static unsafe partial class CatWidget
         _peekLook = new[] { (0, Center), (500, a), (1300, Center), (1800, b), (2600, Center) };
         _peekHold = PeekTest ? 3000 : 3000 + _rnd.Next(1500);
         _peekStart = now; _peekOn = true; _sink = 0; _peekCount++;
+        if (!PeekTest && CatGrowth.MarkSeen("peek") && !CatMenu.IsOpen && !CatHearts.IsOpen) { ShowHearts(false, note: T.CatAlbumNew(CatGrowth.AlbumName("peek")), noteOnly: true); LogLine("album peek"); }
         LogLine($"peekstart depth {_peekDepth} hold {_peekHold} eyebottom {EyeBottom()} cutline {PeekLine()} downms {PeekDownMs} upms {PeekUpMs} look {string.Join(",", _peekLook.Select(l => $"{l.At}:{l.Gaze}"))}");
         SetTick(FastMs);
     }
@@ -481,7 +482,11 @@ internal static unsafe partial class CatWidget
         _arts = arts; _baseX = WinX;
         _clipOn = true; _clipFrame = -1;
         LogClipStart(_playName, _steps);
-        if (_heartsPending > 0 && _playName.StartsWith('I')) ShowHearts(_heartsPending == 2, ClipTop(arts[0]));
+        // 앨범(0.5.20): 처음 보여 주는 장면이면 적어 두고 한 줄("앨범에 새 장면: 기지개") — 다른 축하(발도장·쉬자)가 떠 있으면 적기만
+        string albumNote = "";
+        if (!SeqTest && !WalkTest && !PeekTest && !FullTest && CatGrowth.AlbumKeyOfClip(_playName) is string ak && CatGrowth.MarkSeen(ak)) { albumNote = T.CatAlbumNew(CatGrowth.AlbumName(ak)); LogLine($"album {ak}"); }
+        if (_heartsPending > 0 && _playName.StartsWith('I')) ShowHearts(_heartsPending == 2, ClipTop(arts[0]), note: albumNote);
+        else if (albumNote.Length > 0 && !CatMenu.IsOpen && !CatHearts.IsOpen) ShowHearts(false, ClipTop(arts[0]), note: albumNote, noteOnly: true);
         _heartsPending = 0;
         if (!StartTicks(ClipTickMs)) { EndClip(); return; }
         _lastTickTs = Stopwatch.GetTimestamp();   // 첫 틱의 간격 = 시작부터(시작 멈춤 재기)
@@ -493,6 +498,7 @@ internal static unsafe partial class CatWidget
         long t0 = Stopwatch.GetTimestamp();
         NoteTickTiming();
         if (!_clipOn || _arts.Length == 0) { StopTicks(); return; }
+        if ((_clipFrame & 3) == 0) HoverTick(Environment.TickCount64);   // 동작 중에도 이름표(네 걸음마다)
         _clipFrame++;
         if (_clipFrame >= _steps.Length) { EndClip(); LogTick(t0, "S"); return; }
         var s = _steps[_clipFrame];

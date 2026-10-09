@@ -42,7 +42,7 @@ internal sealed unsafe partial class App
     /// <summary>목록 윗줄의 작은 마스코트 단추(위젯 모드를 켰을 때 (−) 자리): 창을 트레이로 내린다 — 그러면 마스코트가 나온다.</summary>
     private bool WidgetButton => _cfg.Walker && _cfg.HasMaster;
 
-    private const int IdCatOpen = 3201, IdCatLock = 3202, IdCatSettings = 3203, IdCatHide = 3204, IdCatPet = 3211, IdCatTreat = 3212, IdCatPlay = 3213;
+    private const int IdCatOpen = 3201, IdCatLock = 3202, IdCatSettings = 3203, IdCatHide = 3204, IdCatPet = 3211, IdCatTreat = 3212, IdCatPlay = 3213, IdCatNote = 3214, IdCatGuide = 3215;
 
     /// <summary>
     /// 고양이 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자: 고양이에 오른쪽 클릭으로 무언가 할 수 있게): [쓰다듬기] [츄르 주기] [놀아 주기](밝은 고양이) /
@@ -52,6 +52,7 @@ internal sealed unsafe partial class App
     private void OnWalkerMenu(int gen)
     {
         if (!WalkerWanted || !CatWidget.AcceptClick(gen)) return;
+        CatGrowth.MarkClicked();   // 처음 말풍선은 이제 그만
         if (CatWidget.ScreenRect(out Native.RECT cat))
         {
             bool lockedNow = LockedWalker;
@@ -63,6 +64,10 @@ internal sealed unsafe partial class App
                     items.Add(new(id, label, wait > 0 ? T.CatMenuWait(wait) : ""));
                 }
             if (items.Count > 0) items.Add(new(0, ""));
+            // 수첩 · 안내(0.5.20, 2026-10-10 사용자: 지금 상태와 돌보는 방법을 메뉴에서) — 누르면 확인 상자처럼 뜨는 창
+            items.Add(new(IdCatNote, T.CatMenuNote));
+            items.Add(new(IdCatGuide, T.CatMenuGuide));
+            items.Add(new(0, ""));
             // 아래 버튼(0.5.18-B, 사용자: 짧게 — 열기 · 잠금 · 설정 · 숨기기, 2×2). 잠겨 있으면 열기(잠금 위젯) · 숨기기
             items.Add(new(IdCatOpen, T.CatMenuOpen));
             if (!lockedNow)
@@ -108,6 +113,8 @@ internal sealed unsafe partial class App
             case IdCatPet: CatWidget.Interact("I1"); break;
             case IdCatTreat: CatWidget.Interact("I2"); break;
             case IdCatPlay: CatWidget.Interact("I3"); break;
+            case IdCatNote: Dialog.Show(_hwnd, CatNoteText(), T.CatNoteTitle, Native.MB_OK, width: 440, okText: T.CommonClose, fold: false); break;
+            case IdCatGuide: Dialog.Show(_hwnd, T.HelpCat, T.CatGuideTitle, Native.MB_OK, width: 460, okText: T.CommonClose, fold: false); break;
             case IdCatOpen: OnWalkerClick(gen, fromMenu: true); break;
             case IdCatLock: if (Unlocked) LockNow(); break;
             case IdCatSettings: ShowMainWindow(); if (Unlocked && !OnLockScreen) ShowScreen(Screen.Settings); break;
@@ -117,6 +124,48 @@ internal sealed unsafe partial class App
                 ShowBalloon(AppTitle, T.CatHiddenNote, Native.NIIF_INFO);
                 break;
         }
+    }
+
+    /// <summary>
+    /// 고양이 수첩(0.5.20): 지금 상태 한 장 — 이름 · 단계, 하트 · 점수 · 크기, 다음 단계까지, 오늘(출근 도장 · 놀이 · 비밀번호 · 백업 · 마스터), 알아 두기.
+    /// 앨범 그림이 오면 같은 자리에 앨범을 더한다(work/reviews 앨범 요청).
+    /// </summary>
+    private string CatNoteText()
+    {
+        bool light = CatWidget.IsLight, grows = CatWidget.HasInteractArt(light);
+        string name = light ? _cfg.CatNameLight : _cfg.CatNameDark;
+        int score = CatGrowth.Score(light), step = CatGrowth.Step(light);
+        double level = CatGrowth.Level(light);
+        var sb = new System.Text.StringBuilder();
+        sb.Append("## ").Append(name.Length > 0 ? name + " \u00B7 " : "").Append(CatGrowth.StageName(step)).Append('\n');
+        if (grows) sb.Append(Dialog.ArtMark).Append("stages:").Append(step).Append('\n');   // 빵 여섯 개(지금 단계는 크게)
+        if (grows)
+        {
+            string hearts = "";
+            for (int i = 0; i < CatGrowth.Steps; i++) hearts += level - i >= 1 ? "\u2665" : "\u2661";
+            int pct = (int)Math.Round(CatGrowth.Scale(light, true) * 100);
+            sb.Append("\u2022 ").Append(T.CatNoteHearts(hearts, score, pct)).Append('\n');
+            sb.Append("\u2022 ").Append(step < CatGrowth.Steps ? T.CatNoteNext(CatGrowth.StageName(step + 1), (step + 1) * CatGrowth.StepScore - score) : T.CatNoteMax).Append('\n');
+        }
+        else sb.Append("\u2022 ").Append(T.CatNoteNoGrow).Append('\n');
+        sb.Append("## ").Append(T.CatNoteToday).Append('\n');
+        sb.Append("\u2022 ").Append(CatGrowth.StampDue ? T.CatNoteStampYet : T.CatNoteStampDone(CatGrowth.Streak, CatGrowth.StampTotal)).Append('\n');
+        if (grows)
+        {
+            string Play(string label, string clip) { int w = CatGrowth.WaitMinutes(light, clip); return label + " " + (w > 0 ? T.CatMenuWait(w) : T.CatNoteNow); }
+            sb.Append("\u2022 ").Append(Play(T.CatMenuPet, "I1")).Append(" \u00B7 ").Append(Play(T.CatMenuTreat, "I2")).Append(" \u00B7 ").Append(Play(T.CatMenuPlay, "I3")).Append('\n');
+        }
+        sb.Append("\u2022 ").Append(T.CatNotePw(CatGrowth.PasswordToday)).Append('\n');
+        string When(CatGrowth.Habit h) { int d = CatGrowth.WaitDays(h); return d > 0 ? T.CatNoteDays(d) : T.CatNoteNow; }
+        sb.Append("\u2022 ").Append(T.CatNoteBackup(When(CatGrowth.Habit.Backup))).Append('\n');
+        sb.Append("\u2022 ").Append(T.CatNoteMaster(When(CatGrowth.Habit.Master))).Append('\n');
+        // 앨범(0.5.20): 처음 본 장면은 그림 + 이름, 못 본 장면은 흐린 실루엣 + ?
+        sb.Append("## ").Append(T.CatAlbumTitle(CatGrowth.SeenCount, CatGrowth.AlbumKeys.Length)).Append('\n');
+        sb.Append(Dialog.ArtMark).Append("album:").Append(string.Join("|", CatGrowth.AlbumKeys.Select(k => k + "=" + (CatGrowth.IsSeen(k) ? "1" : "0"))) ).Append('\n');
+        sb.Append("\u2022 ").Append(T.CatAlbumHint).Append('\n');
+        sb.Append("## ").Append(T.CatNoteKnow).Append('\n');
+        sb.Append("\u2022 ").Append(T.CatNoteDecay);
+        return sb.ToString();
     }
 
     private void OnWalkerClick(int gen, bool fromMenu = false)
