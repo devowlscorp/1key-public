@@ -42,7 +42,7 @@ internal static class CatGrowth
 
     /// <summary>"오른쪽 클릭하면 같이 놀 수 있어요" 를 오늘 보일까: 아직 한 번도 오른쪽 클릭하지 않았고, 서로 다른 날 세 번까지.</summary>
     // 앨범(0.5.20, 2026-10-10 사용자 · Codex 그림 12장): 고양이가 그 장면을 처음 보여 준 날
-    public static readonly string[] AlbumKeys = { "wave", "groom", "belly", "meow", "wall", "stretch", "walk", "peek", "pet", "treat", "play", "stamp" };
+    public static readonly string[] AlbumKeys = { "wave", "groom", "belly", "meow", "wall", "stretch", "walk", "peek", "pet", "treat", "play", "stamp", "toy" };   // toy: 깜짝 놀잇감과 처음 논 날(0.5.21-I)
     private static readonly Dictionary<string, int> _seen = new();
     public static bool IsSeen(string key) { Load(); return _seen.ContainsKey(key); }
     public static int SeenCount { get { Load(); return AlbumKeys.Count(_seen.ContainsKey); } }
@@ -55,7 +55,7 @@ internal static class CatGrowth
     public static string AlbumName(string key) => key switch
     {
         "wave" => T.CatAlbumWave, "groom" => T.CatAlbumGroom, "belly" => T.CatAlbumBelly, "meow" => T.CatAlbumMeow, "wall" => T.CatAlbumWall, "stretch" => T.CatAlbumStretch,
-        "walk" => T.CatAlbumWalk, "peek" => T.CatAlbumPeek, "pet" => T.CatMenuPet, "treat" => T.CatMenuTreat, "play" => T.CatMenuPlay, "stamp" => T.CatAlbumStamp, _ => key,
+        "walk" => T.CatAlbumWalk, "peek" => T.CatAlbumPeek, "pet" => T.CatMenuPet, "treat" => T.CatMenuTreat, "play" => T.CatMenuPlay, "stamp" => T.CatAlbumStamp, "toy" => T.CatAlbumToy, _ => key,
     };
 
     public static bool IntroDue { get { Load(); return !_clicked && _introCount < 3 && _introDay != Today(); } }
