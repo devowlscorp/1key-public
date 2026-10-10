@@ -140,6 +140,8 @@ internal static unsafe class HelpArt
                         int cx = x0 + (i % AlbumCols) * (cell + gap), cy = (i / AlbumCols) * (cell + cap + gap), pad = S(4);
                         Gdiplus.FillRoundRect(dc, cx, cy, cell, cell, S(10), Theme.Mix(Theme.CardBg, Theme.ControlText, Theme.IsDark ? 0.07 : 0.045));
                         nint img = Image($"album_{kv[0]}.png");
+                        // 못 본 장면의 실루엣은 소품 없는 판이 있으면 그것으로(0.5.21-H — 츄르 봉지 · 깃털까지 실루엣에 나와 고양이 모양이 덜 읽혔다)
+                        if (!seen && CatWidget.HasPng($"album_{kv[0]}-noprop.png")) img = Image($"album_{kv[0]}-noprop.png");
                         if (seen) Gdiplus.DrawImageSmooth(dc, img, cx + pad, cy + pad, cell - 2 * pad, cell - 2 * pad);
                         else
                         {
