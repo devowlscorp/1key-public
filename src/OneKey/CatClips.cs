@@ -19,7 +19,7 @@ namespace OneKey;
 /// </summary>
 internal static unsafe partial class CatWidget
 {
-    private sealed class ClipInfo { public string Name = ""; public int Frames, CellW, CellH, AnchorX, FeetY, SitH; public bool SeqOnly; }
+    private sealed class ClipInfo { public string Name = ""; public int Frames, CellW, CellH, AnchorX, FeetY, SitH; public bool SeqOnly; public int[] Keys = Array.Empty<int>(); }
     private sealed class ClipArt { public ClipInfo Info = null!; public int Gen, CellW, CellH; public uint[] Px = Array.Empty<uint>(); }
     /// <summary>재생 한 걸음: 어느 그림의 몇 번째 장, 좌우 뒤집기, 시작 자리에서 옆으로 간 거리(px, 걷기), 위로 올림(px — 앉을 때 내려 둔 만큼을 서면 되돌린다).</summary>
     private readonly record struct PlayStep(int Art, int Cell, bool Mirror, double Dx, int Lift = 0);
@@ -122,7 +122,8 @@ internal static unsafe partial class CatWidget
                     var p = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     if (p.Length < 7 || !HasPng($"catclip_{p[0]}.jpg") || !HasPng($"catclip_{p[0]}_a.png")) continue;
                     list.Add(new ClipInfo { Name = p[0], Frames = int.Parse(p[1]), CellW = int.Parse(p[2]), CellH = int.Parse(p[3]), AnchorX = int.Parse(p[4]),
-                                            FeetY = int.Parse(p[5]), SitH = int.Parse(p[6]), SeqOnly = Array.IndexOf(p, "x:1") >= 0 });
+                                            FeetY = int.Parse(p[5]), SitH = int.Parse(p[6]), SeqOnly = Array.IndexOf(p, "x:1") >= 0,
+                                            Keys = p.FirstOrDefault(t => t.StartsWith("k:")) is string kk ? kk[2..].Split(',').Select(int.Parse).ToArray() : Array.Empty<int>() });   // 핵심 자세 장(사냥 — CatHunt.cs)
                 }
             }
         }
@@ -178,6 +179,7 @@ internal static unsafe partial class CatWidget
         _wantFront = true;
         if (_gaze != Center || _from != _gaze) return;
         _wantFront = false;
+        if (GuestDue(now) && StartHunt()) { ScheduleGuest(now); return; }   // 깜짝 놀잇감(0.5.21 — CatHunt.cs)
         int pick = WalkTest ? 0 : _rnd.Next(100);
         // 0.5.15-R(2026-10-09 사용자: 웅크리고 앉아 있는 시간이 너무 많다, 좀 돌아다니게): 숨기 15 → 10 %, 걷기 50 → 65 %, 쉬는 동작 25 %
         if (pick >= 90) { StartPeek(now); return; }                // 숨기 10 %
@@ -202,6 +204,7 @@ internal static unsafe partial class CatWidget
     {
         if (!CanInteract(name)) return;
         _interact = name;
+        if (_clipOn && _playName == "hunt") _huntGiveUp = true;   // 사냥 중이면 놀잇감을 보내고 일어나 앉는다(실룩 한 번이 끝나는 대로)
         CutWalk();
         SetTick(GazeMs);
     }
@@ -482,6 +485,7 @@ internal static unsafe partial class CatWidget
         _arts = arts; _baseX = WinX;
         _clipOn = true; _clipFrame = -1;
         LogClipStart(_playName, _steps);
+        if (_playName == "hunt") HuntReady();   // 놀잇감을 덮칠 자리에 띄운다
         // 앨범(0.5.20): 처음 보여 주는 장면이면 적어 두고 한 줄("앨범에 새 장면: 기지개") — 다른 축하(발도장·쉬자)가 떠 있으면 적기만
         string albumNote = "";
         if (!SeqTest && !WalkTest && !PeekTest && !FullTest && CatGrowth.AlbumKeyOfClip(_playName) is string ak && CatGrowth.MarkSeen(ak)) { albumNote = T.CatAlbumNew(CatGrowth.AlbumName(ak)); LogLine($"album {ak}"); }
@@ -501,10 +505,11 @@ internal static unsafe partial class CatWidget
         if ((_clipFrame & 3) == 0) HoverTick(Environment.TickCount64);   // 동작 중에도 이름표(네 걸음마다)
         _clipFrame++;
         if (_clipFrame >= _steps.Length) { EndClip(); LogTick(t0, "S"); return; }
+        HuntTick(_clipFrame);   // 사냥: 누름 · 떠남에 따라 남은 걸음을 바꾸고, 잡는 장이면 하트(CatHunt.cs)
         var s = _steps[_clipFrame];
         bool ok = RenderStep(_clipFrame);
         NotePush(ok);
-        if (DumpDir is not null && (_clipFrame < 4 || _clipFrame % 6 == 0 || _clipFrame >= _steps.Length - 4)) DumpClipFrame(_playName, _clipFrame);
+        if (DumpDir is not null && (_playName == "hunt" ? _clipFrame % 2 == 0 : _clipFrame < 4 || _clipFrame % 6 == 0 || _clipFrame >= _steps.Length - 4)) DumpClipFrame(_playName == "hunt" ? $"hunt{_clipGen}" : _playName, _clipFrame);   // 사냥은 판마다 따로(다음 사냥이 덮어쓰지 않게)
         LogTick(t0, $"{_playName} {_clipFrame} s{_clipFrame} c{s.Art}:{s.Cell}{(s.Mirror ? "m" : "")} x{_cx}");
     }
 
@@ -514,6 +519,7 @@ internal static unsafe partial class CatWidget
         StopTicks();
         if (_clipOn && _steps.Length > 0 && _steps[^1].Dx != 0)
             _posX = Math.Clamp(_baseX + (int)Math.Round(_steps[^1].Dx), MinX, HomeX);
+        if (_playName == "hunt" && _gPhase is GuestPhase.Enter or GuestPhase.Idle) GuestLeave();
         _clipOn = false; _arts = Array.Empty<ClipArt>();
         FreeClipDib();
         if (_shown) { _from = _gaze = Center; Render(); }
@@ -541,6 +547,7 @@ internal static unsafe partial class CatWidget
         _clipGen++; _clipLoading = false; _ready = null; _wantFront = false;
         _peekOn = false; _sink = 0; _lean = 0; _squash = 1.0;   // 숨기도 멈춘다(보일 때 다시 제자리)
         if (_clipOn) { StopTicks(); _clipOn = false; _arts = Array.Empty<ClipArt>(); }
+        GuestClose();
         FreeClipDib();
     }
 
@@ -734,7 +741,8 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>시험(ONEKEY_TEST_CAT_DUMP=폴더): 내보낸 그림(화면이 아니라 동작 창의 그림 자체)을 PNG 로 — 사람이 눈으로 볼 때만, 시간 시험과 따로 돌린다.</summary>
-    private static readonly string? DumpDir = SeqTest || WalkTest || FullTest ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_DUMP") : null;
+    private static readonly string? DumpDir = SeqTest || WalkTest || FullTest || (Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_GUEST") is { Length: > 0 })   // 놀잇감 시험도(CatHunt)
+        ? Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_DUMP") : null;
     private static int _dumpN;
 
     /// <summary>전체 시험: 화면으로 내보낸 장 하나(미리 곱한 알파 그림 + 창 자리 + 무엇인지)를 차례 번호로 남긴다.</summary>
@@ -766,7 +774,7 @@ internal static unsafe partial class CatWidget
             if (GdipCreateBitmapFromScan0(_ccw, _cch, _cxStride * 4, 0xE200B, _cxbits, out bmp) != 0 || bmp == 0) return;
             Guid png = new("557CF406-1A04-11D3-9A73-0000F81EF32E");
             fixed (char* fp = Path.Combine(DumpDir, $"{name}_{f:000}.png")) GdipSaveImageToFile(bmp, fp, &png, 0);
-            File.AppendAllText(Path.Combine(DumpDir, "frames.txt"), $"{name} {f} win {_cx},{_cy} {_ccw}x{_cch} gaze {WinX},{WinY} {_w}x{_h} sit {_sitTop}-{_sitBot} cx {_sitCx}" + Environment.NewLine);
+            File.AppendAllText(Path.Combine(DumpDir, "frames.txt"), $"{name} {f} win {_cx},{_cy} {_ccw}x{_cch} gaze {WinX},{WinY} {_w}x{_h} sit {_sitTop}-{_sitBot} cx {_sitCx} t {Environment.TickCount64} work {_work.left},{_work.top},{_work.right},{_work.bottom}" + Environment.NewLine);
         }
         catch { }
         finally { if (bmp != 0) GdipDisposeImage(bmp); }

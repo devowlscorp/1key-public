@@ -12,7 +12,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.5.20-E</Version>
+    <Version>0.5.21-F</Version>
     <Product>1Key</Product>
     <AssemblyTitle>1Key - 단축키 입력기</AssemblyTitle>
     <Company>1Key</Company>
@@ -31,6 +31,8 @@
     <EmbeddedResource Include="Assets\cat\cat_*.png" LogicalName="%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\cat\cat_*_tw.jpg" LogicalName="%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\cat\album_*.png" LogicalName="%(Filename)%(Extension)" />
+    <!-- 깜짝 놀잇감(나비 · 털실 · 쥐 — work/cat-motions/guests/prep_guests.py; CatGuest.cs) -->
+    <EmbeddedResource Include="Assets\cat\guest_*.png" LogicalName="%(Filename)%(Extension)" />
     <!-- 작업 표시줄 고양이 동작(tools/cat/make_clips.py — 미리 곱한 색 JPEG + 투명도 PNG, 목록 catclips.txt; CatClips.cs) -->
     <EmbeddedResource Include="Assets\cat\catclip_*.jpg;Assets\cat\catclip_*_a.png;Assets\cat\catclips.txt;Assets\cat\lockclip_*.jpg;Assets\cat\lockclip_*_a.png;Assets\cat\lockclips.txt" LogicalName="%(Filename)%(Extension)" />
     <!-- 배포본 전용 추가 화면의 그림(Extra/ — 저장소에 없는 폴더, 없으면 아무것도 넣지 않는다) -->

@@ -192,6 +192,20 @@ internal static class CatGrowth
         return c.Score != before;
     }
 
+    private static int _catchTotal;   // 놀잇감을 잡은 횟수(0.5.21 — 수첩)
+    public static int CatchTotal { get { Load(); return _catchTotal; } }
+
+    /// <summary>놀잇감을 잡았다(0.5.21 — CatHunt.cs): +5, 쿨타임 없음(놀잇감은 한두 시간에 한 번 온다). 받은 점수.</summary>
+    public static int AwardGuest(bool light)
+    {
+        Update();
+        var c = Of(light);
+        c.Score = Math.Min(MaxScore, c.Score + 5);
+        _catchTotal++;
+        Save();
+        return 5;
+    }
+
     /// <summary>켜져 있던 시간만큼 줄인다(두 고양이 모두).</summary>
     public static void Tick() => Update();
 
@@ -237,6 +251,7 @@ internal static class CatGrowth
                         int.TryParse(v[1], out _introCount); int.TryParse(v[2], out _introDay); _clicked = v[3] == "1";
                         continue;
                     }
+                    if (v.Length >= 2 && v[0] == "C") { int.TryParse(v[1], out _catchTotal); continue; }   // 놀잇감 잡은 횟수
                     if (v.Length >= 4 && v[0] == "S")   // 출근 도장: S 마지막날 연속 모두
                     {
                         int.TryParse(v[1], out _stampDay); int.TryParse(v[2], out _streak); int.TryParse(v[3], out _stampTotal);
@@ -281,7 +296,7 @@ internal static class CatGrowth
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
             File.WriteAllText(FilePath, Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n");
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n");
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }
