@@ -26,7 +26,21 @@ internal sealed unsafe partial class App
         switch (msg)
         {
             case Native.WM_COMMAND:
+                if (((wParam >> 16) & 0xFFFF) == 0x0501 /* EN_MAXTEXT */ && lParam != 0)   // R01: 칸의 상한에 닿았다 — 조용히 자르지 않고 알린다
+                {
+                    int max = (int)Native.SendMessageW(lParam, 0x00D5 /* EM_GETLIMITTEXT */, 0, 0);
+                    Toast.Show(_hwnd, T.CommonFieldMaxText(max), 2400, warn: true);
+                    return 0;
+                }
                 OnCommand((int)(wParam & 0xFFFF), (int)((wParam >> 16) & 0xFFFF));
+                return 0;
+
+            case WM_AUTOSTART_DONE:   // 자동 실행 바꾸기가 끝남(작업 스레드, R05)
+                OnAutostartDone();
+                return 0;
+
+            case WM_AUTOSTART_SLOW:   // 1분이 넘었다 — 아직 하는 중(D03)
+                if (Native.IsWindowVisible(_hwnd)) Toast.Show(_hwnd, T.SetAutostartStillRunning, 5000); else ShowBalloon(AppTitle, T.SetAutostartStillRunning, Native.NIIF_INFO);
                 return 0;
 
             case Native.WM_HOTKEY:

@@ -484,6 +484,20 @@ Section "Uninstall"
     DetailPrint "자동 실행 작업은 다른 위치($0)를 가리켜 그대로 둡니다."
   ${EndIf}
 
+  ; 관리자 자동 실행 작업 "1Key-AdminStartup-<SID>"(0.3.105~ 설정 화면이 만든다). 예전에는 옛 이름 ${TASKNAME} 만 지워 새 작업이 남았다(R03, 0.5.22-C —
+  ; Codex 배포 전 검토). SID 확인 · 작업 내용 검사 · UAC 는 1Key 가 한다: 남은 것이 없으면 0, 남으면 1(조용한 제거가 아니면 1Key 가 이름과 지우는 방법을 알린다)
+  ${If} ${FileExists} "$INSTDIR\1Key.exe"
+    ${If} ${Silent}
+      ExecWait '"$INSTDIR\1Key.exe" --autostart-remove --quiet' $5
+    ${Else}
+      ExecWait '"$INSTDIR\1Key.exe" --autostart-remove' $5
+    ${EndIf}
+    ${If} $5 == 0
+      DetailPrint "관리자 자동 실행 작업: 남은 것이 없습니다."
+    ${Else}
+      DetailPrint "관리자 자동 실행 작업(1Key-AdminStartup-…)이 남았습니다. 작업 스케줄러에서 지우세요."
+    ${EndIf}
+  ${EndIf}
   Delete "$INSTDIR\1Key.exe"
   Delete "$INSTDIR\Uninstall.exe"
   Delete "$INSTDIR\tools\Register-1Key-AdminStartup.cmd"

@@ -141,7 +141,8 @@ internal static unsafe class LockWidget
                     0, 0, 10, 10, _host[i], i == 0 ? IdEdit1 : IdEdit2, hInst, 0);
             if (_host[i] == 0 || _edit[i] == 0) { Hide(); return false; }
             Native.SendMessageW(_edit[i], Native.WM_SETFONT, _editFont, 0);   // 위젯의 배율로 만든 글꼴(모니터를 옮기면 다시 만든다)
-            // 길이 제한은 두지 않는다: 기존 잠금 화면의 칸(EDIT 기본값)과 같은 정책이어야 기존에 만든 긴 마스터도 그대로 들어간다(R-W2).
+            // 길이 제한(0.5.22-C, Codex 검토 R01): 다른 비밀번호 칸과 같은 SecretText.MaxLen — 읽기도 그 길이까지라 예전에 만든 긴 마스터(앞 511자 저장)도 그대로 맞는다.
+            Native.SendMessageW(_edit[i], Native.EM_LIMITTEXT, SecretText.MaxLen, 0);
             // 화면 읽기 프로그램용 이름은 칸의 자리표시 글(포커스 중에는 숨김)과 위젯 제목으로 준다
             Native.SetCueBanner(_edit[i], i == 0 ? (create ? T.LockCueNew : T.LockLabelMaster) : T.LockLabelAgain);
             _oldEditProc[i] = Native.SetWindowLongPtrW(_edit[i], -4 /* GWLP_WNDPROC */, (nint)(delegate* unmanaged[Stdcall]<nint, uint, nint, nint, nint>)&EditProc);
@@ -306,7 +307,7 @@ internal static unsafe class LockWidget
     {
         if (!InRange(x, y)) return;
         _anchor = new Native.POINT { x = x, y = y };
-        try { if (Directory.Exists(Config.Dir)) File.WriteAllText(PosFile, x + "," + y); } catch { }   // 비밀이 아닌 자리 정보뿐. 못 써도 이번 실행 동안은 기억한다
+        try { if (Directory.Exists(Config.Dir)) Backup.WriteReplace(PosFile, System.Text.Encoding.ASCII.GetBytes(x + "," + y)); } catch { }   // R02   // 비밀이 아닌 자리 정보뿐. 못 써도 이번 실행 동안은 기억한다
     }
 
     /// <summary>잠글 때 본창이 보이고 있었으면: 다음 위젯은 그 창의 가운데에 뜬다(창이 위젯으로 바뀌는 느낌).</summary>
@@ -1382,6 +1383,7 @@ internal static unsafe class LockWidget
                 case Native.WM_COMMAND:
                     if (((wParam >> 16) & 0xFFFF) == 0x0100 /* EN_SETFOCUS */) { Notify(3); if (_create && _hwnd != 0) Render(); }   // 강조 테가 칸을 따라간다
                     if (((wParam >> 16) & 0xFFFF) == 0x0300 /* EN_CHANGE */ && _e < 0.05 && _hwnd != 0) Render();
+                    if (((wParam >> 16) & 0xFFFF) == 0x0501 /* EN_MAXTEXT */ && lParam != 0) Toast.Show(hwnd, T.CommonFieldMaxText(SecretText.MaxLen), 2400, warn: true);   // R01
                     break;
                 case 0x0021: // WM_MOUSEACTIVATE: 입력 창을 눌러 활성화
                     break;

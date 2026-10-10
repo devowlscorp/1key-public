@@ -53,11 +53,12 @@ function Quit() { [void][U]::PostMessageW($m, 0x8005, [IntPtr]::Zero, [IntPtr]::
 try {
   Stop-TestInstances $suffix
   $env:ONEKEY_TEST = "1"; $env:ONEKEY_CONFIG_DIR = $cfg; $env:ONEKEY_INSTANCE_SUFFIX = $suffix
-  # pick a bare-allowed hotkey nobody on this PC holds right now: Pause, ScrollLock or PrintScreen
+  # pick a bare-allowed hotkey nobody on this PC holds right now: Pause or ScrollLock.
+  # Not PrintScreen: a probe registration of it succeeds even while the app holds it, so SU04/08/10/14 failed falsely (2026-10-11).
   $VK = 0
-  foreach ($cand in 0x13, 0x91, 0x2C) { if (-not [U]::HeldByOther(0, $cand)) { $VK = $cand; break } }
-  Check SU01 $true ($VK -ne 0) ("precondition: a free bare hotkey exists (using 0x{0:X})" -f $VK)
-  if ($VK -eq 0) { throw "no free bare hotkey" }
+  foreach ($cand in 0x13, 0x91) { if (-not [U]::HeldByOther(0, $cand)) { $VK = $cand; break } }
+  Check SU01 $true ($VK -ne 0) ("precondition: a free bare hotkey exists (using 0x{0:X}; Pause and ScrollLock both held means another program - e.g. a running 1Key - uses them)" -f $VK)
+  if ($VK -eq 0) { throw "no free bare hotkey: Pause and ScrollLock are both held by another program" }
 
   # --- 1) first run: create master, add a slot with the bare hotkey, save, quit
   Launch $null
@@ -78,6 +79,8 @@ try {
   Check SU07 $true (Has 101) "--tray: lock screen shown"
   Check SU08 $true ([U]::HeldByOther(0, $VK)) "--tray: hotkey held while locked (HasContent)"
   SetText ([U]::GetDlgItem($m,101)) "Master1234"; Click 103
+  # unlock runs the KDF off the UI thread: give it up to 5 s to finish and hide (a fixed 500 ms was a race - about 600 ms on this PC)
+  for ($w = 0; $w -lt 50 -and [U]::IsWindowVisible($m); $w++) { Start-Sleep -Milliseconds 100 }
   Check SU09 $false ([U]::IsWindowVisible($m)) "--tray: hidden to tray after unlock (start-minimized default)"
   Check SU10 $true ([U]::HeldByOther(0, $VK)) "--tray: hotkey held after unlock"
   Check SU11 $true (Has 1000) "--tray: list built behind the scenes"

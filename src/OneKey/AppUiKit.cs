@@ -277,7 +277,9 @@ internal sealed unsafe partial class App
     }
 
     /// <summary>입력칸. (x,y,w,h) 는 보이는 상자. 실제 EDIT 는 글자 높이로 상자 가운데에 놓인다.</summary>
-    private nint Field(int id, int x, int y, int w, int h, uint extra = 0, bool center = false, bool onCard = true, int leftPad = 0, int rightPad = 0)
+    /// <param name="limit">칸이 받는 최대 글자 수(0 = 제한 없음). 마스터 · 백업 · 잠금 비밀번호 칸만 SecretText.MaxLen(D01, 0.5.22-E — ES_PASSWORD 는 일반 문구 · 연속 입력을
+    /// 가리는 데도 쓰여 스타일로 판단하면 긴 문구까지 511자로 묶였다). 상한에 닿으면 EN_MAXTEXT 로 알린다(AppWndProc).</param>
+    private nint Field(int id, int x, int y, int w, int h, uint extra = 0, bool center = false, bool onCard = true, int leftPad = 0, int rightPad = 0, int limit = 0)
     {
         int t = Math.Max(1, Scale(1));
         int bh = Scale(h), ih = Math.Min(_textH, bh - 2 * t), pad = Scale(10), lp = Scale(leftPad), rp = Scale(rightPad);   // leftPad: 상자 왼쪽 안에 아이콘 자리, rightPad: 오른쪽 안 글 자리
@@ -287,6 +289,7 @@ internal sealed unsafe partial class App
             e = Native.CreateWindowExW(0, pc, pt, style, Scale(x) + pad + lp, Scale(y) + (bh - ih) / 2, Scale(w) - 2 * pad - lp - rp, ih, _hwnd, id, _hInst, 0);
         if (e == 0) return 0;
         Native.SendMessageW(e, Native.WM_SETFONT, _font, 1);
+        if (limit > 0) Native.SendMessageW(e, Native.EM_LIMITTEXT, limit, 0);   // R01 · D01: 그 칸의 용도로 정한 상한만
         Theme.ApplyControl(e, "EDIT");
         _page.Controls.Add(e);
         _page.Fields.Add((x, y, w, h, onCard));

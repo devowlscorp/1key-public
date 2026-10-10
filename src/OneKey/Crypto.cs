@@ -136,11 +136,17 @@ internal sealed class SecretText : IDisposable
 
     public SecretText(int capacity) { _buf = GC.AllocateArray<char>(Math.Max(capacity, 16), pinned: true); }
 
+    /// <summary>
+    /// 비밀번호 칸의 최대 길이(0.5.22-C, Codex 검토 R01): 예전 읽기가 511자까지였으므로 그 길이로 만든 마스터가 계속 맞게 511 을 제품 상한으로 정했다.
+    /// 칸 자체가 이보다 길게 받지 않고(EM_LIMITTEXT — AppUiKit.Field · LockWidget), 넘치면 바로 안내한다(EN_MAXTEXT) — 읽을 때 조용히 자르지 않는다.
+    /// </summary>
+    public const int MaxLen = 511;
+
     /// <summary>입력칸(비밀번호 칸)의 글을 문자열을 만들지 않고 읽는다. 칸 안의 버퍼는 칸이 비워지거나 닫힐 때까지 남는다.</summary>
     public static unsafe SecretText FromWindow(nint h)
     {
-        // 예전 읽기(Native.GetWindowText, 512 칸 버퍼)와 같은 최대 511자 — 그 길이로 만든 마스터가 계속 맞게
-        int n = Math.Min(Math.Max(0, GetWindowTextLengthW(h)), 511);
+        // 칸이 MaxLen 을 넘게 받지 않으므로 여기서 줄어드는 일은 없다(예전에 만든 긴 마스터: 앞 511자가 저장돼 있고 칸도 511자까지 받는다 — 그대로 맞다)
+        int n = Math.Min(Math.Max(0, GetWindowTextLengthW(h)), MaxLen);
         var t = new SecretText(n + 1);
         fixed (char* p = t._buf) t.Length = Math.Max(0, Native.GetWindowTextW(h, p, n + 1));
         return t;

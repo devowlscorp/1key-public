@@ -158,6 +158,8 @@ internal sealed unsafe partial class App
 
     private void ExitApp()
     {
+        // E01(0.5.22-F): 자동 실행을 바꾸는 중이면 끝난 뒤에 종료한다(자식 작업 · 결과 확인을 끊지 않게 — UI 에서 기다리거나 자식을 끝내지 않는다)
+        if (_autostartBusy) { _exitAfterAutostart = true; ShowBalloon(AppTitle, T.SetAutostartExitLater, Native.NIIF_INFO); return; }
         _exiting = true;
         Native.DestroyWindow(_hwnd);
     }

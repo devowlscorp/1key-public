@@ -375,9 +375,7 @@ internal static class LaunchStore
             Array.Clear(plain);
             if (blob is null) { LastSaveError = "CryptProtectData"; return false; }
             if (!DirAcl.EnsureDir(Config.Dir)) { LastSaveError = "protected folder"; return false; }   // 좁힌 권한으로 못 만들면 저장하지 않는다(R39-1)
-            string tmp = FilePath + ".tmp";
-            File.WriteAllBytes(tmp, blob);
-            File.Move(tmp, FilePath, overwrite: true);
+            Backup.WriteReplace(FilePath, blob);   // R02: 임시 이름을 새로 만들어 교체(하드링크 · 링크를 따라 다른 파일을 덮어쓰지 않는다)
             // 고친 항목의 원래 필드를 지금 값으로 맞춰 둔다(다음 저장에서 같은 값)
             foreach (var it in Items)
             {

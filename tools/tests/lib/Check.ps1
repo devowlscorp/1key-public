@@ -150,6 +150,9 @@ $env:ONEKEY_TEST_LOCKWIDGET = "0"
 
 # Default exe: build\<version from OneKey.csproj>\1Key.exe
 function Get-DefaultExe {
+  # run-all.ps1 pins the candidate for every child it starts (Codex pre-release review R10, 0.5.22-C): a script started without -Exe
+  # must test the candidate, not whatever version the project file has moved on to
+  if ($env:ONEKEY_TEST_EXE -and (Test-Path $env:ONEKEY_TEST_EXE)) { return $env:ONEKEY_TEST_EXE }
   $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")   # this file lives in tools\tests\lib
   $ver = ([xml](Get-Content "$repo\src\OneKey\OneKey.csproj")).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
   "$repo\build\$ver\1Key.exe"

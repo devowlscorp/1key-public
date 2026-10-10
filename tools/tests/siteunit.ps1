@@ -24,6 +24,7 @@ $ids = @(); 1..21 | ForEach-Object { $ids += "SN{0:D2}" -f $_ }; 1..15 | ForEach
 1..14 | ForEach-Object { $ids += "BK{0:D2}" -f $_ }   # backup file: round trip, header/section damage, profile before computing, two-file commit stop and recovery, temp names as links
 1..8 | ForEach-Object { $ids += "DA{0:D2}" -f $_ }   # settings folder rights: user + SYSTEM only, existing files, junction skipped, failure reported
 1..5 | ForEach-Object { $ids += "MG{0:D2}" -f $_ }   # format 10 / Argon2id: migration of formats 3-9, exact profile, header damage, AAD (security follow-up B1)
+1..9 | ForEach-Object { $ids += "RL{0:D2}" -f $_ }   # Codex pre-release review 0.5.22: R01 whole field text, password cap; R02 saves never write through links
 1..13 | ForEach-Object { $ids += "WB{0:D2}" -f $_ }   # website bookmarks: address check, favicon origin, redirect rule, launch.dat keeps url fields, image header, decode (Codex 02:46)
 Start-Checks -Required $ids
 

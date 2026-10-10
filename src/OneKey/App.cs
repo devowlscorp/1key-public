@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.22-B";
+    public const string Version = "0.5.22-F";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -362,7 +362,8 @@ internal sealed unsafe partial class App
     {
         var (state, detail) = DirAcl.Secure(Config.Dir);
         if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestAcl", (nint)state);
-        if (state is DirAcl.State.Failed or DirAcl.State.SkippedReparse or DirAcl.State.SkippedNetwork or DirAcl.State.SkippedOwner)
+        // R06(0.5.22-C, Codex 배포 전 검토): 안에 링크 · 다른 소유자의 항목이 있어 통째로 건너뛴 경우(SkippedChild)도 알린다 — 빠져 있었다
+        if (state is DirAcl.State.Failed or DirAcl.State.SkippedReparse or DirAcl.State.SkippedNetwork or DirAcl.State.SkippedOwner or DirAcl.State.SkippedChild)
             ShowBalloon(AppTitle, T.AclNotApplied(state + (detail.Length > 0 ? ": " + detail : "")), Native.NIIF_WARNING);
     }
 

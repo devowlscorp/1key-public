@@ -308,8 +308,8 @@ internal static class CatGrowth
         {
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
-            File.WriteAllText(FilePath, Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n");
+            Backup.WriteReplace(FilePath, System.Text.Encoding.UTF8.GetBytes(Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n"));   // R02: 직접 덮어쓰지 않고 새 임시 파일 → 교체
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }

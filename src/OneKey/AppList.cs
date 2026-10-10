@@ -495,6 +495,10 @@ internal sealed unsafe partial class App
             Msg(bad, AppTitle, Native.MB_OK | Native.MB_ICONWARNING);
             return;
         }
+        // D02(0.5.22-E, Codex 재검토): 자동 실행을 바꾸는 중이면 자동 실행 · 관리자 권한 두 값은 저장 전에 지금 값으로 되돌린다 — 뒤늦게 끝나는 앞 요청이
+        // 새로 저장한 의도를 뒤집지 않게. 다른 설정은 그대로 저장한다(끝난 뒤 다시 저장하면 된다고 알린다)
+        bool autostartHeld = false;
+        if (_autostartBusy && (v.AutoStart != _cfg.AutoStart || v.Admin != _cfg.RequireAdmin)) { v.AutoStart = _cfg.AutoStart; v.Admin = _cfg.RequireAdmin; autostartHeld = true; }
         // 파일에 들어간 뒤에만 설정을 바꾼다. 실패하면 화면의 값은 그대로 두고(초안), 설정은 이전 값으로 남는다.
         var keep = (_cfg.AutoStart, _cfg.StartMinimized, _cfg.RequireAdmin, _cfg.AutoLockMinutes, _cfg.ConfirmMods, _cfg.ConfirmVk, _cfg.ThemeMode, _cfg.Language, _cfg.LaunchNames, _cfg.Walker, _cfg.CatNameLight, _cfg.CatNameDark);
         // 자동 실행 스위치를 쓸 수 없으면(설치본이 아님) 저장된 값은 그대로 둔다 — 화면의 스위치는 실제 등록 상태만 보여 주므로 그 값으로 덮으면
@@ -512,17 +516,61 @@ internal sealed unsafe partial class App
         _dropSettingsDraft = true;
         ShowScreen(Screen.List);   // 다른 화면([저장] 뒤 목록)과 같게. 테마는 이제 저장된 값이다(ShowScreen)
 
-        // 자동 실행: 바꿨으면 창 없이 등록·지우기를 한다(켬 = 관리자 권한으로 실행이 켜져 있으면 관리자 로그온 작업, 아니면 시작 프로그램 바로 가기 / 끔 = 지우기).
-        // UAC 만 뜨고 결과는 토스트로 알린다. 실제 상태(_autostartOn)는 다시 읽어 스위치에 반영한다.
-        if (v.AutoStart != _autostartOn)
+        // 자동 실행: 요청한 방식(끔 · 보통 · 관리자)이 실제 등록과 다르면 바꾼다(R04 — 켜진 채 "항상 관리자 권한"만 바꿔도). 오래 걸릴 수 있어 작업 스레드에서(R05):
+        // UAC 만 뜨고 결과는 끝나면 알린다. 관리자 자동 실행을 새로 켜면 먼저 위험을 알리고 묻는다(R08).
+        var want = !v.AutoStart ? Autostart.Mode.Off : v.Admin ? Autostart.Mode.Admin : Autostart.Mode.User;
+        if (autostartHeld) Toast.Show(_hwnd, T.SetAutostartHeld, 5000);
+        else if (_autostartBusy) Toast.Show(_hwnd, T.SetSaved);
+        else if (autostartEditable && (want != Autostart.CurrentMode() || Autostart.NeedsCleanup(want)))
         {
-            string tool = v.AutoStart ? (v.Admin ? Autostart.ToolAdmin : Autostart.ToolUser) : Autostart.ToolRemove;
-            string? err = Autostart.RunBuiltin(tool);   // 시험 B(내장형). 시험 A 는 RunTool(설치 폴더 tools\*.cmd)
-            if (err is not null) Msg(err, AppTitle, Native.MB_OK | Native.MB_ICONWARNING);
-            else Toast.Show(_hwnd, Autostart.IsOn() ? T.SetAutostartOn : T.SetAutostartOff, 5000);
+            if (want == Autostart.Mode.Admin && Autostart.CurrentMode() != Autostart.Mode.Admin && Msg(T.SetAutostartAdminRisk, AppTitle, Native.MB_YESNO | Native.MB_ICONWARNING) != Native.IDYES)
+                Toast.Show(_hwnd, T.SetAutostartUnchanged, 4000);
+            else StartAutostartSwitch(want);
         }
         else Toast.Show(_hwnd, T.SetSaved);
         UpdateTrayTip();
         SyncWalker();
+    }
+
+    // ---------------------------------------------------------------- 자동 실행 바꾸기(작업 스레드, R05)
+
+    private const uint WM_AUTOSTART_DONE = Native.WM_APP + 52;
+    private const uint WM_AUTOSTART_SLOW = Native.WM_APP + 53;   // 등록이 1분 넘게 걸린다(아직 끝나지 않음 — busy 그대로)
+    private bool _autostartBusy, _exitAfterAutostart;
+    private string? _autostartResult;
+
+    /// <summary>등록 · 지우기를 작업 스레드(STA — ShellExecuteEx)에서 하고 끝나면 WM_AUTOSTART_DONE. 하는 동안 화면 · 잠금 · 자동 잠금 타이머는 그대로 돈다.</summary>
+    private void StartAutostartSwitch(Autostart.Mode want)
+    {
+        if (_autostartBusy) { Toast.Show(_hwnd, T.SetAutostartBusy, 3000); return; }
+        _autostartBusy = true;
+        Toast.Show(_hwnd, T.SetAutostartWorking, 3000);
+        nint hwnd = _hwnd;
+        Autostart.SlowNotice = () => Native.PostMessageW(hwnd, WM_AUTOSTART_SLOW, 0, 0);   // D03: 1분이 넘으면 "아직 하는 중"(끝으로 치지 않는다)
+        var th = new Thread(() =>
+        {
+            string? r;
+            try { r = Autostart.SwitchTo(want); } catch (Exception ex) { r = ex.Message; }
+            _autostartResult = r;
+            Native.PostMessageW(hwnd, WM_AUTOSTART_DONE, 0, 0);
+        }) { IsBackground = true, Name = "1Key autostart" };
+        th.SetApartmentState(ApartmentState.STA);
+        th.Start();
+    }
+
+    /// <summary>등록이 끝났다: 결과를 알리고 실제 상태를 다시 읽는다(잠겨 있으면 상자 대신 알림 풍선 — 잠금 화면 위에 상자를 띄우지 않는다).</summary>
+    private void OnAutostartDone()
+    {
+        _autostartBusy = false;
+        if (_exitAfterAutostart) { _exitAfterAutostart = false; ExitApp(); return; }   // E01: 종료를 미뤄 두었다
+        string? err = _autostartResult; _autostartResult = null;
+        _autostartOn = Autostart.IsOn();
+        if (err is not null)
+        {
+            if (Unlocked && Native.IsWindowVisible(_hwnd)) Msg(err, AppTitle, Native.MB_OK | Native.MB_ICONWARNING);
+            else ShowBalloon(AppTitle, err, Native.NIIF_WARNING);
+        }
+        else if (Native.IsWindowVisible(_hwnd)) Toast.Show(_hwnd, _autostartOn ? T.SetAutostartOn : T.SetAutostartOff, 5000);
+        else ShowBalloon(AppTitle, _autostartOn ? T.SetAutostartOn : T.SetAutostartOff, Native.NIIF_INFO);
     }
 }

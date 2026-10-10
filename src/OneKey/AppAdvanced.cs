@@ -113,17 +113,17 @@ internal sealed unsafe partial class App
         int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = valueX - labelX - 8, y = 60;   // 이름표가 입력칸 상자(둥근 모서리)를 덮지 않도록
         int top = y;
         Label(T.PwMasterCurrent, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Field(IdMCur, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdMCur, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         y += RowH;
         Card(top, y - top);
         y += 16;
 
         top = y;
         Label(T.PwNewMasterEnter, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
-        Field(IdMNew1, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdMNew1, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         Separator(y + RowH - 1); y += RowH;
         Label(T.PwNewMasterConfirm, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Field(IdMNew2, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdMNew2, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         y += RowH;
         Card(top, y - top);
         y = MatchNote(IdMMatch, y);   // 확인 칸까지 치면 일치 여부(2026-10-05 사용자)

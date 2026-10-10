@@ -565,11 +565,23 @@ internal static unsafe class Native
     public static extern bool InitCommonControlsEx(ref INITCOMMONCONTROLSEX picce);
 
     // ---------- 편의 함수 ----------
+    /// <summary>
+    /// 창 글 전체(0.5.22-C, Codex 배포 전 검토 R01: 512 칸 버퍼로 511자까지만 읽어 긴 문구 · 주소가 조용히 잘렸다). 길이를 먼저 물어 그만큼 읽는다 —
+    /// 길이를 알려 주지 않는 창(0)은 예전처럼 512 칸으로 한 번 더 읽는다. 아주 큰 글(1M 자 넘음)은 그 앞까지.
+    /// </summary>
     public static string GetWindowText(nint h)
     {
-        Span<char> buf = stackalloc char[512];
-        fixed (char* p = buf) { int n = GetWindowTextW(h, p, buf.Length); return n > 0 ? new string(p, 0, n) : string.Empty; }
+        int len = GetWindowTextLengthW(h);
+        if (len <= 0)
+        {
+            Span<char> small = stackalloc char[512];
+            fixed (char* p = small) { int n = GetWindowTextW(h, p, small.Length); return n > 0 ? new string(p, 0, n) : string.Empty; }
+        }
+        int cap = Math.Min(len, 1 << 20) + 2;   // 길이는 넉넉하게 알려 줄 수 있다(DBCS) — 실제로 읽힌 만큼만 쓴다
+        char[] buf = new char[cap];
+        fixed (char* p = buf) { int n = GetWindowTextW(h, p, cap); return n > 0 ? new string(p, 0, n) : string.Empty; }
     }
+    [DllImport("user32.dll")] public static extern int GetWindowTextLengthW(nint hWnd);
 
     public static string GetClassName(nint h)
     {

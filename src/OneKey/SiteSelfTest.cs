@@ -12,6 +12,8 @@ internal static class SiteSelfTest
 {
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern bool CreateHardLinkW(string newName, string existing, nint sa);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern unsafe nint CreateEventW(nint sa, bool manual, bool initial, char* name);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "ReleaseMutex")] private static extern bool ReleaseMutexT(nint mutex);
 
     public static string Run()
     {
@@ -933,6 +935,90 @@ internal static class SiteSelfTest
             Directory.Delete(root, true);
         }
         catch (Exception ex) { sb.Append("FAIL DA00 exception ").Append(ex.GetType().Name).Append(": ").Append(ex.Message).Append('\n'); }
+
+        // ---- Codex 배포 전 검토(0.5.22-C): R01 긴 글이 조용히 잘리지 않는다 · R02 저장이 링크를 따라 다른 파일을 덮어쓰지 않는다
+        unsafe { try
+        {
+            nint e = 0;
+            fixed (char* pc = "EDIT") e = Native.CreateWindowExW(0, pc, null, Native.WS_POPUP | Native.ES_AUTOHSCROLL, 0, 0, 10, 10, 0, 0, Native.GetModuleHandleW(null), 0);
+            string Read(int n) { Native.SetText(e, new string('a', n - 1) + "Z"); string r = Native.GetWindowText(e); return r.Length + (r.EndsWith('Z') ? "" : "!"); }
+            Check("RL01", "255|511|512|700|2048", string.Join("|", new[] { 255, 511, 512, 700, 2048 }.Select(Read)), "R01: a field's whole text is read (it was cut at 511 characters: long notes and addresses lost their end)");
+            Native.SendMessageW(e, Native.EM_LIMITTEXT, SecretText.MaxLen, 0);
+            Native.SetText(e, new string('p', 500));
+            Native.SendMessageW(e, 0x00B1 /* EM_SETSEL */, 500, 500);
+            fixed (char* add = new string('q', 30)) Native.SendMessageW(e, 0x00C2 /* EM_REPLACESEL */, 0, (nint)add);
+            using (var st = SecretText.FromWindow(e))
+                Check("RL02", "511|511", $"{Native.GetWindowText(e).Length}|{st.Length}", "R01: a password field takes at most 511 characters (typing or pasting stops there and the field says so) and reads all of it - no silent cut on reading");
+            Native.SetText(e, ""); Native.DestroyWindow(e);
+
+            string root = Path.Combine(Config.Dir, "rltest");
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+            Directory.CreateDirectory(root);
+            string sentinel = Path.Combine(root, "sentinel.txt"); File.WriteAllText(sentinel, "keep");
+            string target = Path.Combine(root, "launch.dat");
+            bool rlLink1 = CreateHardLinkW(target, sentinel, 0);
+            Backup.WriteReplace(target, Encoding.ASCII.GetBytes("new"));
+            Check("RL03", "True|keep|new", $"{rlLink1}|{File.ReadAllText(sentinel)}|{File.ReadAllText(target)}", "R02: the save name was a hard link to another file - that file keeps its content, the save gets a new file");
+            File.Delete(target);
+            bool rlLink2 = CreateHardLinkW(target + ".tmp", sentinel, 0);
+            Backup.WriteReplace(target, Encoding.ASCII.GetBytes("new2"));
+            Check("RL04", "True|keep|new2|False", $"{rlLink2}|{File.ReadAllText(sentinel)}|{File.ReadAllText(target)}|{File.Exists(target + ".tmp")}", "R02: a hard link left at the temporary name is replaced by a new file, not written through");
+            Directory.CreateDirectory(target + ".tmp2"); File.Delete(target);
+            string target2 = Path.Combine(root, "cat-growth.txt");
+            Directory.CreateDirectory(target2 + ".tmp");
+            string r5;
+            try { Backup.WriteReplace(target2, Encoding.ASCII.GetBytes("x")); r5 = "written"; } catch (IOException) { r5 = "refused"; }
+            Check("RL05", "refused|False", $"{r5}|{File.Exists(target2)}", "R02: a folder sitting at the temporary name makes the save fail loudly instead of guessing");
+            string sub = Path.Combine(root, "sub"); Directory.CreateDirectory(sub);
+            string viaLink = Path.Combine(root, "vialink");
+            string r6 = "nolink";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{viaLink}\" \"{sub}\"") { CreateNoWindow = true, UseShellExecute = false })?.WaitForExit(5000);
+            if (Directory.Exists(viaLink))
+            {
+                try { Backup.WriteReplace(Path.Combine(viaLink, "pos.txt"), Encoding.ASCII.GetBytes("1,2")); r6 = "written"; } catch (IOException) { r6 = "refused"; }
+            }
+            Check("RL06", "refused|False", $"{r6}|{File.Exists(Path.Combine(sub, "pos.txt"))}", "R02: a settings folder reached through a link (junction) is not written into");
+            if (Directory.Exists(viaLink)) Directory.Delete(viaLink);
+            Directory.Delete(root, true);
+
+            // E01 · E02(0.5.22-F): 자동 실행 바꾸기의 자물쇠 — 실제 등록 없이 자물쇠 규칙만
+            bool ran7 = false;
+            nint ev;
+            fixed (char* en = Autostart.TestOpLockName) ev = CreateEventW(0, true, false, en);   // 같은 이름의 다른 객체 → CreateMutex 실패
+            string? r7 = Autostart.WithLock(() => { ran7 = true; return null; }, wait: false);
+            if (ev != 0) Native.CloseHandle(ev);
+            Check("RL07", "False|True", $"{ran7}|{r7 is not null}", "E02: when the autostart lock cannot be made (name taken by another object), nothing runs and a reason is returned");
+            using (var holder = new System.Threading.ManualResetEventSlim(false))
+            using (var release = new System.Threading.ManualResetEventSlim(false))
+            {
+                var th = new Thread(() =>
+                {
+                    nint mx; fixed (char* n = Autostart.TestOpLockName) mx = Native.CreateMutexW(0, true, n);
+                    holder.Set(); release.Wait(5000); ReleaseMutexT(mx); Native.CloseHandle(mx);
+                });
+                th.Start(); holder.Wait(5000);
+                bool ran8 = false;
+                string? r8 = Autostart.WithLock(() => { ran8 = true; return null; }, wait: false);
+                release.Set(); th.Join(5000);
+                Check("RL08", "False|True", $"{ran8}|{r8 is not null}", "while another change holds the operation lock, a non-waiting change is refused and does not run");
+            }
+            {
+                // 부모가 꺼진 뒤 남은 자식처럼: 작업 자물쇠를 다른 스레드가 1초 쥐고 있다 — 기다리는 바꾸기(제거)는 그것이 끝난 뒤에 실행된다
+                var started = new System.Threading.ManualResetEventSlim(false);
+                var th = new Thread(() =>
+                {
+                    nint mx; fixed (char* n = Autostart.TestWorkLockName) mx = Native.CreateMutexW(0, true, n);
+                    started.Set(); Thread.Sleep(1000); ReleaseMutexT(mx); Native.CloseHandle(mx);
+                });
+                th.Start(); started.Wait(5000);
+                var sw9 = System.Diagnostics.Stopwatch.StartNew();
+                bool ran9 = false; long at9 = 0;
+                string? r9 = Autostart.WithLock(() => { ran9 = true; at9 = sw9.ElapsedMilliseconds; return null; }, wait: true);
+                th.Join(5000);
+                Check("RL09", "True|True|(null)", $"{ran9}|{at9 >= 800}|{r9 ?? "(null)"}", $"E01: a waiting change (uninstall) waits for a worker still holding the work lock, then runs ({at9} ms)");
+            }
+        }
+        catch (Exception ex) { sb.Append("FAIL RL00 exception ").Append(ex.GetType().Name).Append(": ").Append(ex.Message).Append('\n'); } }
         return sb.ToString();
     }
 

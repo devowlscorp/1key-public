@@ -104,7 +104,7 @@ internal sealed unsafe partial class App
         nint lf = Theme.Sized(11.5, false);
         if (_createMode) { Label(T.LockLabelMaster, wx + 16, fy, ww - 32, LabelH, lf, sub, false); fy += LabelH + 6; }
         int fy1 = fy;
-        nint e1 = Field(IdLockPw1, wx, fy + 5, ww, WellH, Native.ES_PASSWORD, onCard: false, leftPad: 8, rightPad: KbW);
+        nint e1 = Field(IdLockPw1, wx, fy + 5, ww, WellH, Native.ES_PASSWORD, onCard: false, leftPad: 8, rightPad: KbW, limit: SecretText.MaxLen);
         _page.PillFields.Add(_page.Fields.Count - 1);
         Native.SetCueBanner(e1, _createMode ? T.LockCueNew : T.LockLabelMaster);
         fy += WellH + 10;
@@ -112,7 +112,7 @@ internal sealed unsafe partial class App
         {
             fy += 10;
             Label(T.LockLabelAgain, wx + 16, fy, ww - 32, LabelH, lf, sub, false); fy += LabelH + 6;
-            nint e2 = Field(IdLockPw2, wx, fy + 5, ww, WellH, Native.ES_PASSWORD, onCard: false, leftPad: 8);
+            nint e2 = Field(IdLockPw2, wx, fy + 5, ww, WellH, Native.ES_PASSWORD, onCard: false, leftPad: 8, limit: SecretText.MaxLen);
             _page.PillFields.Add(_page.Fields.Count - 1);
             Native.SetCueBanner(e2, T.LockLabelAgain);
             fy += WellH + 10;

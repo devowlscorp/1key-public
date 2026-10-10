@@ -32,16 +32,16 @@ internal sealed unsafe partial class App
         int labelX = Mx + Row.PadX, valueX = labelX + col, valueW = Mw - (valueX - Mx) - Row.PadX, labelW = valueX - labelX - 8, y = 60;
         int top = y;
         Label(T.PwMasterCurrent, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Field(IdBkCur, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdBkCur, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         y += RowH;
         Card(top, y - top);
         y += 16;
         top = y;
         Label(T.PwBackupEnter, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
-        Field(IdBkPw1, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdBkPw1, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         Separator(y + RowH - 1); y += RowH;
         Label(T.PwBackupConfirm, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Field(IdBkPw2, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdBkPw2, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         y += RowH;
         Card(top, y - top);
         y = MatchNote(IdBkMatch, y);   // 확인 칸까지 치면 일치 여부(2026-10-05 사용자)
@@ -153,7 +153,7 @@ internal sealed unsafe partial class App
         y += 16;
         top = y;
         Label(T.PwBackupEnter, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-        Field(IdRsPw, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+        Field(IdRsPw, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
         y += RowH;
         Card(top, y - top);
         if (!_restoreKeepMaster)   // 처음 설정(새 PC·재설치)일 때만: 이 PC 에서 쓸 마스터
@@ -161,10 +161,10 @@ internal sealed unsafe partial class App
             y += 16;
             top = y;
             Label(T.PwNewMasterEnter, labelX, y, labelW, RowH - 1, _font, Theme.ControlText, true);
-            Field(IdRsNew1, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+            Field(IdRsNew1, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
             Separator(y + RowH - 1); y += RowH;
             Label(T.PwNewMasterConfirm, labelX, y, labelW, RowH, _font, Theme.ControlText, true);
-            Field(IdRsNew2, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD);
+            Field(IdRsNew2, valueX, y + (RowH - FieldH) / 2, valueW, FieldH, Native.ES_PASSWORD, limit: SecretText.MaxLen);
             y += RowH;
             Card(top, y - top);
             y = MatchNote(IdRsMatch, y);   // 확인 칸까지 치면 일치 여부(2026-10-05 사용자)
@@ -316,9 +316,15 @@ internal sealed unsafe partial class App
                 if (!StillValid(tk) || a is not (Native.IDYES or Native.IDNO)) return;
                 launch = a == Native.IDYES ? null : "launchv=1\n";
             }
+            // 읽지 못하던 예전 파일은 사본으로 남긴다. 사본을 못 만들면 복원하지 않는다(R07, 0.5.22-C — Codex 배포 전 검토: 결과를 버려 사본 없이 원본이 바뀌었다.
+            // 일반 저장 Config.Save 와 같은 규칙). 아직 새 키를 넘기기 전이라 그만두어도 아무것도 바뀌지 않는다(키는 아래 finally 에서 지운다)
+            if (_cfg.LoadFailed && File.Exists(Config.FilePath) && Config.BackupLoadFailedFile() is null)
+            {
+                Dialog.Show(_hwnd, T.RestoreFailed("config.*.bak"), AppTitle, Native.MB_OK | Native.MB_ICONERROR, share: "error");
+                return;
+            }
             cfg.CommitCreate(key);   // 이 PC 의 새 마스터 키(새 salt) — 이제 cfg 가 소유한다(아래 finally 에서 cfg.Lock 으로 지움)
             keyOwned = null;
-            if (_cfg.LoadFailed && File.Exists(Config.FilePath)) Config.BackupLoadFailedFile();   // 읽지 못하던 예전 파일은 사본으로 남긴다
             string l = launch ?? "";
             Config nc = cfg;
             var res = !DirAcl.EnsureDir(Config.Dir) ? Backup.CommitResult.NotPublished

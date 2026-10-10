@@ -119,6 +119,11 @@ internal static unsafe class Program
         if (IsTestMode && args.Length >= 3 && args[0] == "--selftest-kdf")
             return SiteSelfTest.KdfVectors(args[1], args[2]);
 
+        // 제거 프로그램에서(R03, 0.5.22-C — Codex 배포 전 검토): 이 사용자의 관리자 로그온 작업 "1Key-AdminStartup-<SID>" 를 지운다(예전 제거 프로그램은 옛 이름만 지웠다).
+        // 창 없이, 다른 1Key 와 상관없이. 결과: 0 = 남은 것 없음, 1 = 남음(조용한 제거가 아니면 이름과 지우는 방법을 알렸다)
+        if (args.Length >= 1 && args[0] == "--autostart-remove")
+            return Autostart.RemoveForUninstall(args.Contains("--quiet"), msg => Notice(() => msg, () => T.SetAutostart, Native.MB_OK | Native.MB_ICONWARNING | Native.MB_SETFOREGROUND));
+
         bool fromAutostart = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
 
         // 승격 재시작으로 넘어온 경우에도 "이어받음" 상태를 잃지 않도록 인자로 전달받는다.

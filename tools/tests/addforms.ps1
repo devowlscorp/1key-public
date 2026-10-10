@@ -9,11 +9,14 @@
 #      PW masked, no [+]) - the form is remembered (s{i}.form)
 # AF06 a frequently-used-text item saved and opened again: still one input, no [+]
 # AF07 an empty PW in the login form is refused (both fields are required)
+# AF08 (Codex pre-release R01/D01, 0.5.22-E) a master field takes at most 511 characters: pasting 600 leaves 511 and the field says so (toast)
+# AF09 a frequently-used-text input is NOT capped: 2048 characters pasted are all there, saved, and all there after opening the item again
+# AF10 a login PW input is NOT capped either: 700 characters pasted are all there
 # Own config folder and test suffix; the real 1Key is not touched. Run only while nobody uses the PC. ASCII only.
 param([string]$Exe = "")
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-Start-Checks -Required @("AF01", "AF02", "AF03", "AF04", "AF05", "AF06", "AF07")
+Start-Checks -Required @("AF01", "AF02", "AF03", "AF04", "AF05", "AF06", "AF07", "AF08", "AF09", "AF10")
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
 New-Item -ItemType Directory -Force $sp | Out-Null
 $exe = if ($Exe) { $Exe } else { Get-DefaultExe }
@@ -28,6 +31,7 @@ public class AF {
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassNameW(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, string l);
   [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")] public static extern IntPtr SendStr(IntPtr h, uint m, IntPtr w, string l);
   [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -48,6 +52,9 @@ function Bottom($id) { $r = New-Object AF+RECT; [void][AF]::GetWindowRect([AF]::
 function Box() { for ($i = 0; $i -lt 15; $i++) { $b = [AF]::FindCls([uint32]$p.Id, "OneKeyDialog"); if ($b -ne [IntPtr]::Zero) { return $b }; Start-Sleep -Milliseconds 100 }; [IntPtr]::Zero }
 function CloseBox() { $b = Box; if ($b -ne [IntPtr]::Zero) { [void][AF]::PostMessageW($b, 0x0111, [IntPtr]1, [IntPtr]::Zero); Start-Sleep -Milliseconds 400; return $true }; $false }
 function List() { if (-not (Has 203)) { Click 240 } }
+# paste like a user: EM_REPLACESEL obeys the field's limit (WM_SETTEXT would not)
+function Paste($id, $n, $ch = "x") { $h = [AF]::GetDlgItem($m, $id); [void][AF]::SendMessageW($h, 0x00B1, [IntPtr]0, [IntPtr](-1)); [void][AF]::SendStr($h, 0x00C2, [IntPtr]1, ([string]$ch * $n)) }
+function Len($id) { [int][AF]::SendMessageW([AF]::GetDlgItem($m, $id), 0x000E, [IntPtr]::Zero, [IntPtr]::Zero) }   # WM_GETTEXTLENGTH
 
 try {
   Stop-TestInstances $suffix
@@ -56,6 +63,11 @@ try {
   for ($i = 0; $i -lt 80 -and $m -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $m = [AF]::FindCls([uint32]$p.Id, "OneKeyMainWindow$suffix") }
   if ($m -eq [IntPtr]::Zero) { throw "no main window" }
   Start-Sleep -Milliseconds 800
+  # AF08 master field cap (first-run master screen uses the lock fields 101/102)
+  Paste 101 600 "p"; Start-Sleep -Milliseconds 300
+  $toast = [AF]::FindCls([uint32]$p.Id, "OneKeyToast") -ne [IntPtr]::Zero
+  Check AF08 "511|True" "$(Len 101)|$toast" "a master field takes at most 511 characters; pasting more stops there and a toast says so"
+  SetText 101 ""; Start-Sleep -Milliseconds 1500
   SetText 101 "Master1234"; SetText 102 "Master1234"; Click 103 1200; [void](CloseBox)
 
   # AF01
@@ -100,6 +112,19 @@ try {
   Click 203; Click 4001; SetText 301 "Phrase B"; SetText 302 "text-b"; Click 310 900; [void](CloseBox); List
   Click 1001 900
   Check AF06 "True|False|False" "$(Masked 302)|$(Has 331)|$(Has 339)" "saved frequently-used-text item opens again with one input and no [+]"
+  Click 309; [void](CloseBox); List
+
+  # AF09 long phrase (slot 2): not capped, saved whole, whole again after reopening
+  Click 203; Click 4001; SetText 301 "Long C"; Paste 302 2048 "t"
+  $typed = Len 302
+  Click 310 1200; [void](CloseBox); List
+  Click 1002 900
+  Check AF09 "2048|2048" "$typed|$(Len 302)" "a frequently-used-text input takes 2048 pasted characters and keeps all of them after saving"
+  Click 309; [void](CloseBox); List
+
+  # AF10 long login PW: not capped
+  Click 203; Click 4006; Paste 331 700 "w"
+  Check AF10 "700" "$(Len 331)" "a login PW input takes 700 pasted characters (only master / backup / lock fields are capped at 511)"
   Click 309; [void](CloseBox)
 } catch { Add-Failure ("exception: " + $_) }
 finally { if ($p -and -not $p.HasExited) { [void][AF]::PostMessageW($m, 0x8005, [IntPtr]::Zero, [IntPtr]::Zero); Start-Sleep -Milliseconds 1200; if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force } }; Stop-TestInstances $suffix }

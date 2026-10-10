@@ -276,6 +276,22 @@ internal static class Backup
     /// CreateNew 로 연다 — 그사이 누가 다시 만들어 두면 따라 쓰지 않고 실패한다. 같은 사용자 프로세스와의 모든 교체 경쟁을 막는다는 뜻은 아니다
     /// (만든 뒤 옮기기 전에 이름을 바꿔치기하는 경우 등).
     /// </summary>
+    /// <summary>
+    /// 설정 폴더의 작은 파일을 안전하게 바꾼다(0.5.22-C, Codex 배포 전 검토 R02: 고정 이름에 File.WriteAll* 로 쓰면 그 이름이 다른 파일의 하드링크일 때
+    /// 그 파일 내용이 바뀌었다). 폴더 · 상위 · 대상 이름이 연결(재분석 지점)이면 쓰지 않고 IOException. 임시 이름을 새로 만들어(CreateNew — 있던 이름은 지우고)
+    /// 다 쓴 뒤 이름 바꾸기로 교체한다 — 이름 바꾸기는 기존 이름의 연결을 따라가지 않고 그 이름 자체를 바꾼다(하드링크 · 파일 링크의 대상은 그대로).
+    /// </summary>
+    internal static void WriteReplace(string path, byte[] data)
+    {
+        string full = Path.GetFullPath(path), dir = Path.GetDirectoryName(full)!;
+        if (!SafeDir(dir)) throw new IOException("unsafe folder (link)");
+        if (File.Exists(full) && (File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0) throw new IOException("unsafe file (link)");
+        string tmp = full + ".tmp";
+        if (Directory.Exists(tmp)) throw new IOException("unsafe temp name (folder)");
+        WriteNew(tmp, data);
+        File.Move(tmp, full, overwrite: true);
+    }
+
     internal static void WriteNew(string path, byte[] data)
     {
         if (File.Exists(path)) File.Delete(path);

@@ -15,6 +15,9 @@
 # (10 real idle minutes). clip and lockwidget\inputext only with -All or -ClipboardApproved (they use the real clipboard and IME and
 # put the user's clipboard text back; each refuses to run if the clipboard holds anything but plain text).
 # Logs: docs\test-logs\<date>_<version>\run-<HHmmss>\<script>.txt + summary.md. ASCII only.
+# Exit code (Codex pre-release review R11, 0.5.22-C): 0 only when every selected script ran and passed; 1 = a script failed or timed out;
+# 2 = stopped because somebody used the PC (the rest did not run). The summary lists every script of this folder that was not selected
+# and why (R09), and the candidate exe is pinned for every child through ONEKEY_TEST_EXE (R10) - each row shows the hash the child saw.
 param([string]$Exe = "", [string]$Base = "", [string[]]$Only = @(), [switch]$All, [switch]$ClipboardApproved, [switch]$DryRun, [int]$IdleSeconds = 30)
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
@@ -35,16 +38,32 @@ $map = [ordered]@{
   '^src/OneKey/(AppList|AppEdit|AppAdvanced|AppWndProc|AppTray)\.cs$'          = @("layout", "settingsro", "many", "addforms")
   '^src/OneKey/CtlAcc\.cs$'                                                    = @("a11y")
   '^src/OneKey/(i18n/strings\.tsv|L\.cs|Strings\.g\.cs)$'                      = @("i18ngen", "i18n")
-  '^src/OneKey/(App|Program|Native|WorkArea|Diag|Autostart)\.cs$'             = @("startup", "handoff")
+  '^src/OneKey/(App|Program|Native|WorkArea|Diag|Autostart|AutostartScripts)\.cs$' = @("startup", "handoff")
+  # taskbar cat (0.5.15-0.5.22): the motion timing and the walk/peek checks; the art is checked when it is made (tools/cat), not here
+  '^src/OneKey/(CatWidget|CatClips|CatGrowth|CatGuest|CatHunt|CatMenu|CatHearts)\.cs$' = @("catseq", "catwalk", "catpeek", "cattheme")
+  '^src/OneKey/Assets/cat/'                                                    = @("catseq", "cattheme")
+  '^src/OneKey/(FlipClock|MascotGreet)\.cs$'                                    = @("lockwidget\integration", "lockseq", "cattheme")
+  '^src/OneKey/HelpArt\.cs$'                                                   = @("help", "dialog")
+  '^src/OneKey/(Metal|MetalUi)\.cs$'                                            = @("layout", "printclient", "theme")
+  '^src/OneKey/DirAcl\.cs$'                                                    = @("siteunit")
+  '^tools/tests/run-all\.ps1$'                                                 = @("selfcheck")
   '^installer/'                                                                = @("psblocked")
   '^tools/tests/lib/'                                                          = @("selfcheck")
 }
 $noWindow = @("selfcheck", "siteunit", "kdfcross", "i18ngen", "psblocked")
+# scripts in this folder the runner never starts, with the reason shown in every summary (R09: "all passed" must say what it does not cover)
+$never = [ordered]@{
+  "autolock" = "10 real idle minutes - by hand"; "bounce" = "mouse switch bounce check - by hand"; "catfull" = "every motion dumped for eyes - by hand when art changes"
+  "fx" = "animation one-off"; "fxmem" = "memory one-off"; "mem" = "memory one-off"; "installer" = "real install/uninstall - isolated VM"; "startuplink" = "real autostart - isolated VM"
+  "shots" = "doc screenshots"; "shot2_nofg" = "doc screenshots"
+  "lockwidget\cycles" = "lock widget cycles one-off"; "lockwidget\resources" = "GDI/handle one-off"; "lockwidget\dpi_fail" = "DPI fault injection one-off"
+  "lockwidget\input" = "superseded by inputext"; "lockwidget\mouse" = "mouse one-off"; "lockwidget\msaa" = "screen reader one-off"
+}
 $start = @("startup")
 
 $changed = @()
 if ($Only.Count -gt 0) { $list = @($start + ($Only | ForEach-Object { $_ -split "," }) | Where-Object { $_ } | Select-Object -Unique) }
-elseif ($All) { $list = @($start + ($map.Values | ForEach-Object { $_ }) | Select-Object -Unique) }
+elseif ($All) { $list = @($start + ($map.Values | ForEach-Object { $_ }) | Select-Object -Unique) }   # every mapped script; $never are listed as not run
 else {
   if (-not $Base) { $Base = (git -C $repo describe --tags --abbrev=0 --match "v*" 2>$null); if (-not $Base) { $Base = "HEAD~1" } }
   $changed = @(git -C $repo diff --name-only $Base 2>$null) + @(git -C $repo diff --name-only 2>$null) | Where-Object { $_ } | Select-Object -Unique
@@ -65,8 +84,9 @@ $ver = (Get-Item $exe).VersionInfo.FileVersion -replace '\.0$', ''
 $out = Join-Path $repo ("docs\test-logs\{0:yyyy-MM-dd}_{1}\run-{0:HHmmss}" -f (Get-Date), $ver)
 New-Item -ItemType Directory -Force $out | Out-Null
 $hash = (Get-FileHash $exe).Hash
+$env:ONEKEY_TEST_EXE = (Resolve-Path $exe).Path   # R10: children that take no -Exe still test this candidate (lib\Check.ps1 Get-DefaultExe)
 
-$rows = @(); $stopped = $false; $prevEnd = $null
+$rows = @(); $stopped = $false; $prevEnd = $null; $anyFail = $false
 foreach ($name in $list) {
   $script = Join-Path $PSScriptRoot "$name.ps1"
   $tag = ($name -replace '[\\.]+', '_').Trim('_')
@@ -85,6 +105,7 @@ foreach ($name in $list) {
   if ($name -eq "lockwidget\inputext") { $args2 += @("-Exe", "`"$exe`"", "-UserApproved") }
   elseif ($name -eq "clip") { $args2 += "`"$exe`"" }
   elseif ($name -in @("inject", "sitefill")) { $args2 += @("-Foreground", "-Exe", "`"$exe`"") }   # they type into windows in front
+  elseif ($name -in @("siteunit", "kdfcross")) { $args2 += @("-Exe", "`"$exe`"") }   # R10: they take -Exe and used the project's default before
   elseif ($noWindow -notcontains $name -or $name -eq "psblocked") { $args2 += "`"$exe`"" }
   $t0 = Get-Date
   $pr = Start-Process powershell -ArgumentList $args2 -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
@@ -93,12 +114,23 @@ foreach ($name in $list) {
   $min = [Math]::Round(((Get-Date) - $t0).TotalMinutes, 1)
   if ($noWindow -notcontains $name) { $prevEnd = Get-Date }
   $judge = (Get-Content $log -ErrorAction Ignore | Where-Object { $_ -like "---- judgement*" -or $_ -like "fail=*" } | Select-Object -Last 1)
+  $failN = (Get-Content $log -ErrorAction Ignore | Where-Object { $_ -match '^fail=(\d+)' } | ForEach-Object { [int]$Matches[1] } | Select-Object -Last 1)
+  if ($code -ne 0 -or ($failN -gt 0)) { $anyFail = $true }
   if ((Test-Path "$log.err") -and (Get-Item "$log.err").Length -eq 0) { Remove-Item "$log.err" -Force -ErrorAction Ignore }
   $rows += "| $name | $code | $min | $judge |"
   "{0,-28} exit={1,-7} {2,5} min  {3}" -f $name, $code, $min, $judge
 }
-$md = @("# Test run - $([IO.Path]::GetFileName($exe)) $ver", "", "- exe: ``$exe``", "- SHA-256: ``$hash``", "- started: $(Get-Date -Format 'yyyy-MM-dd HH:mm')",
-        "- base: $(if ($Base) { $Base } else { '-' }), changed files: $($changed.Count)", "",
-        "| script | exit | min | judgement |", "|---|---|---|---|") + $rows
+# R09: every script of this folder that was not run, and why
+$allScripts = @(Get-ChildItem $PSScriptRoot -Filter *.ps1 | Where-Object { $_.BaseName -ne "run-all" } | ForEach-Object { $_.BaseName }) +
+       @(Get-ChildItem (Join-Path $PSScriptRoot "lockwidget") -Filter *.ps1 -ErrorAction Ignore | ForEach-Object { "lockwidget\" + $_.BaseName })
+$skipped = foreach ($s in $allScripts) { if ($list -notcontains $s) { "| $s | " + $(if ($never.Contains($s)) { $never[$s] } elseif ($All) { "not in the map" } else { "not mapped to the changed files" }) + " |" } }
+$result = if ($stopped) { 2 } elseif ($anyFail) { 1 } else { 0 }
+$verdict = @("all selected scripts ran and passed", "FAILED - a script failed or timed out", "STOPPED - somebody used the PC; the rest did not run")[$result]
+$md = @("# Test run - $([IO.Path]::GetFileName($exe)) $ver", "", "- exe: ``$exe``", "- SHA-256: ``$hash`` (pinned for every child: ONEKEY_TEST_EXE)", "- started: $(Get-Date -Format 'yyyy-MM-dd HH:mm')",
+        "- base: $(if ($Base) { $Base } else { '-' }), changed files: $($changed.Count)", "- result: **$verdict** (exit $result)", "",
+        "| script | exit | min | judgement |", "|---|---|---|---|") + $rows + @("", "## Not run", "", "| script | why |", "|---|---|") + $skipped
 Set-Content (Join-Path $out "summary.md") -Value $md -Encoding UTF8
 "summary: $out\summary.md"
+"result: $verdict (exit $result)"
+[Environment]::SetEnvironmentVariable("ONEKEY_TEST_EXE", $null)
+exit $result

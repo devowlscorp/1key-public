@@ -479,18 +479,82 @@ internal static unsafe class Autostart
     /// 창 없이 실행하고(-WindowStyle Hidden, SW_HIDE) 끝날 때까지 기다린다. 관리자 등록은 runas(UAC), 지우기는 관리자 작업이 있으면 runas, 바로 가기
     /// 등록은 보통 권한. 결과: 성공이면 null, 스크립트가 실패하면 그 사유(스크립트가 남긴 파일), 실행·확인 실패면 일반 안내. 시험 모드는 실행하지 않고 이름만 남긴다.
     /// </summary>
-    public static string? RunBuiltin(string name)
+    /// <summary>등록이 1분 넘게 걸리면 한 번 부른다(작업 스레드에서 — 화면에 "아직 하는 중"을 알리게). D03.</summary>
+    public static Action? SlowNotice;
+
+    public static string? RunBuiltin(string name, bool onlyTask = false)
     {
         if (!IsInstalledCopy) return T.SetAutostartInstalledOnly;
         string script = name == ToolAdmin ? AutostartScripts.RegisterAdmin : name == ToolUser ? AutostartScripts.RegisterUser : AutostartScripts.Remove;
+        if (onlyTask && name == ToolRemove) script = "$onlyTask = $true; " + script;   // R04: 관리자 작업만(바로 가기는 둔다)
+        // D03: 호출마다 다른 결과 파일(앞 작업이 늦게 끝나도 섞이지 않게) — 이름에는 따옴표가 들어가지 않는다
+        string resultFile = Path.Combine(Path.GetTempPath(), $"1Key-autostart-result-{Environment.ProcessId}-{Guid.NewGuid():N}.txt");
+        script = "$resultFile = '" + resultFile.Replace("'", "''") + "'; " + script;
         bool elevate = name == ToolAdmin || (name == ToolRemove && AdminTaskPresent());
         if (Program.IsTestMode)
         {
-            try { File.AppendAllText(Path.Combine(Config.Dir, "autostart-tool-runs.txt"), "builtin " + name + (elevate ? " runas" : "") + "\n"); } catch { }
+            try { File.AppendAllText(Path.Combine(Config.Dir, "autostart-tool-runs.txt"), "builtin " + name + (elevate ? " runas" : "") + (onlyTask ? " onlytask" : "") + "\n"); } catch { }
             return null;
         }
-        string resultFile = Path.Combine(Path.GetTempPath(), "1Key-autostart-result.txt");
-        try { if (File.Exists(resultFile)) File.Delete(resultFile); } catch { }
+        // E01(0.5.22-F, Codex 재검토): 실제 일을 하는 PowerShell 이 작업 자물쇠를 직접 쥔다 — 1Key 가 도중에 꺼져도 자식이 끝날 때까지 자물쇠가 남아
+        // 제거 · 다음 등록이 기다린다. 자물쇠는 조정 자물쇠(WithLock)가 미리 만들어 둔 것을 연다 — 못 열면 스크립트의 catch 로 가서 아무것도 바꾸지 않는다
+        if (_workGate == 0) return T.SetAutostartLockFailed;   // E02: 조정 자물쇠 없이 부르지 않는다
+        int t = script.IndexOf("try { ", StringComparison.Ordinal);
+        if (t < 0) return T.SetAutostartLockFailed;
+        string join = "$gate = [System.Threading.Mutex]::OpenExisting('" + WorkLockName + "'); try { [void]$gate.WaitOne() } catch [System.Threading.AbandonedMutexException] { }; ";
+        script = script[..(t + 6)] + join + script[(t + 6)..];
+        return RunBuiltinLocked(name, elevate, script, resultFile);
+    }
+
+    // ---------------------------------------------------------------- 자물쇠(E01 · E02, 0.5.22-F)
+    // 조정 자물쇠(op): 상태 읽기 → 실행 → 다시 읽기 → 예전 등록 정리까지 한 번의 바꾸기를 감싼다(1Key 의 설정 저장 · 제거 프로그램의 --autostart-remove).
+    // 작업 자물쇠(work): PowerShell 자식이 쥐고 끝날 때 놓는다(종료 = 버려짐). 바꾸기를 시작할 때 작업 자물쇠가 비기를 기다린 뒤에 상태를 읽는다 —
+    // 부모가 꺼진 뒤 남은 자식이 아직 등록 중이면 그것이 끝난 뒤의 상태를 본다(버려진 조정 자물쇠를 끝난 증거로 쓰지 않는다).
+    // 이름은 사용자 SID 로 구분한다. 작업 자물쇠는 1Key(보통 권한)가 먼저 만들어 열어 두므로 관리자 권한 자식도 연다.
+    private static nint _workGate;
+    private static string Sid { get { try { return System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value ?? "nosid"; } catch { return "nosid"; } } }
+    private static string OpLockName => "Local" + "\\" + "1Key-autostart-op-" + Sid + Suffix;
+    private static string WorkLockName => "Local" + "\\" + "1Key-autostart-work-" + Sid + Suffix;
+    private const uint WaitAbandoned = 0x80, WaitTimeout = 0x102, Infinite = 0xFFFFFFFF;
+    internal static string TestOpLockName => OpLockName;      // 자체 시험(RL07–RL09)만
+    internal static string TestWorkLockName => WorkLockName;
+
+    /// <summary>
+    /// 한 번의 바꾸기를 자물쇠 안에서: wait = 앞 바꾸기 · 남은 자식이 끝나기를 기다린다(제거), 아니면 바쁘면 바로 "다른 작업 중".
+    /// E02: 자물쇠를 만들거나 얻지 못하면(이름 충돌 · 권한 · WAIT_FAILED) 실행하지 않고 사유를 돌려준다. 얻은 것만 놓는다.
+    /// </summary>
+    public static string? WithLock(Func<string?> op, bool wait)
+    {
+        nint opGate, work;
+        fixed (char* n = OpLockName) opGate = Native.CreateMutexW(0, false, n);
+        if (opGate == 0) return T.SetAutostartLockFailed;
+        uint w = Native.WaitForSingleObject(opGate, wait ? Infinite : 0);
+        if (w == WaitTimeout) { Native.CloseHandle(opGate); return T.SetAutostartBusyOther; }
+        if (w != 0 && w != WaitAbandoned) { Native.CloseHandle(opGate); return T.SetAutostartLockFailed; }
+        try
+        {
+            fixed (char* n = WorkLockName) work = Native.CreateMutexW(0, false, n);
+            if (work == 0) return T.SetAutostartLockFailed;
+            try
+            {
+                // 남은 자식(앞 바꾸기의 부모가 꺼졌어도)이 끝나기를 — 끝나야 그 결과가 반영된 상태를 읽는다
+                uint ww = Native.WaitForSingleObject(work, wait ? Infinite : 0);
+                if (ww == WaitTimeout) return T.SetAutostartBusyOther;
+                if (ww != 0 && ww != WaitAbandoned) return T.SetAutostartLockFailed;
+                ReleaseMutex(work);   // 우리가 쥐지 않는다 — 자식이 쥔다(그동안 핸들은 열어 둔다: 이름이 살아 있게)
+                _workGate = work;
+                try { return op(); }
+                finally { _workGate = 0; }
+            }
+            finally { Native.CloseHandle(work); }
+        }
+        finally { ReleaseMutex(opGate); Native.CloseHandle(opGate); }
+    }
+
+    [DllImport("kernel32.dll")] private static extern bool ReleaseMutex(nint mutex);
+
+    private static string? RunBuiltinLocked(string name, bool elevate, string script, string resultFile)
+    {
         string ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
         string args = "-NoLogo -NoProfile -WindowStyle Hidden -Command \"" + script + "\"";
         string dir = Path.GetDirectoryName(ExePath) ?? "";
@@ -514,15 +578,108 @@ internal static unsafe class Autostart
             handle = info.hProcess;
         }
         uint exit = 0;
-        if (handle != 0)
+        if (handle == 0) return T.SetAutostartToolFailed;   // E02: 기다릴 프로세스가 없으면 끝났다고 하지 않는다
         {
-            Native.WaitForSingleObject(handle, 60000);
-            Native.GetExitCodeProcess(handle, out exit);
+            // D03: 프로세스가 끝날 때까지 기다린다(작업 스레드 — 화면은 막히지 않는다). 1분이 지나면 "아직 하는 중"을 한 번 알리고 계속 기다린다 —
+            // 시간 초과를 끝으로 보고 다음 요청을 받으면 늦게 끝난 앞 작업이 뒤 요청을 뒤집었다. 강제로 끝내지 않는다(등록 중간 상태를 남기지 않게)
+            bool told = false;
+            uint pw;
+            while ((pw = Native.WaitForSingleObject(handle, 60_000)) == WaitTimeout)
+                if (!told) { told = true; try { SlowNotice?.Invoke(); } catch { } }
+            bool gotExit = pw == 0 && Native.GetExitCodeProcess(handle, out exit);
             Native.CloseHandle(handle);
+            if (!gotExit) return T.SetAutostartToolFailed;   // E02: WAIT_FAILED · 종료 코드를 못 읽음 = 완료가 아니다
         }
         // 스크립트가 catch 에서 사유를 파일로 남긴다(성공이면 없음). 파일이 있으면 그 사유, 없고 실패 코드면 일반 안내.
         try { if (File.Exists(resultFile)) { string msg = File.ReadAllText(resultFile).Trim(); File.Delete(resultFile); if (msg.Length > 0) return msg; } } catch { }
         return exit == 0 ? null : T.SetAutostartToolFailed;
+    }
+
+    // ---------------------------------------------------------------- 등록 방식(0.5.22-C, Codex 배포 전 검토 R04 · R05)
+
+    /// <summary>자동 실행의 실제 등록 방식: 없음 · 보통(시작 프로그램 바로 가기) · 관리자(로그온 작업 — 있으면 이쪽).</summary>
+    public enum Mode { Off, User, Admin }
+
+    public static Mode CurrentMode()
+    {
+        if (!IsInstalledCopy) return Mode.Off;
+        if (AdminTaskPresent()) return Mode.Admin;
+        return Read().Link is LinkState.Ours or LinkState.OursDiffers ? Mode.User : Mode.Off;
+    }
+
+    private static bool LinkIsOurs() => Read().Link is LinkState.Ours or LinkState.OursDiffers;
+
+    /// <summary>관리자 자동 실행인데 예전 보통 자동 실행(바로 가기)이 남아 있다 — 같은 방식으로 저장해도 정리를 다시 한다(D04).</summary>
+    public static bool NeedsCleanup(Mode want) => want == Mode.Admin && IsInstalledCopy && AdminTaskPresent() && LinkIsOurs();
+
+    /// <summary>
+    /// 요청한 방식으로 바꾼다(R04: 켜져 있는 채로 "항상 관리자 권한"만 바꾸면 예전에는 아무것도 하지 않아 관리자 작업이 남거나 바로 가기만 남았다).
+    /// 새 방식을 먼저 등록하고 실제로 생겼는지 다시 읽은 뒤에 예전 것을 지운다 — 새 등록이 안 되면 예전 등록을 잃지 않는다. 오래 걸릴 수 있어(UAC · PowerShell)
+    /// 화면 스레드가 아닌 곳에서 부른다(R05, AppList.StartAutostartSwitch). 성공 null, 아니면 사유.
+    /// </summary>
+    public static string? SwitchTo(Mode want) => WithLock(() => SwitchToLocked(want), wait: false);
+
+    private static string? SwitchToLocked(Mode want)
+    {
+        Mode cur = CurrentMode();
+        if (cur == want && !NeedsCleanup(want)) return null;
+        switch (want)
+        {
+            case Mode.Off:
+                return RunBuiltin(ToolRemove);
+            case Mode.User:
+            {
+                if (!LinkIsOurs()) { string? e = RunBuiltin(ToolUser); if (e is not null) return e; }
+                if (!LinkIsOurs()) return T.SetAutostartToolFailed;
+                if (cur != Mode.Admin) return null;
+                string? r = RunBuiltin(ToolRemove, onlyTask: true);   // 바로 가기는 이미 있으니 관리자 작업만
+                return AdminTaskPresent() ? (r ?? T.SetAutostartAdminLeft(AdminTaskName)) : null;
+            }
+            default:   // Admin
+            {
+                if (cur != Mode.Admin)
+                {
+                    string? e = RunBuiltin(ToolAdmin);
+                    if (e is not null) return e;
+                    if (!AdminTaskPresent()) return T.SetAutostartToolFailed;
+                }
+                // 관리자 작업이 대신한다 — 예전 바로 가기를 지운다. 못 지우면 성공이라 하지 않고 남은 것을 알린다(D04) — 다음 저장 때 다시 지운다(NeedsCleanup)
+                if (LinkIsOurs()) { string? le = Apply(false); if (le is not null || LinkIsOurs()) return T.SetAutostartUserLeft(le ?? ""); }
+                return null;
+            }
+        }
+    }
+
+    /// <summary>이 사용자의 관리자 로그온 작업 이름(안내용).</summary>
+    public static string AdminTaskName
+    {
+        get
+        {
+            string? sid;
+            try { sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value; } catch { sid = null; }
+            return "1Key-AdminStartup-" + (sid ?? "?") + Suffix;
+        }
+    }
+
+    /// <summary>
+    /// 제거 프로그램에서(R03, 1Key.nsi — "--autostart-remove"): 이 사용자의 관리자 로그온 작업과 바로 가기를 지운다. 관리자 작업이 없으면 바로 끝(0).
+    /// 남았으면 1 — 조용한 제거가 아니면 작업 이름과 지우는 방법을 알린다.
+    /// </summary>
+    public static int RemoveForUninstall(bool quiet, Action<string> notice)
+    {
+        // E01: 진행 중인 등록(1Key 가 꺼진 뒤 남은 자식 포함)이 끝나기를 먼저 기다린 뒤 상태를 읽는다 — "지금 작업 없음"만 보고 끝내지 않는다
+        bool left = false; string? err = null;
+        string? lockErr = WithLock(() =>
+        {
+            if (!AdminTaskPresent()) return null;
+            err = RunBuiltin(ToolRemove);
+            left = AdminTaskPresent();
+            return null;
+        }, wait: true);
+        if (lockErr is not null) { err = lockErr; left = AdminTaskPresent(); }
+        if (!left) return 0;
+        if (!quiet) notice(T.SetAutostartUninstallLeft(AdminTaskName) + (err is null ? "" : "\n\n" + err));
+        return 1;
     }
 
     // ---------------------------------------------------------------- 관리자 권한 재시작
