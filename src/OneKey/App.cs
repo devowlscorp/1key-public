@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.21-G";
+    public const string Version = "0.5.21-H";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
