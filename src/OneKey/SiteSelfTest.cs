@@ -1017,6 +1017,60 @@ internal static class SiteSelfTest
                 th.Join(5000);
                 Check("RL09", "True|True|(null)", $"{ran9}|{at9 >= 800}|{r9 ?? "(null)"}", $"E01: a waiting change (uninstall) waits for a worker still holding the work lock, then runs ({at9} ms)");
             }
+            {
+                // F01(0.5.22-G): 실제 PowerShell 자식 — 실제 등록 대신 표시 파일을 쓴다. 자물쇠를 열기 직전에 장벽(파일)을 두고 순서를 고정한다
+                string fdir = Path.Combine(Path.GetTempPath(), "1Key-rl10-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(fdir);
+                string ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+                System.Diagnostics.Process Child(string ticketName, string tag)
+                {
+                    string barrier = Path.Combine(fdir, tag + ".go"), marker = Path.Combine(fdir, tag + ".ran");
+                    string script = "$ErrorActionPreference = 'Stop'; try { while (-not (Test-Path -LiteralPath '" + barrier + "')) { Start-Sleep -Milliseconds 50 }; "
+                        + Autostart.HandoffJoin(ticketName) + "[IO.File]::WriteAllText('" + marker + "', 'ran'); exit 0 } catch { exit 1 }";
+                    return System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ps, "-NoLogo -NoProfile -NonInteractive -Command \"" + script + "\"") { CreateNoWindow = true, UseShellExecute = false })!;
+                }
+                string NewTicket() => "Local" + "\\" + "1Key-rl10-ticket-" + Guid.NewGuid().ToString("N");
+                // RL10: 부모가 인계표를 열어 둔 채 기다리면 자식은 자물쇠 · 인계표를 얻고 일을 한다(대조군)
+                int x11 = -9;
+                Autostart.WithLock(() =>
+                {
+                    string tn = NewTicket(); nint tk; fixed (char* n = tn) tk = Native.CreateMutexW(0, false, n);
+                    using var c = Child(tn, "ok");
+                    File.WriteAllText(Path.Combine(fdir, "ok.go"), "");
+                    if (c.WaitForExit(30000)) x11 = c.ExitCode;
+                    Native.CloseHandle(tk); return null;
+                }, wait: true);
+                Check("RL10", "0|True", $"{x11}|{File.Exists(Path.Combine(fdir, "ok.ran"))}", "F01 control: a child whose parent keeps this call's ticket open takes the work lock and does its work");
+                // RL11: 부모가 자식의 자물쇠 열기 전에 꺼짐(인계표 · 작업 자물쇠 핸들 닫힘) → 제거가 같은 이름의 작업 자물쇠를 새로 만들고 쥔 동안 자식이 깸
+                //       → 자식은 새 작업 자물쇠는 얻지만 인계표가 없어 아무것도 하지 않는다
+                System.Diagnostics.Process? late = null;
+                Autostart.WithLock(() =>
+                {
+                    string tn = NewTicket(); nint tk; fixed (char* n = tn) tk = Native.CreateMutexW(0, false, n);
+                    late = Child(tn, "late");
+                    Native.CloseHandle(tk); return null;   // 부모 강제 종료처럼: 자식이 자물쇠를 열기 전에 인계표 · 작업 자물쇠가 닫힌다
+                }, wait: true);
+                int x12 = -9; bool removerRan = false;
+                string? r12 = Autostart.WithLock(() =>
+                {
+                    removerRan = true;
+                    File.WriteAllText(Path.Combine(fdir, "late.go"), "");   // 늦은 자식을 이제 깨운다 — 제거가 만든 작업 자물쇠가 살아 있는 동안
+                    if (late!.WaitForExit(30000)) x12 = late.ExitCode;
+                    return null;
+                }, wait: true);
+                late?.Dispose();
+                Check("RL11", "True|(null)|1|False", $"{removerRan}|{r12 ?? "(null)"}|{x12}|{File.Exists(Path.Combine(fdir, "late.ran"))}", "F01: a child that wakes after its parent died, under a same-name work lock made by the uninstaller, changes nothing (its ticket is gone)");
+                try { Directory.Delete(fdir, true); } catch { }
+            }
+            {
+                // F02(0.5.22-G): 제거가 조정 자물쇠를 얻지 못하면 "남은 것 없음(0)"이 아니라 "확인 못 함(2)" + 안내
+                nint ev2; fixed (char* en = Autostart.TestOpLockName) ev2 = CreateEventW(0, true, false, en);
+                string? told = null, toldQuiet = null;
+                int rc = Autostart.RemoveForUninstall(false, m => told = m);
+                int rcQuiet = Autostart.RemoveForUninstall(true, m => toldQuiet = m);
+                if (ev2 != 0) Native.CloseHandle(ev2);
+                Check("RL12", "2|2|True|True", $"{rc}|{rcQuiet}|{told is not null}|{toldQuiet is null}", "F02: when uninstall cannot get the autostart lock it reports 'could not check' (2), never 'nothing left' (0); quiet stays silent");
+            }
         }
         catch (Exception ex) { sb.Append("FAIL RL00 exception ").Append(ex.GetType().Name).Append(": ").Append(ex.Message).Append('\n'); } }
         return sb.ToString();

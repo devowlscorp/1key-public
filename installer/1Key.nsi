@@ -492,8 +492,11 @@ Section "Uninstall"
     ${Else}
       ExecWait '"$INSTDIR\1Key.exe" --autostart-remove' $5
     ${EndIf}
+    ; F02(0.5.22-G): 2 = 잠금을 얻지 못해 확인하지 못함 — "남은 것 없음"으로 적지 않는다. 제거는 계속한다(파일이 없으면 남은 작업은 아무것도 실행하지 못한다)
     ${If} $5 == 0
       DetailPrint "관리자 자동 실행 작업: 남은 것이 없습니다."
+    ${ElseIf} $5 == 2
+      DetailPrint "관리자 자동 실행 작업이 남았는지 확인하지 못했습니다(1Key-AdminStartup-…). 작업 스케줄러에서 확인하세요."
     ${Else}
       DetailPrint "관리자 자동 실행 작업(1Key-AdminStartup-…)이 남았습니다. 작업 스케줄러에서 지우세요."
     ${EndIf}

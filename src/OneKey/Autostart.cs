@@ -501,10 +501,24 @@ internal static unsafe class Autostart
         if (_workGate == 0) return T.SetAutostartLockFailed;   // E02: 조정 자물쇠 없이 부르지 않는다
         int t = script.IndexOf("try { ", StringComparison.Ordinal);
         if (t < 0) return T.SetAutostartLockFailed;
-        string join = "$gate = [System.Threading.Mutex]::OpenExisting('" + WorkLockName + "'); try { [void]$gate.WaitOne() } catch [System.Threading.AbandonedMutexException] { }; ";
-        script = script[..(t + 6)] + join + script[(t + 6)..];
-        return RunBuiltinLocked(name, elevate, script, resultFile);
+        // F01(0.5.22-G, Codex 재검토): 이번 호출만의 인계표. 1Key 가 자식이 끝날 때까지 열어 두고, 자식은 작업 자물쇠를 얻은 "뒤에" 이것을 연다 —
+        // 자식이 자물쇠를 얻기 전에 1Key 가 강제 종료되면 인계표가 사라져, 늦게 깬 자식이 (제거 등이 새로 만든) 같은 이름의 작업 자물쇠를 얻더라도 아무것도 바꾸지 않는다
+        string ticketName = "Local" + "\\" + "1Key-autostart-ticket-" + Sid + Suffix + "-" + Guid.NewGuid().ToString("N");
+        nint ticket;
+        fixed (char* n = ticketName) ticket = Native.CreateMutexW(0, false, n);
+        if (ticket == 0) return T.SetAutostartLockFailed;
+        try
+        {
+            script = script[..(t + 6)] + HandoffJoin(ticketName) + script[(t + 6)..];
+            return RunBuiltinLocked(name, elevate, script, resultFile);
+        }
+        finally { Native.CloseHandle(ticket); }
     }
+
+    /// <summary>자식 스크립트의 "try {" 바로 안에 넣는 줄: 작업 자물쇠를 얻고(버려짐도 얻은 것), 그다음 이번 호출의 인계표를 연다 — 둘 중 하나라도 못 열면 스크립트의 catch 로(아무것도 바꾸지 않음).</summary>
+    internal static string HandoffJoin(string ticketName)
+        => "$gate = [System.Threading.Mutex]::OpenExisting('" + WorkLockName + "'); try { [void]$gate.WaitOne() } catch [System.Threading.AbandonedMutexException] { }; "
+         + "$ticket = [System.Threading.Mutex]::OpenExisting('" + ticketName + "'); ";
 
     // ---------------------------------------------------------------- 자물쇠(E01 · E02, 0.5.22-F)
     // 조정 자물쇠(op): 상태 읽기 → 실행 → 다시 읽기 → 예전 등록 정리까지 한 번의 바꾸기를 감싼다(1Key 의 설정 저장 · 제거 프로그램의 --autostart-remove).
@@ -663,7 +677,7 @@ internal static unsafe class Autostart
 
     /// <summary>
     /// 제거 프로그램에서(R03, 1Key.nsi — "--autostart-remove"): 이 사용자의 관리자 로그온 작업과 바로 가기를 지운다. 관리자 작업이 없으면 바로 끝(0).
-    /// 남았으면 1 — 조용한 제거가 아니면 작업 이름과 지우는 방법을 알린다.
+    /// 남았으면 1 — 조용한 제거가 아니면 작업 이름과 지우는 방법을 알린다. 자물쇠를 얻지 못해 확인하지 못했으면 2(F02 — "남은 것 없음"으로 보지 않는다).
     /// </summary>
     public static int RemoveForUninstall(bool quiet, Action<string> notice)
     {
@@ -676,7 +690,12 @@ internal static unsafe class Autostart
             left = AdminTaskPresent();
             return null;
         }, wait: true);
-        if (lockErr is not null) { err = lockErr; left = AdminTaskPresent(); }
+        // F02(0.5.22-G, Codex 재검토): 자물쇠를 얻지 못했으면 진행 중인 등록이 없다고 말할 수 없다 — 지금 작업이 안 보여도 성공(0)으로 돌려주지 않는다
+        if (lockErr is not null)
+        {
+            if (!quiet) notice(T.SetAutostartUninstallUnknown(AdminTaskName) + "\n\n" + lockErr);
+            return 2;
+        }
         if (!left) return 0;
         if (!quiet) notice(T.SetAutostartUninstallLeft(AdminTaskName) + (err is null ? "" : "\n\n" + err));
         return 1;
