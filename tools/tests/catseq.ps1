@@ -11,8 +11,8 @@
 # CS02 frames: every frame of every motion is shown on exactly one tick, in order (+1 per tick), to the last frame; then the front pose
 # CS03 pushes: every tick pushes the picture once, none fails; the picture hash changes from frame to frame (at most 2 % repeats)
 # CS04 late ticks: none (interval over the wanted 62 ms by more than 31 ms)
-# CS05 tick accuracy: 99 % of the intervals inside a motion within +-2 ms of 62.5 ms (the first tick of each motion is CS06)
-# CS06 motion start: the first tick comes 62.5 ms after the art is ready, within +5 ms (no start stall - art is prepared elsewhere)
+# CS05 tick accuracy: 99 % of the intervals inside a motion within +-2 ms of 46.875 ms (the first tick of each motion is CS06)
+# CS06 motion start: the first tick comes 46.875 ms after the art is ready, within +5 ms (no start stall - art is prepared elsewhere)
 # CS07 work per tick: at most 16 ms, 99th percentile at most 8 ms
 param([string]$Exe = "", [int]$Laps = 2, [int]$MaxMinutes = 10, [string]$AnalyzeOnly = "")
 $ErrorActionPreference = "Continue"
@@ -51,7 +51,7 @@ function Analyze([string]$log, [bool]$shown) {
     for ($q = 0; $q -lt $frames.Count; $q++) {
       $tk = $frames[$q]
       if ($tk.push -ne 1 -or $tk.fail -ne 0) { $pushBad += "$($s.label)@$q(push $($tk.push) fail $($tk.fail))" }
-      if ($q -gt 0) { $changes++; if ($frames[$q - 1].h -eq $tk.h) { $same++ }; $inner.Add([math]::Abs($tk.dt - 62.5)) }
+      if ($q -gt 0) { $changes++; if ($frames[$q - 1].h -eq $tk.h) { $same++ }; $inner.Add([math]::Abs($tk.dt - 46.875)) }
       else { $firstDt += [pscustomobject]@{ label = $s.label; dt = $tk.dt } }
     }
   }
@@ -62,9 +62,9 @@ function Analyze([string]$log, [bool]$shown) {
   Check CS04 "0" "$($late.Count)" "late ticks $(($late | Select-Object -First 5 | ForEach-Object { "#$($_.i) $($_.dt) $($_.what)" }) -join ', ')"
   $within = @($inner | Where-Object { $_ -le 2 }).Count; $p5 = if ($inner.Count) { [math]::Round(100.0 * $within / $inner.Count, 2) } else { 0 }
   $worst = if ($inner.Count) { [math]::Round(($inner | Measure-Object -Maximum).Maximum, 1) } else { 0 }
-  Check CS05 "True" "$($p5 -ge 99)" "intervals within +-2 ms of 62.5: $p5 % of $($inner.Count) (worst off by $worst ms)"
+  Check CS05 "True" "$($p5 -ge 99)" "intervals within +-2 ms of 46.875: $p5 % of $($inner.Count) (worst off by $worst ms)"
   $slow = @($firstDt | Where-Object { $_.dt -gt 67.5 })
-  Check CS06 "0" "$($slow.Count)" "first tick of each motion within 62.5 + 5 ms of its start ($($firstDt.Count) starts) $(($slow | Select-Object -First 5 | ForEach-Object { "$($_.label) $($_.dt)" }) -join ', ')"
+  Check CS06 "0" "$($slow.Count)" "first tick of each motion within 46.875 + 5 ms of its start ($($firstDt.Count) starts) $(($slow | Select-Object -First 5 | ForEach-Object { "$($_.label) $($_.dt)" }) -join ', ')"
   $w = @($ticks | ForEach-Object { $_.work } | Sort-Object); $wmax = if ($w.Count) { $w[-1] } else { 0 }; $w99 = if ($w.Count) { $w[[int][math]::Floor(($w.Count - 1) * 0.99)] } else { 0 }
   Check CS07 "True" "$($wmax -le 16 -and $w99 -le 8)" "work per tick: max $wmax ms, 99th percentile $w99 ms"
 }

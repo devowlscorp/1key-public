@@ -11,7 +11,7 @@ namespace OneKey;
 /// 걷기 = 돌아서기(WT, 앉기 → 서기 → 옆) → 걸음 주기(WL 16장)를 몇 번 되풀이하며 창을 옮김 → 돌아서 앉기(WI, 0.5.15-K 부터 앞으로 재생하는 그림)
 /// → 새 자리에 앉아 다시 쳐다본다.
 /// 다니는 범위는 작업 표시줄 오른쪽 5분의 1(사내판과 같음). 그림은 오른쪽을 보는 것뿐이라 왼쪽으로 갈 때는 좌우를 뒤집는다.
-/// 재생: 고해상도 대기 타이머 스레드가 62.5 ms(16 fps)마다 창에 틱을 보내고, 틱마다 정확히 한 걸음(시간으로 장을 고르지 않는다 — 사내판 131-B 의
+/// 재생: 고해상도 대기 타이머 스레드가 46.875 ms(약 21 fps — 0.5.21-G 사용자: 전반적으로 슬로 모션 같다 → 1.33배, 16 fps 영상 장을 그대로 빠르게)마다 창에 틱을 보내고, 틱마다 정확히 한 걸음(시간으로 장을 고르지 않는다 — 사내판 131-B 의
 /// 한 장 두 번·다음 장 건너뜀이 없게). 그림 띠는 다른 스레드에서 풀고 줄인 뒤 시작한다(시작 멈춤 없음, 사내판 131-D/E).
 /// 밝은 고양이만(검은 고양이 동작 그림은 아직 없다 — 어두우면 쳐다보기만).
 /// 시험 모드: ONEKEY_TEST_CAT_SEQ=1 이면 목록 순서대로 모든 그림(x:1 포함)을 0.6초 사이를 두고 되풀이하고(catseq.ps1), ONEKEY_TEST_CAT_WALK=1 이면
@@ -74,7 +74,7 @@ internal static unsafe partial class CatWidget
     }
     // BlendFrames: 동작 처음·끝 몇 장을 쉬는 그림과 섞을지. 0.5.15-Y 부터 0 — 쉬는 그림과 동작 첫·끝 장은 다른 그림이라 섞으면 윤곽이 두 겹이 되고
     // 다른 고양이로 바뀌듯 보였다(전체 시험, 사용자: 변신하듯). 대신 그림 띠 앞뒤에 RIFE 로 이은 사이 장이 들어 있다(work/cat-motions/flf/cat_edges.py)
-    private const int ClipTickMs = 62, BlendFrames = 0, SeqGapMs = 600;
+    private const int ClipTickMs = 47, BlendFrames = 0, SeqGapMs = 600;   // 47 → 46.875 ms(StartTicks 가 15.625 의 배수로) = 1.33배
     private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
     /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
     /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).
@@ -683,7 +683,7 @@ internal static unsafe partial class CatWidget
     {
         if (LogPath is null) return;
         int n = steps.Length;
-        LogLine($"clipstart {name} steps {n} frames {n} fps 16 ticks {string.Join(",", Enumerable.Repeat(1, n))} air {new string('0', n)}");
+        LogLine($"clipstart {name} steps {n} frames {n} fps 21 ticks {string.Join(",", Enumerable.Repeat(1, n))} air {new string('0', n)}");
         if (name == "walk") LogLine($"walksteps {string.Join(",", steps.Select(t => $"{t.Art}:{t.Cell}{(t.Mirror ? "m" : "")}:{t.Dx:0.0}"))}");
     }
 

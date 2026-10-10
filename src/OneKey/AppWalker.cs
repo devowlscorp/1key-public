@@ -69,13 +69,14 @@ internal sealed unsafe partial class App
             items.Add(new(IdCatGuide, T.CatMenuGuide));
             items.Add(new(0, ""));
             // 아래 버튼(0.5.18-B, 사용자: 짧게 — 열기 · 잠금 · 설정 · 숨기기, 2×2). 잠겨 있으면 열기(잠금 위젯) · 숨기기
-            items.Add(new(IdCatOpen, T.CatMenuOpen));
+            // 0.5.21-G(사용자: 아이콘으로 바꾸고 올리면 설명 — 한 줄로): Segoe Fluent Icons — 열기 OpenInNewWindow · 잠금 Lock · 설정 Settings · 숨기기 Hide
+            items.Add(new(IdCatOpen, T.CatMenuOpen, Icon: ""));
             if (!lockedNow)
             {
-                if (_cfg.HasMaster) items.Add(new(IdCatLock, T.CatMenuLock));
-                items.Add(new(IdCatSettings, T.CatMenuSettings));
+                if (_cfg.HasMaster) items.Add(new(IdCatLock, T.CatMenuLock, Icon: ""));
+                items.Add(new(IdCatSettings, T.CatMenuSettings, Icon: ""));
             }
-            items.Add(new(IdCatHide, T.CatMenuHide));
+            items.Add(new(IdCatHide, T.CatMenuHide, Icon: ""));
             string title = CatWidget.IsLight ? _cfg.CatNameLight : _cfg.CatNameDark;   // 맨 위에 고양이 이름(설정, 비면 없음)
             if (CatMenu.Show(items.ToArray(), cat, CatWidget.Dpi, !CatWidget.IsLight, cmd => OnWalkerCommand(cmd, gen), title)) return;
         }
@@ -148,18 +149,23 @@ internal sealed unsafe partial class App
             sb.Append("\u2022 ").Append(step < CatGrowth.Steps ? T.CatNoteNext(CatGrowth.StageName(step + 1), (step + 1) * CatGrowth.StepScore - score) : T.CatNoteMax).Append('\n');
         }
         else sb.Append("\u2022 ").Append(T.CatNoteNoGrow).Append('\n');
+        // 오늘의 할 일(0.5.21-G, 사용자: 오늘 섹션은 미션 같다 — 크기 단계처럼 칸을 미리 두고 달성하면 채우기): 동그란 칸들(HelpArt missions)
         sb.Append("## ").Append(T.CatNoteToday).Append('\n');
-        sb.Append("\u2022 ").Append(CatGrowth.StampDue ? T.CatNoteStampYet : T.CatNoteStampDone(CatGrowth.Streak, CatGrowth.StampTotal)).Append('\n');
+        var ms = new List<string> { "stamp=" + (CatGrowth.StampDue ? 0 : 1) };
         if (grows)
         {
-            string Play(string label, string clip) { int w = CatGrowth.WaitMinutes(light, clip); return label + " " + (w > 0 ? T.CatMenuWait(w) : T.CatNoteNow); }
-            sb.Append("\u2022 ").Append(Play(T.CatMenuPet, "I1")).Append(" \u00B7 ").Append(Play(T.CatMenuTreat, "I2")).Append(" \u00B7 ").Append(Play(T.CatMenuPlay, "I3")).Append('\n');
-            sb.Append("\u2022 ").Append(T.CatNoteGuest(CatGrowth.CatchTotal)).Append('\n');   // \uAC00\uB054 \uCC3E\uC544\uC624\uB294 \uC190\uB2D8(0.5.21)
+            ms.Add("pet=" + (CatGrowth.DoneToday(light, "I1") ? 1 : 0));
+            ms.Add("treat=" + (CatGrowth.DoneToday(light, "I2") ? 1 : 0));
+            ms.Add("play=" + (CatGrowth.DoneToday(light, "I3") ? 1 : 0));
+            ms.Add("toy=" + (CatGrowth.ToyToday ? 1 : 0));
         }
-        sb.Append("\u2022 ").Append(T.CatNotePw(CatGrowth.PasswordToday)).Append('\n');
-        string When(CatGrowth.Habit h) { int d = CatGrowth.WaitDays(h); return d > 0 ? T.CatNoteDays(d) : T.CatNoteNow; }
-        sb.Append("\u2022 ").Append(T.CatNoteBackup(When(CatGrowth.Habit.Backup))).Append('\n');
-        sb.Append("\u2022 ").Append(T.CatNoteMaster(When(CatGrowth.Habit.Master))).Append('\n');
+        ms.Add("break=" + (CatGrowth.BreakToday ? 1 : 0));
+        ms.Add($"pw={CatGrowth.PasswordToday}/3");
+        ms.Add("backup=" + (CatGrowth.WaitDays(CatGrowth.Habit.Backup) > 0 ? 1 : 0));   // 백업 · 마스터는 그 기간(7일 · 30일) 안에 했으면 채움
+        ms.Add("master=" + (CatGrowth.WaitDays(CatGrowth.Habit.Master) > 0 ? 1 : 0));
+        sb.Append(Dialog.ArtMark).Append("missions:").Append(string.Join("|", ms)).Append('\n');
+        if (!CatGrowth.StampDue) sb.Append("\u2022 ").Append(T.CatNoteStampDone(CatGrowth.Streak, CatGrowth.StampTotal)).Append('\n');
+        sb.Append("\u2022 ").Append(T.CatMisHint).Append('\n');
         // 앨범(0.5.20): 처음 본 장면은 그림 + 이름, 못 본 장면은 흐린 실루엣 + ?
         sb.Append("## ").Append(T.CatAlbumTitle(CatGrowth.SeenCount, CatGrowth.AlbumKeys.Length)).Append('\n');
         sb.Append(Dialog.ArtMark).Append("album:").Append(string.Join("|", CatGrowth.AlbumKeys.Select(k => k + "=" + (CatGrowth.IsSeen(k) ? "1" : "0"))) ).Append('\n');

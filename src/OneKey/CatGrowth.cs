@@ -112,7 +112,7 @@ internal static class CatGrowth
                 if (_pwCount < 3) { _pwCount++; pts = 10; }
                 break;
             case Habit.AutoLock: if (_alDay != today) { _alDay = today; pts = 5; } break;
-            case Habit.Break: pts = 5; break;   // 쉬는 시간 친구(CatWidget.BreakTick — 한 시간에 한 번까지는 그쪽이 막는다)
+            case Habit.Break: pts = 5; _breakDay = TodayNumber(); break;   // 쉬는 시간 친구(CatWidget.BreakTick — 한 시간에 한 번까지는 그쪽이 막는다)
             case Habit.Stamp:
             {
                 int t = TodayNumber();
@@ -193,6 +193,18 @@ internal static class CatGrowth
     }
 
     private static int _catchTotal;   // 놀잇감을 잡은 횟수(0.5.21 — 수첩)
+    private static int _breakDay, _toyDay;   // 오늘의 할 일(0.5.21-G 수첩 칸): 쉬는 시간 · 깜짝 놀잇감 점수를 받은 날(DateOnly.DayNumber)
+    public static bool BreakToday { get { Load(); return _breakDay == TodayNumber(); } }
+    public static bool ToyToday { get { Load(); return _toyDay == TodayNumber(); } }
+
+    /// <summary>그 놀이(I1 · I2 · I3)로 오늘 점수를 받았나(마지막으로 받은 때가 오늘).</summary>
+    public static bool DoneToday(bool light, string action)
+    {
+        Load();
+        int i = Array.IndexOf(Actions, action);
+        long t = i < 0 ? 0 : Of(light).LastAward[i];
+        return t > 0 && DateTimeOffset.FromUnixTimeMilliseconds(t).LocalDateTime.Date == DateTime.Today;
+    }
     public static int CatchTotal { get { Load(); return _catchTotal; } }
 
     /// <summary>놀잇감을 잡았다(0.5.21 — CatHunt.cs): +5, 쿨타임 없음(놀잇감은 한두 시간에 한 번 온다). 받은 점수.</summary>
@@ -201,7 +213,7 @@ internal static class CatGrowth
         Update();
         var c = Of(light);
         c.Score = Math.Min(MaxScore, c.Score + 5);
-        _catchTotal++;
+        _catchTotal++; _toyDay = TodayNumber();
         Save();
         return 5;
     }
@@ -252,6 +264,7 @@ internal static class CatGrowth
                         continue;
                     }
                     if (v.Length >= 2 && v[0] == "C") { int.TryParse(v[1], out _catchTotal); continue; }   // 놀잇감 잡은 횟수
+                    if (v.Length >= 3 && v[0] == "M") { int.TryParse(v[1], out _breakDay); int.TryParse(v[2], out _toyDay); continue; }   // 오늘의 할 일: 쉬기 · 놀잇감 날
                     if (v.Length >= 4 && v[0] == "S")   // 출근 도장: S 마지막날 연속 모두
                     {
                         int.TryParse(v[1], out _stampDay); int.TryParse(v[2], out _streak); int.TryParse(v[3], out _stampTotal);
@@ -296,7 +309,7 @@ internal static class CatGrowth
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
             File.WriteAllText(FilePath, Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n");
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n");
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }

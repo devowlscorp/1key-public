@@ -490,6 +490,14 @@ internal static unsafe class Dialog
                 case Native.WM_MOUSEWHEEL:
                     if (st is not null && st.Body != 0) { Native.SendMessageW(st.Body, msg, wParam, lParam); return 0; }
                     break;
+                case 0x0084:   // WM_NCHITTEST(0.5.21-G 사용자: 상자를 끌어 옮기고 싶다): 빈 바탕 · 제목 · 그림 위를 끌면 상자가 움직인다 — 버튼 · 섹션 제목 · 본문 글은 자식 창이라 그대로 눌린다
+                {
+                    nint r = Native.DefWindowProcW(hwnd, msg, wParam, lParam);
+                    return r == 1 /* HTCLIENT */ ? 2 /* HTCAPTION */ : r;
+                }
+                case 0x00A3:   // WM_NCLBUTTONDBLCLK: 제목 줄처럼 두 번 눌러도 아무 일 없게(최대화 없음)
+                case 0x00A5:   // WM_NCRBUTTONUP: 시스템 메뉴(이동 · 닫기)를 띄우지 않는다
+                    return 0;
                 case Native.WM_CLOSE:
                     if (st is not null && !st.Done) { st.Result = st.YesNo ? IDNO : (st.HasCancel ? IDCANCEL : IDOK); st.Done = true; }
                     return 0;

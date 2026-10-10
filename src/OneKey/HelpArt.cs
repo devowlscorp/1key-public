@@ -12,6 +12,7 @@ namespace OneKey;
 ///   mark:warn / mark:tip     주의·도움말 줄의 기호
 ///   stages:2                 고양이 크기 단계 빵 여섯 개(지금 단계는 크게, 아직 안 된 단계는 흐린 실루엣) — 고양이 수첩(0.5.20)
 ///   album:wave=1|groom=0|…   고양이 앨범 칸(본 장면 = 그림 + 이름, 못 본 장면 = 흐린 실루엣 + "?") — 고양이 수첩
+///   missions:stamp=1|pet=0|pw=1/3|…  오늘의 할 일 칸(0.5.21-G 사용자: 크기 단계처럼 칸을 미리 두고 달성하면 채우기) — 동그란 칸 + 아이콘 + 이름 + 점수
 /// 창 글자는 화면 읽기용으로 읽기 쉬운 형태(키는 " + ", 나머지는 ", ")로 둔다.
 /// </summary>
 internal static unsafe class HelpArt
@@ -19,6 +20,7 @@ internal static unsafe class HelpArt
     public const string ClassName = "OneKeyHelpArt";
     public const int Height = 36;
     private const int AlbumCell = 84, AlbumCap = 18, AlbumGap = 8, AlbumCols = 4, StagesH = 48;
+    private const int MisSlot = 38, MisCap = 34, MisCols = 5, MisColW = 72, MisRowGap = 6;
 
     /// <summary>그림 줄의 높이(논리 px): 앨범은 칸 줄 수만큼, 단계 줄은 48, 나머지는 36.</summary>
     public static int HeightFor(string spec)
@@ -28,6 +30,11 @@ internal static unsafe class HelpArt
         {
             int n = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|').Length : 0, rows = (n + AlbumCols - 1) / AlbumCols;
             return rows * (AlbumCell + AlbumCap) + Math.Max(0, rows - 1) * AlbumGap;
+        }
+        if (kind == "missions")
+        {
+            int n = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|').Length : 0, rows = (n + MisCols - 1) / MisCols;
+            return rows * (MisSlot + MisCap) + Math.Max(0, rows - 1) * MisRowGap;
         }
         return kind == "stages" ? StagesH : Height;
     }
@@ -53,6 +60,7 @@ internal static unsafe class HelpArt
             "mark" => "",
             "stages" => "",
             "album" => string.Join(", ", items.Where(s => s.EndsWith("=1")).Select(s => CatGrowth.AlbumName(s.Split('=')[0]))),
+            "missions" => string.Join(", ", items.Select(s => { var kv = s.Split('='); return Mission(kv[0]).Name + " " + (kv.Length > 1 && kv[1].Contains('/') ? kv[1] : kv.Length > 1 && kv[1] == "1" ? "✓" : "○"); })),
             _ => string.Join(", ", items.Select(s => s.TrimStart('*'))),
         };
         nint c;
@@ -78,6 +86,14 @@ internal static unsafe class HelpArt
         catch { }
         return Native.DefWindowProcW(hwnd, msg, wParam, lParam);
     }
+
+    /// <summary>할 일 칸 하나: 이름 · 아이콘(Segoe Fluent Icons) · 점수.</summary>
+    private static (string Name, string Icon, int Points) Mission(string key) => key switch
+    {
+        "stamp" => (T.CatMisStamp, "\uE787", 5), "pet" => (T.CatMenuPet, "\uEB51", 6), "treat" => (T.CatMenuTreat, "\uE7B8", 10), "play" => (T.CatMenuPlay, "\uE7FC", 8),
+        "toy" => (T.CatMisToy, "\uE734", 5), "break" => (T.CatMisBreak, "\uE916", 5), "pw" => (T.CatMisPw, "\uE8D7", 10),
+        "backup" => (T.CatMisBackup, "\uE74E", 20), "master" => (T.CatMisMaster, "\uE72E", 20), _ => (key, "\uE73E", 0),
+    };
 
     private static int TextW(nint dc, nint font, string s)
     {
@@ -131,6 +147,41 @@ internal static unsafe class HelpArt
                             Ctl.Text(dc, Theme.FontStrong, "?", Theme.SecondaryText, cx, cy, cx + cell, cy + cell, Native.DT_CENTER | Native.DT_VCENTER);
                         }
                         Ctl.Text(dc, Theme.FontSmall, seen ? CatGrowth.AlbumName(kv[0]) : "???", seen ? Theme.ControlText : Theme.SecondaryText, cx - gap / 2, cy + cell, cx + cell + gap / 2, cy + cell + cap, Native.DT_CENTER | Native.DT_VCENTER);
+                    }
+                    return;
+                }
+                case "missions":
+                {
+                    // 동그란 칸: 채움 = 오늘(백업 · 마스터는 그 기간에) 받았다 — 하트와 같은 분홍 + 흰 아이콘, 빈 칸 = 옅은 테두리 + 흐린 아이콘. 아래 이름 · "+점수"(받았으면 ✓)
+                    int slot = S(MisSlot), cap = S(MisCap), colW = S(MisColW), gap = S(MisRowGap);
+                    int cols = Math.Min(MisCols, Math.Max(1, items.Length)), x0 = (w - cols * colW) / 2;
+                    uint pink = Theme.IsDark ? 0x907AFFu : 0x7A60F0u;   // COLORREF(BGR): CatHearts 의 분홍
+                    for (int i = 0; i < items.Length; i++)
+                    {
+                        string[] kv = items[i].Split('=');
+                        var m = Mission(kv[0]);
+                        string val = kv.Length > 1 ? kv[1] : "0";
+                        int got = 0, need = 1;
+                        if (val.Contains('/')) { var p = val.Split('/'); int.TryParse(p[0], out got); int.TryParse(p[1], out need); }
+                        else got = val == "1" ? 1 : 0;
+                        bool done = got >= need, some = got > 0;
+                        int cx = x0 + (i % MisCols) * colW, cy = (i / MisCols) * (slot + cap + gap), sx = cx + (colW - slot) / 2;
+                        if (done) Gdiplus.FillEllipse(dc, sx, cy, slot, slot, pink);
+                        else
+                        {
+                            Gdiplus.FillEllipse(dc, sx, cy, slot, slot, Theme.Mix(Theme.CardBg, Theme.ControlText, Theme.IsDark ? 0.07 : 0.045));
+                            Gdiplus.DrawRoundRect(dc, sx, cy, slot, slot, slot / 2f, some ? pink : Theme.FieldBorder, Math.Max(1, S(some ? 2 : 1)));
+                        }
+                        Ctl.Text(dc, Theme.FontIconSmall, m.Icon, done ? 0xFFFFFFu : some ? pink : Theme.SecondaryText, sx, cy, sx + slot, cy + slot, Native.DT_CENTER | Native.DT_VCENTER);
+                        if (need > 1)   // 여러 번(비밀번호 바꾸기 3번): 칸 아래쪽에 작은 점들
+                        {
+                            int dot = Math.Max(3, S(4)), dg = S(3), dw = need * dot + (need - 1) * dg, dx = sx + (slot - dw) / 2, dy = cy + slot - dot - S(5);
+                            for (int j = 0; j < need; j++) Gdiplus.FillEllipse(dc, dx + j * (dot + dg), dy, dot, dot, j < got ? (done ? 0xFFFFFFu : pink) : Theme.FieldBorder);
+                        }
+                        int ly = cy + slot + S(1), lh = cap / 2;
+                        Ctl.Text(dc, Theme.FontSmall, m.Name, done ? Theme.ControlText : Theme.SecondaryText, cx, ly, cx + colW, ly + lh, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
+                        string sub = need > 1 ? $"{got}/{need}" : done ? "\u2713 +" + m.Points : "+" + m.Points;
+                        Ctl.Text(dc, Theme.FontSmall, sub, done ? pink : Theme.SecondaryText, cx, ly + lh, cx + colW, ly + 2 * lh, Native.DT_CENTER | Native.DT_VCENTER);
                     }
                     return;
                 }

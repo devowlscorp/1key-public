@@ -62,7 +62,10 @@ internal static unsafe class CatHearts
         _totalMs = _note.Length > 0 ? 3000 : 2000;
         double noteRow = _note.Length > 0 ? (NoteH + NoteGap) * _k : 0;
         _cw = (int)Math.Ceiling(Math.Max(WinW * _k, Math.Max(_nameW + (5 * 11 + 4 * 4 + 16 + 8 + 12) * _k, _noteW + (28 + (_stamp ? PawW : 0)) * _k)));
-        _ch = (int)Math.Ceiling(WinH * _k + noteRow);
+        // 0.5.21-G(사용자: 설명글이 커진 고양이 기준으로 위에 있어 멀다 — 고양이 크기에 따라): 딱지 · 한 줄을 창 아래(머리 바로 위)에 붙이고,
+        // 떠오르는 하트는 그 위로 올라간다(글을 가리지 않게). 창 높이 = 글 줄 + (하트가 떠오르면 그 높이)
+        double chipRow = level >= 0 || _name.Length > 0 ? 20 * _k : 0;   // 하트 줄 딱지(하트 11 + 9)
+        _ch = (int)Math.Ceiling(noteRow + chipRow + (burst ? 72 * _k : 0) + 8 * _k);
         _x = Math.Clamp(headCx - _cw / 2, work.left, Math.Max(work.left, work.right - _cw));
         _y = Math.Max(work.top, headTop - _ch - (int)Math.Round(3 * _k));   // 머리 바로 위(겹치지 않게)
         _ox = headCx - _x;                                                    // 창 안에서 머리 가운데(창을 밀어 넣었으면 가운데가 아니다)
@@ -221,8 +224,12 @@ internal static unsafe class CatHearts
             if (_still) ga = 1;
             double drop = t < GaugeInMs && !_still ? (1 - ga) * -4 * k : 0;
             double noteRow = _note.Length > 0 ? (NoteH + NoteGap) * k : 0;
-            double gy = 6 * k + noteRow + drop;
             double hs = 11 * k, gap = 4 * k, n = _gauge ? CatGrowth.Steps : 0, rowW = n > 0 ? n * hs + (n - 1) * gap : 0, padX = 8 * k, chipH = hs + 9 * k;
+            // 아래부터: 하트 줄 딱지(머리 바로 위) → 그 위 한 줄 → 그 위로 떠오르는 하트
+            double baseY = _ch - 3 * k + drop, chipRowH = _gauge || _nameW > 0 ? chipH : 0;
+            double gy = baseY - chipRowH;
+            double ny = (chipRowH > 0 ? gy - NoteGap * k : baseY) - NoteH * k;
+            double stackTop = _note.Length > 0 ? ny : gy;
             double nameGap = _nameW > 0 && n > 0 ? 7 * k : 0;
             double chipW = rowW + _nameW + nameGap + 2 * padX;
             double chipX = Math.Clamp(_ox - chipW / 2, 2 * k, Math.Max(2 * k, _cw - chipW - 2 * k));   // 머리 위 가운데(창 끝에서는 안쪽으로)
@@ -234,9 +241,9 @@ internal static unsafe class CatHearts
             {
                 double paw = _stamp ? PawW * k : 0;
                 double nw = _noteW + 2 * padX + paw, nx = Math.Clamp(_ox - nw / 2, 2 * k, Math.Max(2 * k, _cw - nw - 2 * k));
-                Metal.Chip(s, nx, 6 * k + drop, nw, NoteH * k, k, _dark);
-                _noteX = nx + padX + paw; _noteY = 6 * k + drop;
-                if (_stamp) { Metal.Opacity = 1; Paw(s, nx + padX + paw / 2 - 3 * k, 6 * k + NoteH * k / 2, t, k); Metal.Opacity = ga * ChipAlpha; }
+                Metal.Chip(s, nx, ny, nw, NoteH * k, k, _dark);
+                _noteX = nx + padX + paw; _noteY = ny;
+                if (_stamp) { Metal.Opacity = 1; Paw(s, nx + padX + paw / 2 - 3 * k, ny + NoteH * k / 2, t, k); Metal.Opacity = ga * ChipAlpha; }
             }
             Metal.Opacity = ga;
             _nameX = gx - _nameW - nameGap; _nameY = gy; _nameH = chipH; _gaugeA = ga;
@@ -255,7 +262,7 @@ internal static unsafe class CatHearts
                 if (u <= 0 || u >= 1) continue;
                 double e = 1 - (1 - u) * (1 - u);
                 double cx = _ox + (p.X + Math.Sin(p.Phase + u * Math.PI * 2.2) * p.Sway) * k;
-                double top = _ch - 2 * k - e * p.Rise * k;   // 머리 바로 위에서 나온다
+                double top = stackTop - 2 * k - e * p.Rise * k;   // 글 줄 바로 위에서 나와 위로(글을 가리지 않는다)
                 double pop = u < 0.15 ? 0.45 + 0.55 * (u / 0.15) : 1, a = u > 0.6 ? 1 - (u - 0.6) / 0.4 : 1;
                 double size = p.Size * k * pop;
                 Heart(s, cx, top - size / 2, size, Pink(_dark), a, double.MaxValue);

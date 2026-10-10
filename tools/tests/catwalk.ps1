@@ -11,7 +11,7 @@
 # CW02 while walking the window moves every tick by the planned step (+-1 px) in the walk direction; turning does not move it
 # CW03 each walk starts where the last one ended, inside the range (right fifth of the taskbar), and moves the cat
 # CW04 left walks are mirrored, right walks are not; both directions happen (judged from 5 complete walks)
-# CW05 late ticks: none   CW06 99 % of intervals within +-2 ms of 62.5 ms   CW07 work per tick at most 16 ms, p99 at most 8 ms
+# CW05 late ticks: none   CW06 99 % of intervals within +-2 ms of 46.875 ms   CW07 work per tick at most 16 ms, p99 at most 8 ms
 param([string]$Exe = "", [int]$Walks = 6, [int]$MaxMinutes = 6, [string]$AnalyzeOnly = "")
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
@@ -62,9 +62,9 @@ function Analyze([string]$log, [bool]$shown) {
   Check CW04 "0|True" "$($mirBad.Count)|$(($dirs.ContainsKey(1) -and $dirs.ContainsKey(-1)) -or $done.Count -lt 5)" ("mirroring by direction; directions seen: $(($dirs.Keys | Sort-Object) -join ',')" + $(if ($mirBad) { " - " + ($mirBad -join ' | ') }))
   $late = @($all | Where-Object { $_.late })
   Check CW05 "0" "$($late.Count)" "late ticks $(($late | Select-Object -First 5 | ForEach-Object { "$($_.dt) $($_.what)" }) -join ', ')"
-  $inner = @($done | ForEach-Object { $_.ticks | Select-Object -Skip 1 } | ForEach-Object { [math]::Abs($_.dt - 62.5) })
+  $inner = @($done | ForEach-Object { $_.ticks | Select-Object -Skip 1 } | ForEach-Object { [math]::Abs($_.dt - 46.875) })
   $p = if ($inner.Count) { [math]::Round(100.0 * @($inner | Where-Object { $_ -le 2 }).Count / $inner.Count, 2) } else { 0 }
-  Check CW06 "True" "$($p -ge 99)" "intervals within +-2 ms of 62.5: $p % of $($inner.Count)"
+  Check CW06 "True" "$($p -ge 99)" "intervals within +-2 ms of 46.875: $p % of $($inner.Count)"
   $wk = @($all | ForEach-Object { $_.work } | Sort-Object); $wmax = if ($wk.Count) { $wk[-1] } else { 0 }; $w99 = if ($wk.Count) { $wk[[int][math]::Floor(($wk.Count - 1) * 0.99)] } else { 0 }
   Check CW07 "True" "$($wmax -le 16 -and $w99 -le 8)" "work per tick: max $wmax ms, p99 $w99 ms"
 }
