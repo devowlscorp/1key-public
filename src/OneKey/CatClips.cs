@@ -13,7 +13,7 @@ namespace OneKey;
 /// 다니는 범위는 작업 표시줄 오른쪽 5분의 1(사내판과 같음). 그림은 오른쪽을 보는 것뿐이라 왼쪽으로 갈 때는 좌우를 뒤집는다.
 /// 재생: 고해상도 대기 타이머 스레드가 46.875 ms(약 21 fps — 0.5.21-G 사용자: 전반적으로 슬로 모션 같다 → 1.33배, 16 fps 영상 장을 그대로 빠르게)마다 창에 틱을 보내고, 틱마다 정확히 한 걸음(시간으로 장을 고르지 않는다 — 사내판 131-B 의
 /// 한 장 두 번·다음 장 건너뜀이 없게). 그림 띠는 다른 스레드에서 풀고 줄인 뒤 시작한다(시작 멈춤 없음, 사내판 131-D/E).
-/// 밝은 고양이만(검은 고양이 동작 그림은 아직 없다 — 어두우면 쳐다보기만).
+/// 검은 고양이(0.5.22, 2026-10-10 사용자: 흰 고양이와 같고 색만 다르게): 모든 동작 띠에 색만 바꾼 판 catclip_<이름>_dark.jpg(tools/cat/recolor_dark.py) — 투명도 띠는 같은 것을 쓴다.
 /// 시험 모드: ONEKEY_TEST_CAT_SEQ=1 이면 목록 순서대로 모든 그림(x:1 포함)을 0.6초 사이를 두고 되풀이하고(catseq.ps1), ONEKEY_TEST_CAT_WALK=1 이면
 /// 걷기만 0.6초 사이로 되풀이한다(catwalk.ps1). 둘 다 ONEKEY_TEST_CAT_LOG 파일에 틱마다 간격·일한 시간·걸음·창 자리를 적는다.
 /// </summary>
@@ -175,7 +175,7 @@ internal static unsafe partial class CatWidget
         if (Hold) { _wantFront = false; return; }   // 메뉴 판이 열려 있는 동안은 제자리(CatMenu)
         var dt = DateTime.Now;
         if (_peekOn || now < _nextClipAt || (dt.Minute == 59 && dt.Second >= 20)) { _wantFront = false; return; }
-        if (PeekTest || !_light) { StartPeek(now); return; }   // 검은 고양이는 아직 동작 그림이 없어 숨기만(시선 그림으로 된다)
+        if (PeekTest || !HasInteractArt(_light)) { StartPeek(now); return; }   // 동작 그림이 없는 고양이는 숨기만(시선 그림으로 된다)
         _wantFront = true;
         if (_gaze != Center || _from != _gaze) return;
         _wantFront = false;
@@ -197,7 +197,7 @@ internal static unsafe partial class CatWidget
     internal static bool CanInteract(string name) => _shown && HasInteractArt(_light) && ClipIndex(name) >= 0;
 
     /// <summary>그 색 고양이에게 상호작용 그림이 있나(키우기도 이것을 따른다 — CatGrowth). 동작 그림은 아직 밝은 고양이뿐: 검은 고양이 그림이 들어오면 여기만 바꾼다.</summary>
-    internal static bool HasInteractArt(bool light) => light && ClipIndex("I1") >= 0;
+    internal static bool HasInteractArt(bool light) => ClipIndex("I1") >= 0 && (light || HasPng("catclip_I1_dark.jpg"));   // 0.5.22: 검은 고양이도(색만 바꾼 띠)
 
     /// <summary>상호작용 동작을 시킨다(메뉴). 쉬는 중이면 정면을 본 뒤 바로, 걷거나 다른 동작 중이면 그 동작이 끝난 뒤.</summary>
     internal static void Interact(string name)
@@ -231,7 +231,7 @@ internal static unsafe partial class CatWidget
 
     private static int NextSeq() { var all = Clips(); if (all.Length == 0) return -1; int i = _seqNext % all.Length; _seqNext = i + 1; return i; }
 
-    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest || FullTest ? SeqGapMs : _light ? 2_500 + _rnd.Next(4_500) : 15_000 + _rnd.Next(20_000));   // 동작 사이 쉬기 2.5~7초(0.5.15-R, 5~14초에서)
+    private static void ScheduleNextClip(long now) => _nextClipAt = now + (SeqTest || WalkTest || PeekTest || FullTest ? SeqGapMs : HasInteractArt(_light) ? 2_500 + _rnd.Next(4_500) : 15_000 + _rnd.Next(20_000));   // 동작 사이 쉬기 2.5~7초(0.5.15-R, 5~14초에서)
 
     // ------------------------------------------------------------------ 숨기(작업 표시줄 선 밑으로 쏙 — 눈만 내밀고 두리번거렸다가 올라온다)
     // 사내판의 매달리기 자리(그림 없이 시선 그림으로 — 밝은·검은 고양이 모두). 틱마다 _sink(그림을 아래로 내린 px)와 시선만 바꾼다
@@ -422,7 +422,8 @@ internal static unsafe partial class CatWidget
         nint col = 0, alp = 0, src = 0, dst = 0, g = 0;
         try
         {
-            if ((col = LoadPng($"catclip_{info.Name}.jpg")) == 0 || (alp = LoadPng($"catclip_{info.Name}_a.png")) == 0) return null;
+            string cj = !_light && HasPng($"catclip_{info.Name}_dark.jpg") ? $"catclip_{info.Name}_dark.jpg" : $"catclip_{info.Name}.jpg";   // 검은 고양이: 색 띠만 다르다
+            if ((col = LoadPng(cj)) == 0 || (alp = LoadPng($"catclip_{info.Name}_a.png")) == 0) return null;
             GdipGetImageWidth(col, out uint sw); GdipGetImageHeight(col, out uint sh);
             if (sw != info.CellW * info.Frames || sh != info.CellH) return null;
             int W = (int)sw, H = (int)sh;
