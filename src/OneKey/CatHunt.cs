@@ -186,7 +186,8 @@ internal static unsafe partial class CatWidget
             LogLine($"hunt caught {_huntKind} +{pts} score {CatGrowth.Score(_light)}");
             int dir = s.Mirror ? -1 : 1;
             string what = _huntKind switch { "butterfly" => T.CatGuestFly, "bubble" => T.CatGuestPop, _ => T.CatGuestCatch };   // 나비는 팔랑 날아가고 비눗방울은 톡
-            ShowHearts(true, Math.Max(_work.top, _cy), note: $"{what} +{pts}", headCx: (int)Math.Round(_huntGuestX - dir * _gS * 0.2));
+            int top = _cy + TopOf(_arts[s.Art], s.Cell);   // 지금 장의 고양이 머리 위(동작 칸 위 여백이 아니라)
+            ShowHearts(true, Math.Max(_work.top, top), note: $"{what} +{pts}", headCx: (int)Math.Round(_huntGuestX - dir * _gS * 0.2));
         }
     }
 
@@ -201,12 +202,15 @@ internal static unsafe partial class CatWidget
         {
             var pa = _arts[HArtPounce].Info;
             bool fly = _huntKind == "butterfly";
+            // 공중(땅을 찬 장 ~ 누르는 장)은 한 장 걸러(0.5.21-G 사용자: 슬로 모션 같다 — 덮치는 순간은 "확" 빠르게, 땅을 차고 누를 때까지 약 0.6초)
+            int target = _huntKind == "yarn" ? pa.Keys[2] : pa.Keys[1];   // 나비 · 비눗방울은 공중에서 앞발이 닿는 장, 털실은 누르는 장
             for (int j = 1; j < pa.Frames; j++)
             {
+                if (j > 2 && j < pa.Keys[2] && ((j - 2) & 1) == 1 && j != target) continue;
                 var (e, lf) = LeapAt(j, pa.Keys[2], fly, lift);
+                if (j == target) _huntCatchStep = i + 1 + tail.Count;
                 tail.Add(new PlayStep(HArtPounce, j, m, moved + dir * _huntLeap * e, lf));
             }
-            _huntCatchStep = i + (_huntKind == "yarn" ? pa.Keys[2] : pa.Keys[1]);   // 나비 · 비눗방울은 공중에서 앞발이 닿는 장, 털실은 누르는 장
             AppendBack(tail, _arts[HArtBack].Info, m, moved + dir * _huntLeap, lift);
         }
         else

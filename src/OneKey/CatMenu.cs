@@ -11,18 +11,21 @@ namespace OneKey;
 /// 구분선(Id 0)으로 나뉜 묶음마다 3개면 한 줄 3칸(쓰담 · 츄르 · 놀이), 아니면 2칸씩(열기 · 잠금 / 설정 · 숨기기). 올리면 조금 밝게, 누르면 눌린 조각.
 /// 쓰는 법은 Windows 메뉴와 같다: 바깥을 누르거나 Esc·다른 창으로 가면 닫히고, 화살표로 고르고 Enter·Space 로 실행.
 /// 위에 자리가 없으면(작업 표시줄이 위) 고양이 아래에 꼬리를 위로 해서 뜬다. 열려 있는 동안 고양이는 새 동작(걷기·숨기)을 시작하지 않는다(<see cref="CatWidget.Hold"/>).
+/// 0.5.21-G(2026-10-10 사용자: 열기 · 잠금 · 설정 · 숨기기는 아이콘으로, 올리면 설명 — 한 줄로): 아이콘이 있는 항목만으로 된 묶음은 한 줄에 모두(아이콘 버튼),
+/// 올리거나 화살표로 고르면 판 바로 아래에 이름 딱지(풍선 도움말처럼).
 /// 창 이름 = 항목 이름을 줄바꿈으로 이은 것(화면 읽기·시험이 읽는다).
 /// </summary>
 internal static unsafe class CatMenu
 {
     public const string ClassName = "OneKeyCatMenu";
-    /// <summary>항목. Id 0 = 묶음 나눔. Note = 이름 아래 작은 글(키우기 점수까지 남은 시간 "♡ 2분").</summary>
-    public readonly record struct Item(int Id, string Text, string Note = "");
+    /// <summary>항목. Id 0 = 묶음 나눔. Note = 이름 아래 작은 글(키우기 점수까지 남은 시간 "♡ 2분"). Icon = Segoe Fluent Icons 글자(있으면 아이콘 버튼 — 이름은 올렸을 때 딱지로).</summary>
+    public readonly record struct Item(int Id, string Text, string Note = "", string Icon = "");
 
     // 논리 px
     // 0.5.19-I(2026-10-10 사용자: 버튼과 판의 가로 여백이 커서 타이트하게): 판 여백 10 → 8, 칸 사이 6 → 5, 칸 안 좌우 14 → 10, 칸 폭은 묶음마다 따로
     private const double Pad = 8, Radius = 16, TailW = 18, TailH = 9, Gap = 3, FontPx = 13.5;
     private const double CellH = 36, CellNoteH = 46, CellGap = 5, GroupGap = 8, CellPadX = 10, MinInner = 150;
+    private const double IconPx = 16, IconCellW = 34, TipH = 22, TipGap = 4;   // 아이콘 버튼 · 이름 딱지(논리 px)
     private const double MarX = 30, MarTop = 16, MarBot = 46;   // 판 그늘(0 12px 26px)이 들어갈 자리
     private const int AnimMs = 130, Rise = 6;
     private const double NoteScale = 0.85;   // 오른쪽 작은 글 크기(본문 대비)
@@ -86,6 +89,7 @@ internal static unsafe class CatMenu
             for (int i = 0; i < _labels.Length; i++)
             {
                 if (items[i].Id == 0) continue;
+                if (items[i].Icon.Length > 0) { need[i] = IconCellW * k; continue; }   // 아이콘 버튼: 글 폭과 상관없이
                 double w = Measure(g, _labels[i], font, fmt) * 1.06;   // 버튼 글은 굵게(약간 넓다)
                 if (items[i].Note.Length > 0) w = Math.Max(w, Measure(g, items[i].Note, font, fmt) * NoteScale);
                 need[i] = w + 2 * CellPadX * k;
@@ -97,7 +101,7 @@ internal static unsafe class CatMenu
         var groups = new List<List<int>> { new() };
         for (int i = 0; i < items.Length; i++) { if (items[i].Id == 0) { if (groups[^1].Count > 0) groups.Add(new()); } else groups[^1].Add(i); }
         if (groups[^1].Count == 0) groups.RemoveAt(groups.Count - 1);
-        int Cols(List<int> grp) => grp.Count == 3 ? 3 : Math.Min(2, grp.Count);
+        int Cols(List<int> grp) => grp.All(i => items[i].Icon.Length > 0) ? grp.Count : grp.Count == 3 ? 3 : Math.Min(2, grp.Count);   // 아이콘 묶음은 한 줄
         double inner = Math.Max(MinInner * k, titleW), gap = CellGap * k;
         foreach (var grp in groups) inner = Math.Max(inner, Cols(grp) * grp.Max(i => need[i]) + (Cols(grp) - 1) * gap);
         inner = Math.Ceiling(inner);
@@ -264,6 +268,7 @@ internal static unsafe class CatMenu
             for (int i = 0; i < _items.Length; i++)
             {
                 if (_items[i].Id == 0) continue;
+                if (_items[i].Icon.Length > 0) continue;   // 아이콘은 아래에서(아이콘 글꼴)
                 var r = _rects[i];
                 double dy = _pressed && i == _hot ? 1 * k : 0, noteH = _items[i].Note.Length > 0 ? 14 * k : 0;
                 var rc = new RECTF { X = (float)(_px + r.X), Y = (float)(_py + r.Y + dy), Width = (float)r.W, Height = (float)(r.H - noteH) };
@@ -276,6 +281,7 @@ internal static unsafe class CatMenu
                 }
             }
             if (bold != 0) GdipDeleteFont(bold);
+            DrawIcons(g, brush);
             return true;
         }
         finally
@@ -284,6 +290,71 @@ internal static unsafe class CatMenu
             FreeFonts(fam, font, fmt);
             if (g != 0) GdipDeleteGraphics(g);
             GdipDisposeImage(bmp);
+        }
+    }
+
+    /// <summary>아이콘 버튼의 글자(Segoe Fluent Icons, 없으면 Segoe MDL2 Assets — 같은 코드 자리), 그리고 고른 아이콘의 이름 딱지(판 바로 아래).</summary>
+    private static void DrawIcons(nint g, nint brush)
+    {
+        if (!_items.Any(it => it.Icon.Length > 0)) return;
+        nint fam = 0, font = 0, fmt = 0;
+        try
+        {
+            fixed (char* f = "Segoe Fluent Icons") if (GdipCreateFontFamilyFromName(f, 0, out fam) != 0 || fam == 0)
+                fixed (char* f2 = "Segoe MDL2 Assets") GdipCreateFontFamilyFromName(f2, 0, out fam);
+            if (fam == 0) return;
+            GdipCreateFont(fam, (float)(IconPx * _k), 0, 2, out font);
+            GdipCreateStringFormat(0x00001000, 0, out fmt);
+            GdipSetStringFormatAlign(fmt, 1); GdipSetStringFormatLineAlign(fmt, 1);
+            for (int i = 0; i < _items.Length; i++)
+            {
+                if (_items[i].Id == 0 || _items[i].Icon.Length == 0) continue;
+                var r = _rects[i];
+                double dy = _pressed && i == _hot ? 1 * _k : 0;
+                var rc = new RECTF { X = (float)(_px + r.X), Y = (float)(_py + r.Y + dy), Width = (float)r.W, Height = (float)r.H };
+                fixed (char* p = _items[i].Icon) GdipDrawString(g, p, _items[i].Icon.Length, font, ref rc, fmt, brush);
+            }
+        }
+        finally
+        {
+            if (fmt != 0) GdipDeleteStringFormat(fmt);
+            if (font != 0) GdipDeleteFont(font);
+            if (fam != 0) GdipDeleteFontFamily(fam);
+        }
+        if (_hot >= 0 && _items[_hot].Icon.Length > 0) DrawTip(g, _hot);
+    }
+
+    /// <summary>
+    /// 고른 아이콘 버튼의 이름 딱지: 판 바로 아래(꼬리가 아래면 꼬리 위에 겹쳐 — 풍선 도움말처럼 잠깐), 그 버튼 가운데에. 판 그늘 자리(MarBot) 안이라 창을 키우지 않는다.
+    /// </summary>
+    private static void DrawTip(nint g, int i)
+    {
+        if (!Fonts(out nint fam, out nint font, out nint fmt)) { FreeFonts(fam, font, fmt); return; }
+        nint bold = 0, brush = 0;
+        try
+        {
+            double k = _k;
+            GdipCreateFont(fam, (float)(FontPx * 0.92 * k), 1 /* Bold */, 2, out bold);
+            string text = _labels[i];
+            double tw = Measure(g, text, bold, fmt) + 16 * k, th = TipH * k;
+            var r = _rects[i];
+            double cx = _px + r.X + r.W / 2;
+            double tx = Math.Clamp(cx - tw / 2, 2 * k, _cw - tw - 2 * k), ty = _py + _ph + TipGap * k;
+            var surf = new Metal.Surf((uint*)_bits, _cw, _ch);
+            bool prem = Metal.Premul; double op = Metal.Opacity;
+            Metal.Premul = true; Metal.Opacity = 1;
+            try { Metal.Chip(surf, tx, ty, tw, th, k, _dark); }
+            finally { Metal.Premul = prem; Metal.Opacity = op; }
+            GdipSetStringFormatAlign(fmt, 1); GdipSetStringFormatLineAlign(fmt, 1);
+            GdipCreateSolidFill(0xFF000000u | Metal.Ink(_dark), out brush);
+            var rc = new RECTF { X = (float)tx, Y = (float)ty, Width = (float)tw, Height = (float)th };
+            fixed (char* p = text) GdipDrawString(g, p, text.Length, bold, ref rc, fmt, brush);
+        }
+        finally
+        {
+            if (brush != 0) GdipDeleteBrush(brush);
+            if (bold != 0) GdipDeleteFont(bold);
+            FreeFonts(fam, font, fmt);
         }
     }
 
