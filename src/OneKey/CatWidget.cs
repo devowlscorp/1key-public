@@ -487,7 +487,7 @@ internal static unsafe partial class CatWidget
         if (!_hoverShown && now - _hoverStart >= 1000) { _hoverShown = true; ShowHearts(false); LogLine("hover"); }
     }
 
-    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "", bool stamp = false, bool noteOnly = false)
+    private static void ShowHearts(bool burst, int topY = int.MinValue, string note = "", bool stamp = false, bool noteOnly = false, int headCx = int.MinValue)
     {
         if (_hwnd == 0 || !_shown || _sitTop < 0) return;
         if (noteOnly)
@@ -495,7 +495,7 @@ internal static unsafe partial class CatWidget
             CatHearts.Show(WinX + _sitCx, topY != int.MinValue ? topY : WinY + _sitTop, _work, _dpi, !_light, -1, false, "", note);
             return;
         }
-        int cx = WinX + _sitCx, top = topY != int.MinValue ? topY : WinY + _sitTop;
+        int cx = headCx != int.MinValue ? headCx : WinX + _sitCx, top = topY != int.MinValue ? topY : WinY + _sitTop;   // headCx: 놀잇감을 잡은 자리(CatHunt)
         // 딱지 = 이름 · 단계 이름(자라는 고양이만 — 하트 줄도). 자라지 않는 고양이(그림이 아직 없는 검은 고양이)는 이름과 한 줄만
         bool grows = HasInteractArt(_light);
         string name = _light ? _nameLight : _nameDark;

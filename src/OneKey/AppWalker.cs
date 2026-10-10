@@ -154,6 +154,7 @@ internal sealed unsafe partial class App
         {
             string Play(string label, string clip) { int w = CatGrowth.WaitMinutes(light, clip); return label + " " + (w > 0 ? T.CatMenuWait(w) : T.CatNoteNow); }
             sb.Append("\u2022 ").Append(Play(T.CatMenuPet, "I1")).Append(" \u00B7 ").Append(Play(T.CatMenuTreat, "I2")).Append(" \u00B7 ").Append(Play(T.CatMenuPlay, "I3")).Append('\n');
+            sb.Append("\u2022 ").Append(T.CatNoteGuest(CatGrowth.CatchTotal)).Append('\n');   // \uAC00\uB054 \uCC3E\uC544\uC624\uB294 \uC190\uB2D8(0.5.21)
         }
         sb.Append("\u2022 ").Append(T.CatNotePw(CatGrowth.PasswordToday)).Append('\n');
         string When(CatGrowth.Habit h) { int d = CatGrowth.WaitDays(h); return d > 0 ? T.CatNoteDays(d) : T.CatNoteNow; }
