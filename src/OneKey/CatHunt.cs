@@ -13,6 +13,8 @@ internal static unsafe partial class CatWidget
     private static readonly long GuestStayMs = Program.IsTestMode && long.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_GUEST_STAY_MS"), out long gs) && gs > 0 ? gs : 20_000;
     /// <summary>시험: 놀잇감이 나타난 뒤 이만큼 지나면 누른 것으로(입력 없이 기록만으로 시험할 때). 0 = 안 누름(떠나는 길 시험).</summary>
     private static readonly long GuestAutoClickMs = Program.IsTestMode && long.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_GUEST_CLICK_MS"), out long gc) && gc > 0 ? gc : 0;
+    /// <summary>시험(ONEKEY_TEST_CAT_GUEST_ALBUM=0): 앨범에 적지 않는다(앨범 줄 없이 잡는 순간만 볼 때).</summary>
+    private static readonly bool GuestTestQuiet = Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_CAT_GUEST_ALBUM") == "0";
     private static readonly string[] GuestKinds = { "butterfly", "yarn", "bubble" };   // 0.5.21-D: 쥐 → 비눗방울(사용자: 쥐를 잡는 건 잔인해 보인다)
     private const int HuntWiggles = 12;   // 실룩 되풀이 최대(한 번 2초 — 놀잇감이 머무는 20초보다 길게)
 
@@ -186,8 +188,9 @@ internal static unsafe partial class CatWidget
             LogLine($"hunt caught {_huntKind} +{pts} score {CatGrowth.Score(_light)}");
             int dir = s.Mirror ? -1 : 1;
             string what = _huntKind switch { "butterfly" => T.CatGuestFly, "bubble" => T.CatGuestPop, _ => T.CatGuestCatch };   // 나비는 팔랑 날아가고 비눗방울은 톡
+            if (!GuestTestQuiet && CatGrowth.MarkSeen("toy")) { what += $" +{pts} \u00B7 " + T.CatAlbumNew(CatGrowth.AlbumName("toy")); pts = -1; LogLine("album toy"); }   // 앨범 13번째: 처음 논 날
             int top = _cy + TopOf(_arts[s.Art], s.Cell);   // 지금 장의 고양이 머리 위(동작 칸 위 여백이 아니라)
-            ShowHearts(true, Math.Max(_work.top, top), note: $"{what} +{pts}", headCx: (int)Math.Round(_huntGuestX - dir * _gS * 0.2));
+            ShowHearts(true, Math.Max(_work.top, top), note: pts >= 0 ? $"{what} +{pts}" : what, headCx: (int)Math.Round(_huntGuestX - dir * _gS * 0.2));
         }
     }
 
