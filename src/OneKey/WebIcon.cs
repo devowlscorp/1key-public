@@ -27,14 +27,27 @@ internal static unsafe class WebIcon
 
     private static bool IsLink(string path) { try { return Path.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0; } catch { return true; } }
 
+    /// <summary>설정 폴더·아이콘 폴더와 그 부모의 연결을 따라 읽거나 쓰거나 지우지 않는다. 없는 폴더는 생성 전에 부모까지 확인한다.</summary>
+    private static bool SafeDirectories()
+    {
+        try
+        {
+            for (string? d = Path.GetFullPath(Dir); d is not null; d = Path.GetDirectoryName(d))
+                if (Path.Exists(d) && (File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) return false;
+            return true;
+        }
+        catch { return false; }
+    }
+
     /// <summary>아이콘 폴더(재분석 지점이 아닌 보통 폴더)를 준비한다. 설정 폴더는 DirAcl 이 좁힌 권한으로 만든다.</summary>
     private static bool EnsureDir()
     {
+        if (!SafeDirectories()) return false;
         if (!DirAcl.EnsureDir(Config.Dir)) return false;
         string d = Dir;
         if (Directory.Exists(d)) return !IsLink(d);
         if (File.Exists(d)) return false;
-        try { Directory.CreateDirectory(d); return !IsLink(d); } catch { return false; }
+        try { Directory.CreateDirectory(d); return SafeDirectories(); } catch { return false; }
     }
 
     /// <summary>앱이 만든 PNG 를 쓴다(새 임시 파일 → 바꿔치기). 경로가 없거나 폴더가 링크면 false.</summary>
@@ -54,6 +67,7 @@ internal static unsafe class WebIcon
     /// <summary>이 항목의 앱 소유 아이콘 파일만 지운다(사용자가 고른 원본 파일은 건드리지 않는다 — 원본은 저장하지 않는다).</summary>
     public static void Delete(string id, bool fav = true, bool user = true)
     {
+        if (!SafeDirectories()) return;
         foreach (string? p in new[] { fav ? FavPath(id) : null, user ? UserPath(id) : null })
         {
             if (p is null) continue;
@@ -67,7 +81,7 @@ internal static unsafe class WebIcon
         if (path is null) return null;
         try
         {
-            if (!File.Exists(path) || IsLink(path) || IsLink(Dir)) return null;
+            if (!SafeDirectories() || !File.Exists(path) || IsLink(path)) return null;
             return ReadLimited(path, MaxBytes);
         }
         catch { return null; }
