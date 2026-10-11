@@ -41,6 +41,8 @@ function Key($id, $vk) { [void][TU]::PostMessageW([TU]::GetDlgItem($m, $id), 0x0
 function Box() { for ($i=0;$i -lt 15;$i++) { $b = [TU]::FindBox([uint32]$p.Id); if ($b -ne [IntPtr]::Zero) { return $b }; Start-Sleep -Milliseconds 100 }; [IntPtr]::Zero }
 function Answer($b, $cmd) { if ($b -ne [IntPtr]::Zero) { [void][TU]::PostMessageW($b, 0x0111, [IntPtr]$cmd, [IntPtr]::Zero); Start-Sleep -Milliseconds 600 } }
 function Has($id) { [TU]::GetDlgItem($m, $id) -ne [IntPtr]::Zero }
+# unlock, then wait for the list (settings button 220) instead of a fixed 600 ms: since 0.5.22-C the unlock of a build with the support folder takes ~0.6 s here (2026-10-12), and a click posted before the list exists is lost
+function Unlock() { Click 103; for ($i = 0; $i -lt 50 -and -not (Has 220); $i++) { Start-Sleep -Milliseconds 100 } }
 function CloseBox() { for ($i=0;$i -lt 20;$i++) { $b = [TU]::FindBox([uint32]$p.Id); if ($b -ne [IntPtr]::Zero) { [void][TU]::PostMessageW($b, 0x0111, [IntPtr]1, [IntPtr]::Zero); Start-Sleep -Milliseconds 300; return }; Start-Sleep -Milliseconds 100 } }
 function Launch() {
   $script:p = Start-Process $exe -PassThru
@@ -77,7 +79,7 @@ try {
   Quit
   Launch
   Check TM05 "True|1" ("$([TU]::GetDlgItem($m, 101) -ne [IntPtr]::Zero)|$([TU]::Dark($m))") "after a restart the lock screen is already dark"
-  SetText 101 "Master1234"; Click 103
+  SetText 101 "Master1234"; Unlock
 
   # light
   Click 220; Key 2008 0x26; Click 2012; CloseBox
@@ -88,7 +90,7 @@ try {
   Quit
   Launch
   Check TM08 "$sysDark" "$([TU]::Dark($m))" "after a restart: follows Windows again"
-  SetText 101 "Master1234"; Click 103
+  SetText 101 "Master1234"; Unlock
 
   # leaving with an unsaved theme preview asks first (the other of light/dark than the system, so the preview is visible)
   $other = if ($sysDark -eq 1) { 1 } else { 2 }   # 1 = light, 2 = dark
