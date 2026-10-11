@@ -73,7 +73,8 @@
 #      brings it to the front without asking
 # LA23 a target without any window: a press after 8 s asks; [Yes] starts a second process (only on confirmation)
 # LA24 window rules (R34-3): a large WS_EX_TRANSPARENT window and a WS_EX_NOACTIVATE window of the target are reused; a zero-size window of
-#      an unqueryable program does not block; an unqueryable normal window blocks (cannot verify) unless the target's own window is found
+#      an unqueryable program does not block; an unqueryable normal window blocks (cannot verify) unless the target's own window is found -
+#      (0.5.22) only when its file name (process list, read without opening it) is the target's: another name cannot be the target
 # LA25 Settings > Quick launch: the four name-switch combinations change the tile shapes after [Save] and survive a restart
 # LA26 installed-program list: more shortcuts than the scan limit -> 80 rows, scan stops (no freeze)
 # LA27 icons read in the background (icon:slow): the window answers within 1 s while icons are slow
@@ -220,6 +221,7 @@ $late = Join-Path $work "LaLate.exe"; Copy-Item $tgt $late
 $nowin = Join-Path $work "LaNoWin.exe"; Copy-Item $tgt $nowin
 $blind = Join-Path $work "LaBlind.exe"; Copy-Item $tgt $blind
 $blindZero = Join-Path $work "LaBlindZero.exe"; Copy-Item $tgt $blindZero
+$blindSame = Join-Path $work "LaBlind\LaTarget.exe"; New-Item -ItemType Directory -Force (Split-Path $blindSame) | Out-Null; Copy-Item $tgt $blindSame   # same file name as the target, unreadable path (launch:blind)
 $spawn = Join-Path $work "LaSpawn.exe"; Copy-Item $tgt $spawn
 $child = Join-Path $work "LaChild.exe"; Copy-Item $tgt $child
 $otherExe = Join-Path $work "LaOther.exe"; Copy-Item $tgt $otherExe
@@ -245,7 +247,7 @@ function WriteList([string]$text) { [IO.File]::WriteAllBytes("$cfg\launch.dat", 
 function ReadList() { [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes("$cfg\launch.dat"), $ent, 'CurrentUser')) }
 function Item([int]$i, [string]$id, [string]$kind, [string]$name, [string]$target, [int]$mods = 0, [int]$vk = 0) { "l$i.id=$id`nl$i.kind=$kind`nl$i.name=$name`nl$i.target=$($target.Replace('\','\\'))`nl$i.mods=$mods`nl$i.vk=$vk`n" }
 function Procs([string]$path) { @(Get-Process -ErrorAction Ignore | Where-Object { try { $_.Path -eq $path } catch { $false } }) }
-function KillTargets() { foreach ($x in @($tgt, $slow, $gone, $adminExe, $late, $nowin, $blind, $blindZero, $spawn, $child, $otherExe)) { Procs $x | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction Ignore } }; foreach ($h in [LA]::Explorer("LaFolder")) { [void][LA]::PostMessageW($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } }
+function KillTargets() { foreach ($x in @($tgt, $slow, $gone, $adminExe, $late, $nowin, $blind, $blindZero, $blindSame, $spawn, $child, $otherExe)) { Procs $x | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction Ignore } }; foreach ($h in [LA]::Explorer("LaFolder")) { [void][LA]::PostMessageW($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } }
 function Start1Key() {
   $script:p = Start-Process $exe -PassThru; $script:m = [IntPtr]::Zero
   for ($i = 0; $i -lt 80; $i++) { $script:m = [LA]::MainWnd([uint32]$script:p.Id, "OneKeyMainWindow$suffix"); if ($script:m -ne [IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }
@@ -784,14 +786,20 @@ try {
   Hot 0; WaitProc $tgt 4000; Start-Sleep -Milliseconds 800
   $r += (Procs $tgt).Count
   KillTargets; Start-Sleep -Milliseconds 9000   # past the 8 s state of the run above
+  # 0.5.22: an unqueryable window whose file name differs from the target's cannot be the target - it no longer blocks
+  # (a remote-access host's minimized window blocked every launch); one with the SAME file name still blocks
   $bl = StartWith $blind ""
+  Hot 0; WaitProc $tgt 4000; Start-Sleep -Milliseconds 800
+  $r += (Procs $tgt).Count
+  KillTargets; Start-Sleep -Milliseconds 9000   # past the 8 s state of the run above
+  $bs = StartWith $blindSame ""
   Hot 0; Start-Sleep -Milliseconds 1500
   $r += (Procs $tgt).Count
   $null = StartWith $tgt ""
   Hot 0; Start-Sleep -Milliseconds 1500
   $r += (Procs $tgt).Count
   $env:ONEKEY_TEST_FAIL = $null
-  Check LA24 "1|1|1|0|1" ($r -join "|") "TRANSPARENT and NOACTIVATE windows reused; zero-size unqueryable window does not block; unqueryable window blocks unless the target's window is found"
+  Check LA24 "1|1|1|1|0|1" ($r -join "|") "TRANSPARENT and NOACTIVATE windows reused; zero-size unqueryable window does not block; an unqueryable window of another file name does not block; one with the target's file name blocks unless the target's window is found"
   Quit1Key; KillTargets
 
   # ---- LA25: name switches

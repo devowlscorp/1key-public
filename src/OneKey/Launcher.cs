@@ -423,6 +423,7 @@ internal static unsafe class Launcher
     {
         string want = Norm(exe);
         nint found = 0; bool uncertain = false;
+        Dictionary<uint, string>? names = null;
         uint mySession = 0; ProcessIdToSessionId((uint)Environment.ProcessId, out mySession);
         for (nint h = GetTopWindow(0); h != 0; h = GetWindow(h, 2 /* GW_HWNDNEXT */))
         {
@@ -431,10 +432,33 @@ internal static unsafe class Launcher
             if (pid == 0 || pid == (uint)Environment.ProcessId) continue;
             if (ProcessIdToSessionId(pid, out uint sess) && sess != mySession) continue;
             string? img = ImageOf(pid);
-            if (img is null) { uncertain = true; continue; }   // 조회 실패: 원인 불명(관리자 창이라고 단정하지 않는다)
+            if (img is null)   // 경로 조회 실패: 원인 불명(관리자 창이라고 단정하지 않는다)
+            {
+                // 0.5.22(통합 시험 2026-10-11): 경로는 못 읽어도 실행 파일 이름은 프로세스 목록에서 열지 않고 읽힌다. 이름이 대상과 다르면 그 창은 대상일 수 없다 —
+                // 원격 접속 호스트(Parsec 등 SYSTEM 프로세스)의 최소화된 본창 하나가 보통 권한 1Key 의 모든 프로그램 실행을 "확인 불가"로 막았다. 이름이 같거나 모르면 그대로 불명
+                names ??= ProcessFileNames();
+                if (names.TryGetValue(pid, out string? nm) && !string.Equals(nm, Path.GetFileName(want), StringComparison.OrdinalIgnoreCase)) continue;
+                uncertain = true; continue;
+            }
             if (Norm(img) == want) { found = h; break; }
         }
         return (found, found == 0 && uncertain);
+    }
+
+    /// <summary>PID → 실행 파일 이름(경로 없음, 프로세스 목록 — 프로세스를 열지 않는다). 목록을 못 읽으면 빈 표.</summary>
+    private static Dictionary<uint, string> ProcessFileNames()
+    {
+        var r = new Dictionary<uint, string>();
+        nint snap = CreateToolhelp32Snapshot(2 /* TH32CS_SNAPPROCESS */, 0);
+        if (snap == -1 || snap == 0) return r;
+        try
+        {
+            var e = new PROCESSENTRY32W { dwSize = (uint)sizeof(PROCESSENTRY32W) };
+            for (bool ok = Process32FirstW(snap, ref e); ok; ok = Process32NextW(snap, ref e))
+                r[e.th32ProcessID] = new string(e.szExeFile);
+        }
+        finally { CloseHandle(snap); }
+        return r;
     }
 
     /// <summary>
