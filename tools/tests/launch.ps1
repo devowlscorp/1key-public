@@ -591,7 +591,7 @@ try {
   # verified (path unreadable) a press must not start the launcher again. Control first: while readable, a press focuses it.
   # The hook hides paths containing LaBlind only while <config>	est-blind-off is absent - so the main program is learned first.
   $off = Join-Path $cfg "test-blind-off"; [IO.File]::WriteAllText($off, "")
-  $env:ONEKEY_TEST_FAIL = "launch:blind"
+  $env:ONEKEY_TEST_FAIL = "launch:blind"; $env:ONEKEY_TEST_LANG = "en"   # the notice is matched in English
   WriteList ("launchv=1`n" + (Item 0 "f4000004" "exe" "Spawn" $bspawn $CtrlAlt 0x76))
   Start1Key
   Hot 0
@@ -599,12 +599,15 @@ try {
   Start-Sleep -Milliseconds 5500   # the child shows its window after 2.5 s; the watch learns it
   $d0 = ExecCalls; Start-Sleep -Milliseconds 800
   Hot 0; Start-Sleep -Milliseconds 2000
-  $ctl = "$((ExecCalls) - $d0)|$((Procs $bchild).Count)"
+  $fgc = 0; [void][LA]::GetWindowThreadProcessId([LA]::GetForegroundWindow(), [ref]$fgc)
+  $ctl = "$((ExecCalls) - $d0)|$((Procs $bchild).Count)|$((Procs $bchild).Count -eq 1 -and $fgc -eq (Procs $bchild)[0].Id)"
   Remove-Item $off   # from now on the main program's path cannot be read
   $d1 = ExecCalls; Start-Sleep -Milliseconds 800
-  Hot 0; Start-Sleep -Milliseconds 3500
-  $env:ONEKEY_TEST_FAIL = $null
-  Check LA36d "0|1|0|1|0" "$ctl|$((ExecCalls) - $d1)|$((Procs $bchild).Count)|$((Procs $bspawn).Count)" "launcher whose main program was seen: readable - a press focuses it (no launch); unreadable path - a press starts nothing (no second launcher or main program)"
+  Hot 0; Start-Sleep -Milliseconds 1500
+  $note = [LA]::ToastText([uint32]$p.Id); $box = (Dialog) -ne [IntPtr]::Zero
+  Start-Sleep -Milliseconds 2000
+  $env:ONEKEY_TEST_FAIL = $null; $env:ONEKEY_TEST_LANG = $null
+  Check LA36d "0|1|True|0|1|0|False|True" "$ctl|$((ExecCalls) - $d1)|$((Procs $bchild).Count)|$((Procs $bspawn).Count)|$box|$($note -match 'Could not check whether')" "launcher whose main program was seen: readable - a press focuses its window (no launch); unreadable path - a press starts nothing (no second launcher or main program), no question box, the 'could not check' notice (CannotVerify, not Pending / NeedsConfirm) [notice: $note]"
   Quit1Key; KillTargets; Remove-Item $off -ErrorAction Ignore
 
   # ---- LA36b: an unrelated program from the same folder is not taken as the launch's window
