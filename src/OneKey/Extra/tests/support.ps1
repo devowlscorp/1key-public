@@ -1,13 +1,13 @@
 ﻿# Support screen (0.5.14, user 2026-10-09: a support page in a place that does not get in the way). Entry only from Settings
 # (last row "Support 1Key [Open]"); nothing on the list header or the tray menu, nothing opens by itself.
 # SP01 the list has no support control; Settings has the row (2504)
-# SP02 the row opens the support screen: back (2501), [Open] (2502), [Close] (2503), the title text, the KakaoPay label
-# SP03 [Open] goes through the allowlist only: test mode records exactly SupportLinks.KakaoPay once (no browser is started)
+# SP02 the row opens the support screen: back (2501), [Open] (2502), [Close] (2503), the title text, the DevOwls support page label
+# SP03 [Open] goes through the allowlist only: test mode records exactly SupportLinks.Donate once (no browser is started)
 # SP04 Esc on the support screen goes back to Settings
 # SP05 the back knob goes back to Settings
 # SP06 [Close] goes back to Settings
 # SP07 no network: the test process has no TCP connection while the support screen is shown
-# SP08 accessible name of [Open] says what it opens (CtlAcc name: "<browser label> — <page label>", so it names KakaoPay)
+# SP08 accessible name of [Open] says what it opens (CtlAcc name: "<browser label> — <page label>", so it names the DevOwls support page)
 # 0.5.15-O (user 2026-10-09: affiliate links as buttons with a detail box, Korean screen only; GitHub star in every language):
 # SP09 Korean screen: GitHub row (2507) and the shop card with Coupang (2505) / MyRealTrip (2506) [Details]
 # SP10 GitHub [Open] records exactly SupportLinks.GitHub once (no box)
@@ -29,7 +29,7 @@ $cfg = "$sp\support_cfg"; if (Test-Path $cfg) { Get-ChildItem $cfg -Recurse | Re
 $master = "Sp-Dummy-6630"
 $linksSrc = Get-Content (Join-Path $PSScriptRoot "..\SupportLinks.cs") -Raw
 function LinkOf($n) { ([regex]::Match($linksSrc, "$n\s*=\s*""([^""]+)""")).Groups[1].Value }
-$kakao = LinkOf 'KakaoPay'; $coupang = LinkOf 'Coupang'; $mrt = LinkOf 'MyRealTrip'; $github = LinkOf 'GitHub'
+$kakao = LinkOf 'Donate'; $coupang = LinkOf 'Coupang'; $mrt = LinkOf 'MyRealTrip'; $github = LinkOf 'GitHub'
 $coupangDisclosure = "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다."
 Add-Type -ReferencedAssemblies System.Drawing @'
 using System;using System.Runtime.InteropServices;using System.Text;using System.Collections.Generic;using System.Drawing;
@@ -90,19 +90,19 @@ try {
 
   Click 2504
   $t = [SPU]::Texts($m)
-  Check SP02 "True|True|True|True|True" "$(Has 2501)|$(Has 2502)|$(Has 2503)|$($t -contains [string]$supportTitles[0])|$($t -contains [string]'카카오페이')" "support screen: back, [Open], [Close], title, KakaoPay label"
+  Check SP02 "True|True|True|True|True" "$(Has 2501)|$(Has 2502)|$(Has 2503)|$($t -contains [string]$supportTitles[0])|$($t -contains [string]'데브아울스 후원 페이지')" "support screen: back, [Open], [Close], title, DevOwls support page label"
 
   $log = Join-Path $cfg "support-open.txt"; Remove-Item $log -ErrorAction Ignore
   $ns0 = @(Get-NetTCPConnection -OwningProcess $p.Id -ErrorAction Ignore).Count
   Click 2502 900
   $lines = if (Test-Path $log) { @(Get-Content $log) } else { @() }
-  Check SP03 "1|$kakao|1" "$($lines.Count)|$($lines -join ';')|$(Prop 'OneKeyTestSupportOpen')" "[Open] records exactly the allowlisted KakaoPay link once"
+  Check SP03 "1|$kakao|1" "$($lines.Count)|$($lines -join ';')|$(Prop 'OneKeyTestSupportOpen')" "[Open] records exactly the allowlisted DevOwls donate link once"
 
   Start-Sleep -Seconds 2
   $ns = @(Get-NetTCPConnection -OwningProcess $p.Id -ErrorAction Ignore).Count
   Check SP07 "0|0" "$ns0|$ns" "no TCP connection of the test process while the support screen is shown"
 
-  Check SP08 "True" "$((AccName 2502) -like '*카카오페이*')" "accessible name of [Open]: '$(AccName 2502)'"
+  Check SP08 "True" "$((AccName 2502) -like '*데브아울스 후원 페이지*')" "accessible name of [Open]: '$(AccName 2502)'"
 
   # 0.5.15-O: GitHub star (every language) and affiliate links behind a disclosure box (Korean only)
   $t9 = [SPU]::Texts($m)
@@ -145,7 +145,7 @@ try {
   $env:ONEKEY_TEST_LANG = "en"
   Start1Key; SetText 101 $master; Click 103 1500
   OpenSupport
-  Check SP13 "True|True|False|False" "$(Has 2502)|$(Has 2507)|$(Has 2505)|$(Has 2506)" "English screen: KakaoPay and GitHub rows, no affiliate buttons"
+  Check SP13 "True|True|False|False" "$(Has 2502)|$(Has 2507)|$(Has 2505)|$(Has 2506)" "English screen: support page and GitHub rows, no affiliate buttons"
   Quit1Key
 
   if ($Shots) {

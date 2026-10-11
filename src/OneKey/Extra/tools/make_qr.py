@@ -3,7 +3,7 @@
 error correction M) after the ISO/IEC 18004 procedure, and a PNG writer with one pixel per module plus a 4-module quiet zone.
 1Key draws the PNG with whole-pixel modules (nearest neighbour), so the code stays sharp at every DPI.
 
-  py -3.12 src/OneKey/Extra/tools/make_qr.py   writes src/OneKey/Extra/qr_kakaopay.png and prints the module matrix hash
+  py -3.12 src/OneKey/Extra/tools/make_qr.py   writes src/OneKey/Extra/qr_donate.png and prints the module matrix hash
 
 The payload is the allowlisted link in src/OneKey/Extra/SupportLinks.cs (read from there, so the picture and the button cannot disagree).
 """
@@ -173,9 +173,9 @@ def png(m, path, quiet=4):
 
 if __name__ == "__main__":
     src = (REPO / "src" / "OneKey" / "Extra" / "SupportLinks.cs").read_text(encoding="utf-8")
-    url = re.search(r'KakaoPay\s*=\s*"([^"]+)"', src).group(1)
+    url = re.search(r'Donate\s*=\s*"([^"]+)"', src).group(1)
     ver, mask, m = build(url)
-    out = REPO / "src" / "OneKey" / "Extra" / "qr_kakaopay.png"
+    out = REPO / "src" / "OneKey" / "Extra" / "qr_donate.png"
     png(m, out)
     bits = "".join("1" if v else "0" for row in m for v in row)
     print(f"{url}\nversion {ver}, mask {mask}, {len(m)}x{len(m)} modules -> {out.relative_to(REPO)}")

@@ -10,11 +10,12 @@ internal static class ST
     public static string SupportHeading => Pick("♥ 1Key가 도움이 됐다면", "♥ If 1Key helps you", "♥ 如果 1Key 对你有帮助", "♥ 1Keyがお役に立っているなら", "♥ Nếu 1Key giúp ích cho bạn");
     public static string SupportBody => Pick("1Key는 무료이고, 사용자를 추적하지 않아요. 커피 한 잔으로 응원해 주시면 계속 다듬는 힘이 돼요. 후원하지 않아도 모든 기능은 그대로예요.", "1Key is free, with no ads and no tracking. A cup of coffee helps keep it improving. Every feature stays the same whether you support it or not.", "1Key 免费，没有广告，也不追踪。请喝一杯咖啡，就是继续改进的动力。不支持也能照常使用全部功能。", "1Keyは無料で、広告もトラッキングもありません。コーヒー1杯の応援が改善を続ける力になります。応援しなくても、すべての機能はそのまま使えます。", "1Key miễn phí, không quảng cáo, không theo dõi. Một ly cà phê sẽ giúp 1Key tiếp tục được hoàn thiện. Dù bạn có ủng hộ hay không, mọi tính năng vẫn như cũ.");
     public static string SupportPhone => Pick("휴대폰으로 후원", "Support from your phone", "用手机支持", "スマートフォンで応援", "Ủng hộ bằng điện thoại");
-    public static string SupportPhoneNote => Pick("휴대폰 카메라로 찍으면 송금 화면이 바로 열려요. 금액만 넣으면 끝.", "Scan with your phone camera to open the payment screen, then just enter an amount.", "用手机相机扫描即可打开转账页面，输入金额即可。", "スマートフォンのカメラで読み取ると送金画面が開きます。金額を入れるだけです。", "Quét bằng camera điện thoại để mở màn hình chuyển tiền, chỉ cần nhập số tiền.");
-    public static string SupportKakao => Pick("카카오페이", "KakaoPay", "KakaoPay", "カカオペイ", "KakaoPay");
-    public static string SupportKakaoNote => Pick("카카오페이로 열려요", "Opens in KakaoPay", "在 KakaoPay 中打开", "カカオペイで開きます", "Mở bằng KakaoPay");
+    // 2026-10-12(사용자): 개인 카카오페이 대신 데브아울스 후원 페이지(법인 계좌). 토스·카카오페이·은행 앱은 그 페이지에서 고른다
+    public static string SupportPhoneNote => Pick("휴대폰 카메라로 찍으면 데브아울스 후원 페이지가 열려요. 토스·카카오페이·은행 앱 중에서 골라 보낼 수 있어요.", "Scan with your phone camera to open the DevOwls support page, then choose Toss, KakaoPay or your bank app.", "用手机相机扫描即可打开 DevOwls 支持页面，可选择 Toss、KakaoPay 或银行 App 转账。", "スマートフォンのカメラで読み取ると DevOwls の応援ページが開きます。Toss・カカオペイ・銀行アプリから選んで送れます。", "Quét bằng camera điện thoại để mở trang ủng hộ của DevOwls, rồi chọn Toss, KakaoPay hoặc ứng dụng ngân hàng.");
+    public static string SupportPage => Pick("데브아울스 후원 페이지", "DevOwls support page", "DevOwls 支持页面", "DevOwls 応援ページ", "Trang ủng hộ DevOwls");
+    public static string SupportPageNote => "devowls.kr/donate";
     public static string SupportBrowser => Pick("브라우저에서 열기", "Open in browser", "在浏览器中打开", "ブラウザで開く", "Mở trong trình duyệt");
-    public static string SupportBrowserNote => Pick("카카오페이 송금 페이지", "KakaoPay payment page", "KakaoPay 转账页面", "カカオペイ送金ページ", "Trang chuyển tiền KakaoPay");
+    public static string SupportBrowserNote => SupportPage;
     public static string SupportGithub => Pick("GitHub에서 별 주기", "Star 1Key on GitHub", "在 GitHub 上点星", "GitHubでスターを付ける", "Gắn sao cho 1Key trên GitHub");
     public static string SupportGithubNote => Pick("돈 들지 않는 응원 — GitHub 계정으로 ★를 눌러 주세요", "Free support — click ★ with your GitHub account", "免费的支持 — 用 GitHub 账号点 ★", "無料の応援 — GitHubアカウントで★を押してください", "Ủng hộ miễn phí — bấm ★ bằng tài khoản GitHub");
     public static string SupportShop => Pick("필요한 걸 사실 때", "When you shop", "购物时", "お買い物のときに", "Khi bạn mua sắm");

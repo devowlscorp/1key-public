@@ -3,12 +3,13 @@ using System.IO.Compression;
 namespace OneKey;
 
 /// <summary>
-/// 후원 화면(2026-10-09 사용자: 사용성을 해치지 않고 거부감 없는 자리에). 배포본 전용 — 이 폴더(Extra/)는 저장소에 올리지 않는다
-/// (2026-10-09 사용자: 공개할 때는 후원 버튼부터 후원 관련된 것을 모두 빼기). 공개 코드에는 App.cs 의 부분 메서드 네 개만 있다.
+/// 후원 화면(2026-10-09 사용자: 사용성을 해치지 않고 거부감 없는 자리에). 이 폴더(Extra/)를 빼고 빌드하면 화면도 빠진다
+/// (App.cs 의 부분 메서드 네 개 — 후원 없는 판은 그렇게 만든다).
 /// 설정 맨 아래 [후원하기 · 열기]에서만 들어온다 — 목록 머리줄·트레이 메뉴에
 /// 단추를 두지 않고, 저절로 뜨거나 다시 알리지 않는다. 화면을 그리는 데 네트워크를 쓰지 않는다(QR 은 빌드에 든 그림).
 /// 위에서부터: ① 고양이 + "1Key가 도움이 됐다면" + 한 문단 ② GitHub 에서 별 주기 [열기](모든 언어 — 돈이 들지 않는 응원을 먼저)
-/// ③ 휴대폰으로 후원 — 카카오페이 QR(흰 판, 어두운 테마에서도 흰 바탕), 브라우저에서 열기 [열기]
+/// ③ 휴대폰으로 후원 — 데브아울스 후원 페이지 QR(흰 판, 어두운 테마에서도 흰 바탕), 브라우저에서 열기 [열기]. 2026-10-12(사용자):
+/// 개인 카카오페이 대신 법인 계좌 후원 페이지 — 토스·카카오페이·은행 앱 고르기는 그 페이지가 한다(이 화면에는 두지 않는다)
 /// ④ 필요한 걸 사실 때(한국어 화면만 — 한국 서비스) 쿠팡·마이리얼트립 [자세히] → 확인 상자(경제적 이해관계 문구를 강조 줄로, 가는 곳,
 /// 1Key 는 아무것도 모으지 않음) [브라우저에서 열기]/[취소] ⑤ 아래 [닫기]. 제휴 링크는 상자를 거치지 않고는 열리지 않는다(문구를 먼저 보게).
 /// 열 수 있는 주소는 SupportLinks.Allowed 뿐(이어 붙인 주소 없음), 여는 길은 바로 실행의 웹 주소와 같다
@@ -57,7 +58,7 @@ internal sealed unsafe partial class App
         {
             case IdRowSupport: ShowScreen(Screen.Extra); return;
             case IdSupBack: case IdSupClose: ShowScreen(Screen.Settings); return;
-            case IdSupOpen: OpenSupportLink(SupportLinks.IxKakaoPay); return;
+            case IdSupOpen: OpenSupportLink(SupportLinks.IxDonate); return;
             case IdSupGitHub: OpenSupportLink(SupportLinks.IxGitHub); return;
             case IdSupCoupang: ShowAffiliate(SupportLinks.IxCoupang); return;
             case IdSupMyRealTrip: ShowAffiliate(SupportLinks.IxMyRealTrip); return;
@@ -125,13 +126,13 @@ internal sealed unsafe partial class App
         int qx = Mx + (Mw - SupQrTile) / 2;
         _supQr = (qx, y, SupQrTile);
         y += SupQrTile + 8;
-        Label(ST.SupportKakao, lx, y, rx - lx, 20, Theme.Sized(13, true), ink, true, Native.SS_CENTER);
+        Label(ST.SupportPage, lx, y, rx - lx, 20, Theme.Sized(13, true), ink, true, Native.SS_CENTER);
         y += 20;
-        Label(ST.SupportKakaoNote, lx, y, rx - lx, 18, Theme.Sized(11.5, false), note, true, Native.SS_CENTER);
+        Label(ST.SupportPageNote, lx, y, rx - lx, 18, Theme.Sized(11.5, false), note, true, Native.SS_CENTER);
         y += 18 + 12;
         _page.Separators.Add((lx, y, rx - lx));
         y += 1;
-        // 브라우저에서 열기 — 카카오페이 송금 페이지  [열기]
+        // 브라우저에서 열기 — 데브아울스 후원 페이지  [열기]
         y = PillRow(IdSupOpen, ST.SupportBrowser, ST.SupportBrowserNote, T.SetBtnOpen, y);
         _page.Cards.Add((Mx, top, Mw, y - top));
 
@@ -175,7 +176,7 @@ internal sealed unsafe partial class App
             Native.SetPropW(_hwnd, "OneKeyTestSupportOpen", ++_testSupportOpen);
             return;
         }
-        string name = which switch { SupportLinks.IxCoupang => ST.SupportCoupang, SupportLinks.IxMyRealTrip => ST.SupportMrt, SupportLinks.IxGitHub => "GitHub", _ => ST.SupportKakao };
+        string name = which switch { SupportLinks.IxCoupang => ST.SupportCoupang, SupportLinks.IxMyRealTrip => ST.SupportMrt, SupportLinks.IxGitHub => "GitHub", _ => ST.SupportPage };
         var it = new LaunchItem { Id = "support", Kind = "url", Name = name, Target = url, Browser = "default", Valid = true };
         if (Launcher.Unconsumed is int done and not 0) OnLaunchDone(done);
         if (Launcher.Start(it, 0, false, "", _hwnd, WM_LAUNCH_DONE) is null) LaunchToast(Launcher.Result.Busy, it.Name);
@@ -194,14 +195,14 @@ internal sealed unsafe partial class App
 
     private int _testSupportOpen;
 
-    /// <summary>QR 모듈(빌드에 든 qr_kakaopay.png — 회색조 8비트, 한 모듈 = 한 픽셀, 둘레 4 모듈 빈칸 포함). 실패하면 null.</summary>
+    /// <summary>QR 모듈(빌드에 든 qr_donate.png — 회색조 8비트, 한 모듈 = 한 픽셀, 둘레 4 모듈 빈칸 포함). 실패하면 null.</summary>
     private static bool[]? QrModules(out int n)
     {
         n = _qrN;
         if (_qrMods is not null) return _qrMods;
         try
         {
-            using var s = typeof(App).Assembly.GetManifestResourceStream("qr_kakaopay.png");
+            using var s = typeof(App).Assembly.GetManifestResourceStream("qr_donate.png");
             if (s is null) return null;
             byte[] png = new byte[s.Length]; s.ReadExactly(png);
             int w = 0, h = 0, pos = 8;
