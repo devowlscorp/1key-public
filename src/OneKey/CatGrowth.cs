@@ -308,10 +308,56 @@ internal static class CatGrowth
         {
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
-            Backup.WriteReplace(FilePath, System.Text.Encoding.UTF8.GetBytes(Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n"));   // R02: 직접 덮어쓰지 않고 새 임시 파일 → 교체
+            QueueWrite(FilePath, System.Text.Encoding.UTF8.GetBytes(Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n"));
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
+    }
+
+    // 파일 쓰기는 작업 스레드에서(2026-10-12 사용자 결정): 쓰는 길은 그대로(R02 — 새 임시 파일 → 교체, Backup.WriteReplace)인데, 그 교체가 실행 파일 해시에 따라
+    // Defender 검사로 0.4 초쯤 걸릴 때가 있어(잠금 해제 직후 보안 습관 · 출근 도장 저장이 목록을 그만큼 늦췄다) UI 스레드에서 기다리지 않는다.
+    // 내용은 UI 스레드에서 만들고, 쓰는 사람은 한 번에 하나 — 밀린 동안 새로 저장하면 마지막 내용만 쓴다. 종료 때 FlushPending 이 남은 쓰기를 기다린다.
+    private static readonly object _writeLock = new();
+    private static (string Path, byte[] Data)? _queued;
+    private static bool _writing;
+
+    private static void QueueWrite(string path, byte[] data)
+    {
+        lock (_writeLock)
+        {
+            _queued = (path, data);
+            if (_writing) return;
+            _writing = true;
+        }
+        var th = new Thread(() =>
+        {
+            while (true)
+            {
+                (string Path, byte[] Data) w;
+                lock (_writeLock)
+                {
+                    if (_queued is not { } q) { _writing = false; Monitor.PulseAll(_writeLock); return; }
+                    w = q; _queued = null;
+                }
+                try { Backup.WriteReplace(w.Path, w.Data); } catch { }
+            }
+        }) { IsBackground = true, Name = "1Key cat growth save" };
+        th.Start();
+    }
+
+    /// <summary>남은 저장을 끝낼 때까지 기다린다(종료 직전, 최대 timeoutMs). 다 썼으면 true.</summary>
+    public static bool FlushPending(int timeoutMs = 3000)
+    {
+        long end = Environment.TickCount64 + timeoutMs;
+        lock (_writeLock)
+        {
+            while (_writing || _queued is not null)
+            {
+                long left = end - Environment.TickCount64;
+                if (left <= 0 || !Monitor.Wait(_writeLock, (int)left)) return !_writing && _queued is null;
+            }
+        }
+        return true;
     }
 
     private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

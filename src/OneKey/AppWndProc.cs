@@ -508,8 +508,13 @@ internal sealed unsafe partial class App
                 if ((int)wParam == LockWidget.Instance && _cur == Screen.Lock) LockWidget.Hide();
                 return 0;
 
+            case 0x0016:   // WM_ENDSESSION: 로그오프 · 종료로 곧 끝난다 — 남은 고양이 점수 저장만 마친다
+                if (wParam != 0) CatGrowth.FlushPending();
+                return 0;
+
             case Native.WM_DESTROY:
                 CatWidget.Destroy();
+                CatGrowth.FlushPending();   // 작업 스레드에 남은 고양이 점수 저장을 끝낸다(최대 3 초)
                 Launcher.Cancel(null);   // 진행 중 실행 요청: 아직 실행 호출 전이면 하지 않는다
                 LaunchDrop.Revoke(hwnd);
                 ReleaseChip();
