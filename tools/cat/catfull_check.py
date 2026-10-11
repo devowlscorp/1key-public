@@ -60,7 +60,7 @@ for r in rows:
     else: r["H"] = r["W"] = r["A"] = 0
     rgb = c[..., :3]
     mx, mn = rgb.max(axis=2), rgb.min(axis=2)
-    fur = (a > 0.9) & (mx - mn < 40) & (mx > 60)
+    fur = (a > 0.9) & (mx - mn < 40) & (mx > 20)   # 0.5.22-J: was > 60 (grey cat) - the black cat's fur is mostly under 60, so only a few rim / ear pixels were measured and the cast jumped
     if fur.sum() > 20:
         m = rgb[fur].mean(axis=0); r["lum"] = float(m.mean()); r["cast"] = float(m[0] - m[2])
     else: r["lum"] = r["cast"] = float("nan")

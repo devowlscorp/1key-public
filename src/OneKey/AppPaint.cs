@@ -115,15 +115,17 @@ internal sealed unsafe partial class App
     /// 본창 바탕 그림을 지금 화면에 맞춘다(Theme.BuildBackground): 몸체 + 이 화면의 판(_page.Dials)·목록 머리줄. 새로 만들었으면 자식 컨트롤을 다시 그리게 한다
     /// — 자식은 그 그림을 자기 자리로 이어 그리므로(새 디자인) 그림이 바뀌면 같이 바뀌어야 한다.
     /// </summary>
-    private void ComposeBackground()
+    /// <param name="w">h: 만들 크기(px) — 창을 키우기 전에 새 크기로 미리 만들 때(ShowScreen). 생략하면 지금 창 크기.</param>
+    private void ComposeBackground(int w = -1, int h = -1)
     {
         if (_hwnd == 0) return;
         Native.GetClientRect(_hwnd, out Native.RECT rc);
+        if (w > 0 && h > 0) { rc.right = w; rc.bottom = h; }
         bool overlay = _page.Dials.Count > 0 || _page.ListHeader || _page.Metal;
         string key = !overlay ? "" : $"{_cur}|{string.Join(";", _page.Dials)}|{_page.ListHeader}|{_page.HeaderRight}|{L.Current}|{_pageScroll}|{_viewH}"
                                      + (_page.Metal ? $"|{string.Join(";", _page.Cards)}|{string.Join(";", _page.Separators)}|{string.Join(";", _page.Fields)}|{string.Join(";", _page.PillFields)}|{_page.Bubble}|{_page.Hero}|{_page.Title}|{_page.TitleL}|{_page.TitleR}" : "");
         if (Theme.BuildBackground(_hwnd, rc.right, rc.bottom, _dpi, key, overlay ? PageOverlay : null))
-            foreach (nint h in _page.Controls) Native.InvalidateRect(h, 0, false);
+            foreach (nint c in _page.Controls) Native.InvalidateRect(c, 0, false);
     }
 
     /// <summary>

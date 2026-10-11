@@ -389,6 +389,9 @@ internal sealed unsafe partial class App
         _page.Placed.RemoveRange(m.Placed, _page.Placed.Count - m.Placed);
     }
 
+    /// <summary>시험(ONEKEY_TEST_SCREEN_LOG=파일): 화면을 바꿀 때마다 단계별 시간을 한 줄씩.</summary>
+    private static readonly string? ScreenLog = Program.IsTestMode ? Environment.GetEnvironmentVariable("ONEKEY_TEST_SCREEN_LOG") : null;
+
     private void ShowScreen(Screen s, bool animate = false)
     {
         // 잠겨 있으면 어떤 경로로 와도 잠금 화면이다. (예: 편집 화면의 확인 상자가 떠 있는 동안 자동 잠금이 걸린 뒤 "예"를 누른 경우)
@@ -396,6 +399,7 @@ internal sealed unsafe partial class App
         if (s != Screen.Lock && !Unlocked && !(s == Screen.Restore && _createMode)) s = Screen.Lock;
 
         int prevH = _clientH;
+        long tStart = System.Diagnostics.Stopwatch.GetTimestamp();
         bool leavingEdit = _cur == Screen.Edit && s != Screen.Edit;
         if (leavingEdit) CancelTest();   // 편집 화면을 떠나면 3초 뒤 테스트 입력도 취소
         if (leavingEdit) RegisterHotkeys(silent: true);   // 편집 중엔 녹음을 위해 풀어 두었다. 목록을 만들기 전에 해야 등록 실패 표시가 맞다.
@@ -447,13 +451,26 @@ internal sealed unsafe partial class App
             case Screen.Extra: ExtraBuild(); break;
         }
         KeepCardBorders();
+        long tBuilt = System.Diagnostics.Stopwatch.GetTimestamp();
         int height = _page.Height;
         if (s != Screen.List && height > avail) height = SetUpPageScroll(avail);   // 그래도 길면 본문만 스크롤, 아래 막대는 고정
-        if (animate && prevH > 0 && prevH != height && Fx.Animations) StartHeightAnimation(prevH, height);
+        bool anim = animate && prevH > 0 && prevH != height && Fx.Animations;
+        // 바탕 그림(금속 판 · 조각 — 소프트웨어로 그려 큰 화면은 수십 ms)을 새 크기로 "먼저" 만든 뒤 창을 키우고 바로 칠한다(2026-10-11 사용자: 설정 화면이
+        // 위부터 그려지고 아래가 조금 뒤에 조립되듯 나타난다 — 예전에는 창을 먼저 키우고 그림을 만드는 동안 늘어난 아래가 빈 채로 보였다)
+        if (!anim) ComposeBackground(Scale(WinW), Scale(height));
+        long tComposed = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (anim) StartHeightAnimation(prevH, height);
         else { Native.KillTimer(_hwnd, TimerAnim); ResizeClient(height); }   // 진행 중이던 애니메이션이 새 화면 높이를 덮어쓰지 않도록
         Native.SetText(_hwnd, AppTitle + (Unlocked ? "" : "  " + T.CommonLockedSuffix));   // 작업 표시줄에도 같은 글자가 보이므로 버전은 창 안에 둔다
-        ComposeBackground();   // 새 디자인: 판·머리줄이 든 바탕 그림을 자식보다 먼저(자식은 그 그림을 이어 그린다)
+        ComposeBackground();   // 새 디자인: 판·머리줄이 든 바탕 그림을 자식보다 먼저(자식은 그 그림을 이어 그린다) — 위에서 만들었으면 그대로(같은 크기 · 같은 화면)
+        long tResized = System.Diagnostics.Stopwatch.GetTimestamp();
         Native.RedrawWindow(_hwnd, 0, 0, Native.RDW_INVALIDATE | Native.RDW_ERASE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
+        if (ScreenLog is not null)   // 시험: 화면 바꾸기 단계별 시간(창 크기를 바꾼 뒤 다 칠할 때까지가 짧아야 한 번에 그려진 것으로 보인다)
+        {
+            static double Ms(long a, long b) => (b - a) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            long tPainted = System.Diagnostics.Stopwatch.GetTimestamp();
+            try { File.AppendAllText(ScreenLog, $"screen {s} h {prevH}->{height} build {Ms(tStart, tBuilt):0.0} compose {Ms(tBuilt, tComposed):0.0} resize-to-painted {Ms(tComposed, tPainted):0.0} (compose after resize {Ms(tComposed, tResized):0.0}) total {Ms(tStart, tPainted):0.0}\n"); } catch { }
+        }
         FocusFirst();
         UpdateSiteWatch();   // 사이트 채우기: 잠금 해제·저장·삭제·잠금 뒤 감시를 켜거나 끈다
     }

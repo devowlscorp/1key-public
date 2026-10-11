@@ -8,7 +8,7 @@ the joins between stills and motions are identical for both cats:
   pink (ear insides, nose, paw pads, tongue)                   -> dusky pink
 recolour(rgb, a) works on straight (not premultiplied) float RGB 0..1 and an alpha 0..1.
 
-  py -3.12 tools/cat/recolor_dark.py all        rebuild every dark asset in src/OneKey/Assets/cat from the light ones
+  py -3.12 tools/cat/recolor_dark.py all --force  (0.5.22-B, superseded by dark_transfer.py) rebuild every dark asset in src/OneKey/Assets/cat from the light ones
   py -3.12 tools/cat/recolor_dark.py sample OUT  a light/dark comparison sheet
 """
 import sys
@@ -156,6 +156,8 @@ def sample(out):
     sheet.convert("RGB").save(out); print(out)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "all": build_all()
+    if len(sys.argv) > 1 and sys.argv[1] == "all":   # 0.5.22-H: superseded by dark_transfer.py (Codex black keys); --force to run the old recolour
+        if "--force" not in sys.argv: raise SystemExit("the black cat now comes from tools/cat/dark_transfer.py all (Codex's black keys) - add --force to recolour instead")
+        build_all()
     elif len(sys.argv) > 2 and sys.argv[1] == "sample": sample(sys.argv[2])
     else: print(__doc__)
