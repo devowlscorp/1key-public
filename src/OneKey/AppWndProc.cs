@@ -107,6 +107,8 @@ internal sealed unsafe partial class App
             case Native.WM_ERASEBKGND:
             {
                 Native.GetClientRect(hwnd, out Native.RECT rc);
+                if (ScreenLog is not null && _inShowScreen)   // 시험: 화면을 만드는 도중의 바탕 그리기 — 어디서 불렸는지
+                    try { File.AppendAllText(ScreenLog, $"erase during build phase {_phase} ({rc.right}x{rc.bottom}) {_page.Controls.Count} controls, last {(_page.Controls.Count > 0 ? Native.GetClassName(_page.Controls[^1]) + " " + Native.GetDlgCtrlID(_page.Controls[^1]) : "-")}\n"); } catch { }
                 ComposeBackground();   // 바탕 그림(몸체 + 판·머리줄): 크기·테마·화면이 같으면 그대로
                 Native.SetBrushOrgEx(wParam, 0, 0, 0);
                 Native.FillRect(wParam, ref rc, Theme.BgBrush);

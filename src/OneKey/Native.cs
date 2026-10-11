@@ -597,10 +597,18 @@ internal static unsafe class Native
     [DllImport("user32.dll")] public static extern nint GetWindowLongPtrW(nint hWnd, int nIndex);
     public const int GWL_STYLE = -16;
 
+    /// <summary>
+    /// 글 재기용 DC(창과 무관한 메모리 DC — 쓴 뒤 <see cref="FreeMeasureDC"/>). 화면을 만드는 도중 창 DC(GetDC)를 얻으면, WS_EX_COMPOSITED 인 본창은
+    /// 기다리던 바탕 지우기(WM_ERASEBKGND)를 그 자리에서 해 버려 반쯤 만든 화면이 그려졌다(2026-10-11 사용자: 설정 화면이 위부터 그려지고 아래가 늦게 나타난다).
+    /// 글꼴은 물리 px 로 만들어 두므로 어느 DC 로 재도 같다.
+    /// </summary>
+    public static nint MeasureDC() => CreateCompatibleDC(0);
+    public static void FreeMeasureDC(nint dc) { if (dc != 0) DeleteDC(dc); }
+
     /// <summary>글꼴 한 줄의 높이(물리 px). 단일 라인 EDIT 을 이 높이로 만들면 글자가 상하 여백 없이 딱 맞는다.</summary>
     public static int TextHeight(nint hwnd, nint font)
     {
-        nint dc = GetDC(hwnd);
+        nint dc = MeasureDC();
         if (dc == 0) return 15;
         try
         {
@@ -609,7 +617,7 @@ internal static unsafe class Native
             SelectObject(dc, old);
             return tm.tmHeight > 0 ? tm.tmHeight : 15;
         }
-        finally { ReleaseDC(hwnd, dc); }
+        finally { FreeMeasureDC(dc); }
     }
 
     public static short LoWord(nint v) => (short)(v & 0xFFFF);

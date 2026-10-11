@@ -16,7 +16,9 @@ internal sealed unsafe partial class App
             handle = Native.CreateWindowExW(ex, pc, pt, style | Native.WS_CHILD | Native.WS_VISIBLE | Native.WS_CLIPSIBLINGS,
                 Scale(x), Scale(y), Scale(w), Scale(h), _hwnd, id, _hInst, 0);
         if (handle == 0) return 0;
-        Native.SendMessageW(handle, Native.WM_SETFONT, font != 0 ? font : _font, 1);
+        // 다시 그리기 없이(0): 1 이면 STATIC 이 그 자리에서 자기를 다시 그리고, WS_EX_COMPOSITED 본창은 바탕까지 같이 그려 반쯤 만든 화면이 보였다
+        // (2026-10-11 사용자: 설정 화면이 위부터 그려지고 아래가 늦게 나타난다). 막 만든 컨트롤은 화면을 다 만든 뒤 한 번에 그린다(ShowScreen)
+        Native.SendMessageW(handle, Native.WM_SETFONT, font != 0 ? font : _font, 0);
         Theme.ApplyControl(handle, cls);
         _page.Controls.Add(handle);
         _page.Layout.Add((handle, x, y, w, h, false));
@@ -68,12 +70,12 @@ internal sealed unsafe partial class App
     private int TextH(nint font, string text, int w, bool editControl = false)
     {
         if (text.Length == 0) return 0;
-        nint dc = Native.GetDC(_hwnd);
+        nint dc = Native.MeasureDC();
         nint old = Native.SelectObject(dc, font);
         var r = new Native.RECT { right = Scale(w) };
         Native.DrawText(dc, text, ref r, Native.DT_WORDBREAK | Native.DT_CALCRECT | Native.DT_NOPREFIX | (editControl ? 0x2000u /* DT_EDITCONTROL */ : 0u));
         Native.SelectObject(dc, old);
-        Native.ReleaseDC(_hwnd, dc);
+        Native.FreeMeasureDC(dc);
         int px = r.bottom;
         if (Dw.Measure(font, text, Scale(w)) is (int, int) m) px = Math.Max(px, m.Item2);
         return (int)Math.Ceiling(px * 96.0 / _dpi);
@@ -172,11 +174,11 @@ internal sealed unsafe partial class App
     /// <summary>글 폭(논리 px). STATIC 이름표는 아직 GDI 로 그리므로(2b 전) GDI 로 잰다.</summary>
     private int LabelW(nint font, string s)
     {
-        nint dc = Native.GetDC(_hwnd);
+        nint dc = Native.MeasureDC();
         nint old = Native.SelectObject(dc, font);
         int w = Native.TextWidth(dc, s);
         Native.SelectObject(dc, old);
-        Native.ReleaseDC(_hwnd, dc);
+        Native.FreeMeasureDC(dc);
         return (int)Math.Ceiling(w * 96.0 / _dpi);
     }
 
@@ -288,7 +290,7 @@ internal sealed unsafe partial class App
         fixed (char* pc = "EDIT") fixed (char* pt = "")
             e = Native.CreateWindowExW(0, pc, pt, style, Scale(x) + pad + lp, Scale(y) + (bh - ih) / 2, Scale(w) - 2 * pad - lp - rp, ih, _hwnd, id, _hInst, 0);
         if (e == 0) return 0;
-        Native.SendMessageW(e, Native.WM_SETFONT, _font, 1);
+        Native.SendMessageW(e, Native.WM_SETFONT, _font, 0);   // 다시 그리기 없이 — Make 와 같은 이유(화면을 다 만든 뒤 한 번에)
         if (limit > 0) Native.SendMessageW(e, Native.EM_LIMITTEXT, limit, 0);   // R01 · D01: 그 칸의 용도로 정한 상한만
         Theme.ApplyControl(e, "EDIT");
         _page.Controls.Add(e);
@@ -400,6 +402,16 @@ internal sealed unsafe partial class App
 
         int prevH = _clientH;
         long tStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        _inShowScreen = true;
+        try { ShowScreenCore(s, animate, prevH, tStart); } finally { _inShowScreen = false; }
+    }
+
+    private bool _inShowScreen;
+    [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+    private string _phase = "";
+
+    private void ShowScreenCore(Screen s, bool animate, int prevH, long tStart)
+    {
         bool leavingEdit = _cur == Screen.Edit && s != Screen.Edit;
         if (leavingEdit) CancelTest();   // 편집 화면을 떠나면 3초 뒤 테스트 입력도 취소
         if (leavingEdit) RegisterHotkeys(silent: true);   // 편집 중엔 녹음을 위해 풀어 두었다. 목록을 만들기 전에 해야 등록 실패 표시가 맞다.
@@ -420,10 +432,12 @@ internal sealed unsafe partial class App
         ApplyLanguage(LangCode(wantLang));
         if (_pageDragOffset >= 0) { _pageDragOffset = -1; Native.ReleaseCapture(); }   // 스크롤 막대를 끄는 중에 화면이 바뀌면 끌기를 끝낸다
         _pageScroll = _pageScrollMax = _barShift = 0; _viewH = 0; _lastFocusSeen = 0;
+        _phase = "clear";
         ClearPage();
         if (s != _cur) _screenSerial++;   // 다른 화면으로: 그 전 화면에서 시작한 작업의 결과는 버린다(R41-2)
         _cur = s;
         int avail = AvailableClientH();
+        _phase = "build";
         switch (s)
         {
             case Screen.Lock: BuildLock(); break;
@@ -450,6 +464,7 @@ internal sealed unsafe partial class App
             case Screen.Restore: BuildRestore(); break;
             case Screen.Extra: ExtraBuild(); break;
         }
+        _phase = "borders";
         KeepCardBorders();
         long tBuilt = System.Diagnostics.Stopwatch.GetTimestamp();
         int height = _page.Height;
@@ -457,14 +472,29 @@ internal sealed unsafe partial class App
         bool anim = animate && prevH > 0 && prevH != height && Fx.Animations;
         // 바탕 그림(금속 판 · 조각 — 소프트웨어로 그려 큰 화면은 수십 ms)을 새 크기로 "먼저" 만든 뒤 창을 키우고 바로 칠한다(2026-10-11 사용자: 설정 화면이
         // 위부터 그려지고 아래가 조금 뒤에 조립되듯 나타난다 — 예전에는 창을 먼저 키우고 그림을 만드는 동안 늘어난 아래가 빈 채로 보였다)
+        _phase = "compose";
         if (!anim) ComposeBackground(Scale(WinW), Scale(height));
         long tComposed = System.Diagnostics.Stopwatch.GetTimestamp();
+        // 창이 커지면 새 화면을 메모리에 먼저 그려 두고 크기를 바꾸자마자 붙인다 — 커진 아래가 다 칠할 때까지(한 프레임 넘게) 비어 보이지 않게
+        nint pre = !anim && height > prevH && prevH > 0 && Native.IsWindowVisible(_hwnd) ? PrePaint(Scale(WinW), Scale(height)) : 0;
+        // 그래도 크기를 바꾸면 화면 합성기가 붙이기 전의 커진 창을 한 프레임 내보낸다(측정: 매번 한 장, 아래가 빔) — 새 창 자리를 완성된 그림 창으로 먼저 덮고,
+        // 그 그림이 화면에 나온 뒤(DwmFlush) 크기를 바꾸고 다 칠한 다음 걷는다
+        nint snap = pre != 0 && TargetWindow(height) is { } tw ? ShowSnapshot(pre, tw, Scale(WinW), Scale(height)) : 0;
+        if (snap != 0) try { DwmFlush(); } catch { }
+        _phase = "resize";
         if (anim) StartHeightAnimation(prevH, height);
         else { Native.KillTimer(_hwnd, TimerAnim); ResizeClient(height); }   // 진행 중이던 애니메이션이 새 화면 높이를 덮어쓰지 않도록
+        BlitPrePaint(pre, Scale(WinW), Scale(height));
         Native.SetText(_hwnd, AppTitle + (Unlocked ? "" : "  " + T.CommonLockedSuffix));   // 작업 표시줄에도 같은 글자가 보이므로 버전은 창 안에 둔다
         ComposeBackground();   // 새 디자인: 판·머리줄이 든 바탕 그림을 자식보다 먼저(자식은 그 그림을 이어 그린다) — 위에서 만들었으면 그대로(같은 크기 · 같은 화면)
         long tResized = System.Diagnostics.Stopwatch.GetTimestamp();
+        _phase = "redraw";
         Native.RedrawWindow(_hwnd, 0, 0, Native.RDW_INVALIDATE | Native.RDW_ERASE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
+        if (snap != 0)   // 다 칠한 본창이 화면에 나온 뒤에 덮개를 걷는다
+        {
+            try { DwmFlush(); } catch { }
+            Native.DestroyWindow(snap);
+        }
         if (ScreenLog is not null)   // 시험: 화면 바꾸기 단계별 시간(창 크기를 바꾼 뒤 다 칠할 때까지가 짧아야 한 번에 그려진 것으로 보인다)
         {
             static double Ms(long a, long b) => (b - a) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

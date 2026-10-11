@@ -8,6 +8,116 @@ internal sealed unsafe partial class App
 {
     // ---------------------------------------------------------------- 그리기
 
+    [DllImport("user32.dll")] private static extern nint GetDCEx(nint hwnd, nint hrgnClip, uint flags);
+
+    /// <summary>
+    /// 창 크기를 바꾸기 전에 새 화면 한 장을 메모리에 그린다(바탕 + 장식 + 컨트롤마다 WM_PRINTCLIENT). 크기를 바꾼 바로 뒤 <see cref="BlitPrePaint"/> 로
+    /// 붙이면 커진 창이 빈 아래를 보이는 틈이 없다 — 화면을 다 칠하는 데(약 25 ms) 한 프레임 넘게 걸려, 그동안 커진 창 아래가 비어 보였다
+    /// (2026-10-11 사용자: 설정 화면의 아래 후원 줄이 나중에 나타난다). 본문이 스크롤되는 화면은 하지 않는다(아래 막대와의 겹침을 여기서 다루지 않음).
+    /// </summary>
+    private nint PrePaint(int w, int h)
+    {
+        if (_pageScrollMax > 0 || w <= 0 || h <= 0) return 0;
+        nint screen = Native.GetDC(0);
+        nint mem = Native.CreateCompatibleDC(screen), bmp = Native.CreateCompatibleBitmap(screen, w, h);
+        Native.ReleaseDC(0, screen);
+        if (mem == 0 || bmp == 0) { if (mem != 0) Native.DeleteDC(mem); if (bmp != 0) Native.DeleteObject(bmp); return 0; }
+        nint old = Native.SelectObject(mem, bmp);
+        var rc = new Native.RECT { right = w, bottom = h };
+        Native.SetBrushOrgEx(mem, 0, 0, 0);
+        Native.FillRect(mem, ref rc, Theme.BgBrush);
+        DrawDecorations(mem);
+        // 컨트롤마다 제 크기의 그림에 그린 뒤 옮겨 붙인다 — 보통 그리기와 같은 원점이어야 이름표가 바탕 무늬를 제자리에 맞춘다(원점만 옮겨 그리면 어긋나 띠가 졌다)
+        nint cdc = Native.CreateCompatibleDC(mem);
+        foreach (nint c in _page.Controls)
+        {
+            if (!Native.IsWindowVisible(c) || !Native.GetClientRect(c, out Native.RECT cr) || cr.right <= 0 || cr.bottom <= 0) continue;
+            var pt = new Native.POINT();
+            Native.MapWindowPoints(c, _hwnd, ref pt, 1);
+            nint cb = Native.CreateCompatibleBitmap(mem, cr.right, cr.bottom);
+            if (cb == 0) continue;
+            nint cold = Native.SelectObject(cdc, cb);
+            Native.BitBlt(cdc, 0, 0, cr.right, cr.bottom, mem, pt.x, pt.y, Native.SRCCOPY);   // 그 자리의 바탕(투명하게 그리는 컨트롤)
+            Native.SendMessageW(c, Native.WM_PRINTCLIENT, cdc, 0x04 | 0x08 /* PRF_CLIENT | PRF_ERASEBKGND */);
+            Native.BitBlt(mem, pt.x, pt.y, cr.right, cr.bottom, cdc, 0, 0, Native.SRCCOPY);
+            Native.SelectObject(cdc, cold);
+            Native.DeleteObject(cb);
+        }
+        Native.DeleteDC(cdc);
+        Native.SelectObject(mem, old);
+        Native.DeleteDC(mem);
+        return bmp;
+    }
+
+    [DllImport("gdi32.dll", EntryPoint = "StretchBlt")] private static extern bool StretchBltSnap(nint dst, int x, int y, int w, int h, nint src, int sx, int sy, int sw, int sh, uint rop);
+    [StructLayout(LayoutKind.Sequential)] private struct SnapBlend { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+    [DllImport("user32.dll", EntryPoint = "UpdateLayeredWindow")]
+    private static extern bool UlwSnap(nint hwnd, nint hdcDst, ref Native.POINT dst, ref Native.SIZE size, nint hdcSrc, ref Native.POINT src, uint key, ref SnapBlend blend, uint flags);
+
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint h, uint attr, out Native.RECT value, uint size);
+
+    /// <summary>
+    /// 창이 커지는 동안 새 창 자리를 덮는 그림 창(소유 창 = 본창이라 본창 바로 위, 활성화하지 않음). 창 크기를 바꾸면 화면 합성기가 새로 칠하기 전의 커진 창을
+    /// 한 프레임 내보내 아래가 비어 보였다(측정: 매번 한 장) — 이 그림이 그동안 덮고, 본창을 다 칠한 뒤 걷는다.
+    /// 자리는 보이는 창 경계(DWM — GetWindowRect 의 보이지 않는 테두리 7 px 는 빼야 두꺼운 테가 비치지 않는다). 위 제목 표시줄은 지금 화면의 본창 제목 줄을
+    /// 그대로 옮기고(본창이 맨 앞일 때만 — 아니면 덮지 않는다: 덮인 다른 창을 옮기지 않게), 그 아래는 <see cref="PrePaint"/> 그림. 실패하면 0.
+    /// </summary>
+    private nint ShowSnapshot(nint pre, (int X, int Y, int W, int H, int Cx, int Cy) t, int cw, int ch)
+    {
+        if (pre == 0 || Native.GetForegroundWindow() != _hwnd) return 0;
+        Native.GetWindowRect(_hwnd, out Native.RECT wr);
+        if (DwmGetWindowAttribute(_hwnd, 9 /* DWMWA_EXTENDED_FRAME_BOUNDS */, out Native.RECT ext, 16) != 0) return 0;
+        int il = ext.left - wr.left, it = ext.top - wr.top, ir = wr.right - ext.right, ib = wr.bottom - ext.bottom;
+        int sx = t.X + il, sy = t.Y + it, sw = t.W - il - ir, sh = t.H - it - ib, ccx = t.Cx - il, ccy = t.Cy - it;
+        if (sw <= 0 || sh <= 0 || ccy < 0 || ccx < 0) return 0;
+        nint screen = Native.GetDC(0);
+        nint mem = Native.CreateCompatibleDC(screen), bmp = Native.CreateCompatibleBitmap(screen, sw, sh), pmem = Native.CreateCompatibleDC(screen);
+        nint snap = 0;
+        try
+        {
+            if (mem == 0 || bmp == 0 || pmem == 0) return 0;
+            nint o1 = Native.SelectObject(mem, bmp), o3 = Native.SelectObject(pmem, pre);
+            // 테두리 색(왼쪽 테두리 가운데 한 점)으로 깔고, 위 제목 줄은 지금 화면의 것, 그 아래는 새 화면
+            StretchBltSnap(mem, 0, 0, sw, sh, screen, ext.left, (ext.top + ext.bottom) / 2, 1, 1, Native.SRCCOPY);
+            Native.BitBlt(mem, 0, 0, Math.Min(sw, ext.right - ext.left), ccy, screen, ext.left, ext.top, Native.SRCCOPY);
+            Native.BitBlt(mem, ccx, ccy, cw, ch, pmem, 0, 0, Native.SRCCOPY);
+            Native.SelectObject(pmem, o3);
+            fixed (char* cls = "STATIC") fixed (char* tx = "")
+                snap = Native.CreateWindowExW(0x00080000u /* WS_EX_LAYERED */ | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE, cls, tx, Native.WS_POPUP, sx, sy, sw, sh, _hwnd, 0, _hInst, 0);
+            if (snap != 0)
+            {
+                var dst = new Native.POINT { x = sx, y = sy }; var zero = new Native.POINT(); var size = new Native.SIZE { cx = sw, cy = sh };
+                var blend = new SnapBlend { SourceConstantAlpha = 255 };   // 불투명(픽셀 알파는 쓰지 않음)
+                if (UlwSnap(snap, screen, ref dst, ref size, mem, ref zero, 0, ref blend, 2 /* ULW_ALPHA */)) Native.ShowWindow(snap, Native.SW_SHOWNOACTIVATE);
+                else { Native.DestroyWindow(snap); snap = 0; }
+            }
+            Native.SelectObject(mem, o1);
+            return snap;
+        }
+        finally
+        {
+            if (pmem != 0) Native.DeleteDC(pmem);
+            if (mem != 0) Native.DeleteDC(mem);
+            if (bmp != 0) Native.DeleteObject(bmp);
+            Native.ReleaseDC(0, screen);
+        }
+    }
+
+    /// <summary><see cref="PrePaint"/> 의 그림을 창에 바로 붙이고 지운다(이어서 보통 그리기가 같은 그림을 다시 그린다).</summary>
+    private void BlitPrePaint(nint bmp, int w, int h)
+    {
+        if (bmp == 0) return;
+        // 자식 자리도 덮는 DC(DCX_CACHE 만 — WS_CLIPCHILDREN 인 본창의 GetDC 는 컨트롤 자리를 빼서 그 자리가 빈 채로 보였다). 자식은 본창과 같은 그림판을 쓰므로
+        // 그 자리에 그린 것이 컨트롤이 다시 그릴 때까지 보인다
+        nint dc = GetDCEx(_hwnd, 0, 0x00000002 /* DCX_CACHE */), mem = Native.CreateCompatibleDC(dc);
+        nint old = Native.SelectObject(mem, bmp);
+        Native.BitBlt(dc, 0, 0, w, h, mem, 0, 0, Native.SRCCOPY);
+        Native.SelectObject(mem, old);
+        Native.DeleteDC(mem);
+        Native.ReleaseDC(_hwnd, dc);
+        Native.DeleteObject(bmp);
+    }
+
     /// <summary>카드, 입력 상자, 구분선, 잠금 화면의 큰 아이콘을 직접 그린다 (WM_ERASEBKGND).</summary>
     private void DrawDecorations(nint hdc)
     {

@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.22-J";
+    public const string Version = "0.5.22-M";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -451,12 +451,36 @@ internal sealed unsafe partial class App
     private void ResizeClient(int logicalH)
     {
         _clientH = logicalH;
+        // 크기와 자리를 한 번에(2026-10-11 사용자: 설정 화면의 맨 아래 후원 줄이 나중에 나타난다). 예전에는 아래로 늘린 뒤 작업 영역 밖으로 나간 만큼
+        // KeepOnScreen 이 따로 끌어올려, 작업 표시줄 가까이 뜬 창에서는 늘어난 아래가 화면 밖에 있다가 한 박자 뒤에 올라왔다.
+        if (TargetWindow(logicalH) is { } t) Native.SetWindowPos(_hwnd, 0, t.X, t.Y, t.W, t.H, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        else
+        {
+            var r = ClientToWindow(logicalH);
+            Native.SetWindowPos(_hwnd, 0, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        }
+    }
+
+    /// <summary>클라이언트 높이(논리 px)에 맞는 창 사각형(클라이언트 원점 기준 — left · top 은 테두리 · 제목 표시줄만큼 음수).</summary>
+    private Native.RECT ClientToWindow(int logicalH)
+    {
         var r = new Native.RECT { left = 0, top = 0, right = Scale(WinW), bottom = Scale(logicalH) };
-        const uint style = Native.WS_CAPTION | Native.WS_SYSMENU | Native.WS_MINIMIZEBOX;
         // PerMonitorV2 에서는 제목 표시줄 높이가 모니터 DPI 를 따르므로, 그 DPI 로 계산해야 다른 모니터에서 아래가 잘리지 않는다.
-        Native.AdjustWindowRectExForDpi(ref r, style, false, Native.WS_EX_CONTROLPARENT | Native.WS_EX_COMPOSITED, _dpi);
-        Native.SetWindowPos(_hwnd, 0, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
-        KeepOnScreen();
+        Native.AdjustWindowRectExForDpi(ref r, Native.WS_CAPTION | Native.WS_SYSMENU | Native.WS_MINIMIZEBOX, false, Native.WS_EX_CONTROLPARENT | Native.WS_EX_COMPOSITED, _dpi);
+        return r;
+    }
+
+    /// <summary>보이는 창을 그 높이로 바꿀 때의 화면 자리(작업 영역 안으로 당김)와 그 안의 클라이언트 원점. 숨었거나 최소화면 null.</summary>
+    private (int X, int Y, int W, int H, int Cx, int Cy)? TargetWindow(int logicalH)
+    {
+        if (!Native.IsWindowVisible(_hwnd) || Native.IsIconic(_hwnd)) return null;
+        var r = ClientToWindow(logicalH);
+        int w = r.right - r.left, h = r.bottom - r.top;
+        Native.RECT work = WorkArea.For(_hwnd);
+        Native.GetWindowRect(_hwnd, out Native.RECT wr);
+        int x = Math.Clamp(wr.left, work.left, Math.Max(work.left, work.right - w));
+        int y = Math.Clamp(wr.top, work.top, Math.Max(work.top, work.bottom - h));
+        return (x, y, w, h, -r.left, -r.top);
     }
 
     private const uint MainStyle = Native.WS_CAPTION | Native.WS_SYSMENU | Native.WS_MINIMIZEBOX;

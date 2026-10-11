@@ -185,9 +185,9 @@ internal sealed unsafe partial class App
         // 스위치 둘을 한 줄에: 두 이름이 반 칸에 다 들어갈 때만. 넘치면(영어·일본어·베트남어 등) 한 줄씩 — 이름이 잘리지 않게
         bool Fits(string t)   // 그리는 방식(DirectWrite)으로 잰다 — GDI 로 재면 넉넉히 나와 한국어도 한 줄씩 갈라졌다
         {
-            nint dc = Native.GetDC(_hwnd);
+            nint dc = Native.MeasureDC();
             int pw = MetalUi.TextWidth(dc, 13.5, true, t);
-            Native.ReleaseDC(_hwnd, dc);
+            Native.FreeMeasureDC(dc);
             return pw * 96.0 / _dpi + 9 + MetalUi.SwitchW <= half;
         }
         int Pair(int at, int id1, string t1, int id2, string t2, bool last, out nint second)

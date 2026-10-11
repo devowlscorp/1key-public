@@ -99,11 +99,11 @@ internal static unsafe class MetalUi
     {
         double k = Dpi(hwnd);
         int n = Math.Max(1, items.Length);
-        nint dc = Native.GetDC(hwnd);
+        nint dc = Native.MeasureDC();
         var want = new double[n];
         double sum = 0;
         for (int i = 0; i < n; i++) { want[i] = (i < items.Length ? TextWidth(dc, 12, true, items[i]) : 0) + 24 * k; sum += want[i]; }
-        Native.ReleaseDC(hwnd, dc);
+        Native.FreeMeasureDC(dc);
         double inner = w - 6 * k - 2 * k * (n - 1), x = 3 * k;
         var e = new double[n + 1];
         e[0] = 0;
@@ -115,10 +115,10 @@ internal static unsafe class MetalUi
     public static int SegWidth(nint anyHwnd, string[] items)
     {
         double k = Dpi(anyHwnd);
-        nint dc = Native.GetDC(anyHwnd);
+        nint dc = Native.MeasureDC();
         double sum = 0;
         foreach (string it in items) sum += TextWidth(dc, 12, true, it) / k + 24;
-        Native.ReleaseDC(anyHwnd, dc);
+        Native.FreeMeasureDC(dc);
         return (int)Math.Ceiling(sum + 2 * (items.Length - 1) + 6);
     }
 
