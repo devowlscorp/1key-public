@@ -131,8 +131,11 @@ internal static unsafe class Launcher
         // 실행기형 프로그램(예: 자동 업데이트 실행기가 관리자 권한 본 프로그램을 띄우고 끝남): 지난 실행에서 실제 창을 띄운 실행 파일의 창도 그 대상의 창
         if (found == 0 && !t.IsFolder && j.Related.Length > 0)
         {
-            var (rf, _) = FindExeWindow(j.Related);
+            // C01(Codex 0.5.22 후보 검토): 본 프로그램 쪽의 "모름"도 합친다 — 이름 필터로 첫 조회는 다른 이름의 창을 빼므로, 경로를 못 읽는 본 프로그램
+            // 창이 살아 있어도 첫 조회는 "없음"이 되고, 여기서 불명을 버리면 실행기를 다시 띄워 중복 실행했다
+            var (rf, ru) = FindExeWindow(j.Related);
             if (rf != 0) { found = rf; j.FocusPath = j.Related; }
+            else if (ru) uncertain = true;
         }
         if (found != 0) { j.Window = found; return Result.Window; }
         // 실행을 요청했는데 아직 창을 못 봤다: 기다리는 중이면 새로 실행하지 않고, 오래됐으면 사용자에게 묻는다
@@ -725,7 +728,9 @@ internal static unsafe class Launcher
             if (!QueryFullProcessImageNameW(ph, 0, buf, &n)) return null;
             string img = new string(buf, 0, (int)n);
             // 시험: 이름에 LaBlind 가 든 프로그램은 조회 실패처럼(관리자 창 등 조회 거부를 일반 권한 시험에서 흉내)
-            if (Program.TestFails("launch:blind") && img.Contains("LaBlind", StringComparison.OrdinalIgnoreCase)) return null;
+            // 설정 폴더에 test-blind-off 가 있는 동안은 가리지 않는다(실행 중에 켜고 끄기 — 본 프로그램을 먼저 알아 두게 한 뒤 가리는 시험, launch LA36d)
+            if (Program.TestFails("launch:blind") && img.Contains("LaBlind", StringComparison.OrdinalIgnoreCase)
+                && !File.Exists(Path.Combine(Config.Dir, "test-blind-off"))) return null;
             return img;
         }
         finally { CloseHandle(ph); }

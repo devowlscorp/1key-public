@@ -72,6 +72,7 @@
 # LA22 a target that shows its window after 10 s: a press after 8 s asks (confirm box) and [No] starts nothing; once the window is up a press
 #      brings it to the front without asking
 # LA23 a target without any window: a press after 8 s asks; [Yes] starts a second process (only on confirmation)
+# LA36d (0.5.22, Codex C01) a launcher's remembered main program whose window can no longer be verified: a press starts nothing again
 # LA24 window rules (R34-3): a large WS_EX_TRANSPARENT window and a WS_EX_NOACTIVATE window of the target are reused; a zero-size window of
 #      an unqueryable program does not block; an unqueryable normal window blocks (cannot verify) unless the target's own window is found -
 #      (0.5.22) only when its file name (process list, read without opening it) is the target's: another name cannot be the target
@@ -91,7 +92,7 @@
 param([string]$Exe = "", [string]$OldExe = "", [switch]$Edge)
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-$core = @("LA01","LA02","LA03","LA04","LA05","LA06","LA07","LA08","LA09","LA10","LA11","LA12","LA13","LA14","LA15","LA31","LA32","LA33","LA34","LA35","LA36","LA37","LA32b","LA34b","LA36b","LA36c","LA38","LA39")
+$core = @("LA01","LA02","LA03","LA04","LA05","LA06","LA07","LA08","LA09","LA10","LA11","LA12","LA13","LA14","LA15","LA31","LA32","LA33","LA34","LA35","LA36","LA36d","LA37","LA32b","LA34b","LA36b","LA36c","LA38","LA39")
 $edgeIds = @("LA16","LA17","LA18","LA19","LA20","LA21","LA22","LA23","LA24","LA25","LA26","LA27","LA28","LA29","LA30")
 Start-Checks -Required $(if ($Edge) { $core + $edgeIds } else { $core })
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
@@ -224,6 +225,9 @@ $blindZero = Join-Path $work "LaBlindZero.exe"; Copy-Item $tgt $blindZero
 $blindSame = Join-Path $work "LaBlind\LaTarget.exe"; New-Item -ItemType Directory -Force (Split-Path $blindSame) | Out-Null; Copy-Item $tgt $blindSame   # same file name as the target, unreadable path (launch:blind)
 $spawn = Join-Path $work "LaSpawn.exe"; Copy-Item $tgt $spawn
 $child = Join-Path $work "LaChild.exe"; Copy-Item $tgt $child
+# LA36d: the same launcher pair in a folder whose path the launch:blind hook can hide (path contains LaBlind)
+$bdir = Join-Path $work "LaBlindPair"; New-Item -ItemType Directory -Force $bdir | Out-Null
+$bspawn = Join-Path $bdir "LaSpawn.exe"; Copy-Item $tgt $bspawn; $bchild = Join-Path $bdir "LaChild.exe"; Copy-Item $tgt $bchild
 $otherExe = Join-Path $work "LaOther.exe"; Copy-Item $tgt $otherExe
 $argsExe = Join-Path $work "LaArgs.exe"; Copy-Item $tgt $argsExe
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -247,7 +251,7 @@ function WriteList([string]$text) { [IO.File]::WriteAllBytes("$cfg\launch.dat", 
 function ReadList() { [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes("$cfg\launch.dat"), $ent, 'CurrentUser')) }
 function Item([int]$i, [string]$id, [string]$kind, [string]$name, [string]$target, [int]$mods = 0, [int]$vk = 0) { "l$i.id=$id`nl$i.kind=$kind`nl$i.name=$name`nl$i.target=$($target.Replace('\','\\'))`nl$i.mods=$mods`nl$i.vk=$vk`n" }
 function Procs([string]$path) { @(Get-Process -ErrorAction Ignore | Where-Object { try { $_.Path -eq $path } catch { $false } }) }
-function KillTargets() { foreach ($x in @($tgt, $slow, $gone, $adminExe, $late, $nowin, $blind, $blindZero, $blindSame, $spawn, $child, $otherExe)) { Procs $x | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction Ignore } }; foreach ($h in [LA]::Explorer("LaFolder")) { [void][LA]::PostMessageW($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } }
+function KillTargets() { foreach ($x in @($tgt, $slow, $gone, $adminExe, $late, $nowin, $blind, $blindZero, $blindSame, $spawn, $child, $bspawn, $bchild, $otherExe)) { Procs $x | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction Ignore } }; foreach ($h in [LA]::Explorer("LaFolder")) { [void][LA]::PostMessageW($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } }
 function Start1Key() {
   $script:p = Start-Process $exe -PassThru; $script:m = [IntPtr]::Zero
   for ($i = 0; $i -lt 80; $i++) { $script:m = [LA]::MainWnd([uint32]$script:p.Id, "OneKeyMainWindow$suffix"); if ($script:m -ne [IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }
@@ -582,6 +586,26 @@ try {
   $fgPid2 = 0; [void][LA]::GetWindowThreadProcessId([LA]::GetForegroundWindow(), [ref]$fgPid2)
   Check LA36 "True|1|0|True" "$childFront|$((Procs $child).Count)|$((ExecCalls) - $calls1)|$($fgPid2 -eq (Procs $child)[0].Id)" "launcher program: the child's window is brought to the front; a second press runs nothing new and focuses the child's window"
   Quit1Key; KillTargets
+
+  # ---- LA36d (C01, Codex 0.5.22 candidate review): the launcher's main program is remembered; when its window can no longer be
+  # verified (path unreadable) a press must not start the launcher again. Control first: while readable, a press focuses it.
+  # The hook hides paths containing LaBlind only while <config>	est-blind-off is absent - so the main program is learned first.
+  $off = Join-Path $cfg "test-blind-off"; [IO.File]::WriteAllText($off, "")
+  $env:ONEKEY_TEST_FAIL = "launch:blind"
+  WriteList ("launchv=1`n" + (Item 0 "f4000004" "exe" "Spawn" $bspawn $CtrlAlt 0x76))
+  Start1Key
+  Hot 0
+  for ($i = 0; $i -lt 80 -and (Procs $bchild).Count -eq 0; $i++) { Start-Sleep -Milliseconds 100 }
+  Start-Sleep -Milliseconds 5500   # the child shows its window after 2.5 s; the watch learns it
+  $d0 = ExecCalls; Start-Sleep -Milliseconds 800
+  Hot 0; Start-Sleep -Milliseconds 2000
+  $ctl = "$((ExecCalls) - $d0)|$((Procs $bchild).Count)"
+  Remove-Item $off   # from now on the main program's path cannot be read
+  $d1 = ExecCalls; Start-Sleep -Milliseconds 800
+  Hot 0; Start-Sleep -Milliseconds 3500
+  $env:ONEKEY_TEST_FAIL = $null
+  Check LA36d "0|1|0|1|0" "$ctl|$((ExecCalls) - $d1)|$((Procs $bchild).Count)|$((Procs $bspawn).Count)" "launcher whose main program was seen: readable - a press focuses it (no launch); unreadable path - a press starts nothing (no second launcher or main program)"
+  Quit1Key; KillTargets; Remove-Item $off -ErrorAction Ignore
 
   # ---- LA36b: an unrelated program from the same folder is not taken as the launch's window
   WriteList ("launchv=1`n" + (Item 0 "f4000002" "exe" "Target" $tgt $CtrlAlt 0x76))
