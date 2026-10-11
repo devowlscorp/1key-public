@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.22-M";
+    public const string Version = "0.5.22-R";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -470,10 +470,11 @@ internal sealed unsafe partial class App
         return r;
     }
 
-    /// <summary>보이는 창을 그 높이로 바꿀 때의 화면 자리(작업 영역 안으로 당김)와 그 안의 클라이언트 원점. 숨었거나 최소화면 null.</summary>
+    /// <summary>창을 그 높이로 바꿀 때의 화면 자리(작업 영역 안으로 당김)와 그 안의 클라이언트 원점. 최소화면 null.
+    /// 숨은 창도 당긴다 — 숨긴 채 화면을 만들고 보이는 경로(고양이 메뉴의 설정)에서 커진 창이 작업 표시줄 밑으로 나간 채 나타나지 않게.</summary>
     private (int X, int Y, int W, int H, int Cx, int Cy)? TargetWindow(int logicalH)
     {
-        if (!Native.IsWindowVisible(_hwnd) || Native.IsIconic(_hwnd)) return null;
+        if (Native.IsIconic(_hwnd)) return null;
         var r = ClientToWindow(logicalH);
         int w = r.right - r.left, h = r.bottom - r.top;
         Native.RECT work = WorkArea.For(_hwnd);

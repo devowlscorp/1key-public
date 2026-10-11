@@ -118,7 +118,10 @@ internal sealed unsafe partial class App
             case IdCatGuide: Dialog.Show(_hwnd, T.HelpCat, T.CatGuideTitle, Native.MB_OK, width: 460, okText: T.CommonClose, fold: false); break;
             case IdCatOpen: OnWalkerClick(gen, fromMenu: true); break;
             case IdCatLock: if (Unlocked) LockNow(); break;
-            case IdCatSettings: ShowMainWindow(); if (Unlocked && !OnLockScreen) ShowScreen(Screen.Settings); break;
+            case IdCatSettings:
+                // 숨어 있던 본창이면 설정 화면을 숨긴 채 먼저 만들고 보인다 — 예전에는 목록이 먼저 보였다가 약 130 ms 뒤 설정으로 바뀌었다(2026-10-11 화면 캡처)
+                if (Unlocked && !OnLockScreen && !Native.IsWindowVisible(_hwnd) && !Native.IsIconic(_hwnd)) { ShowScreen(Screen.Settings); ShowMainWindow(); break; }
+                ShowMainWindow(); if (Unlocked && !OnLockScreen) ShowScreen(Screen.Settings); break;
             case IdCatHide:
                 _walkerHidden = true;
                 SyncWalker();

@@ -408,6 +408,14 @@ internal sealed unsafe partial class App
 
     private bool _inShowScreen;
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+
+    /// <summary>화면 합성이 한 번 끝날 때까지 기다린다(시간 상한은 API 가 정하지 않는다 — 덮개를 쓸 때만). 실패(HRESULT)는 시험 기록에 남긴다.</summary>
+    private static void Flush(string what)
+    {
+        int hr;
+        try { hr = DwmFlush(); } catch (Exception ex) { hr = ex.HResult; }
+        if (hr != 0 && ScreenLog is not null) try { File.AppendAllText(ScreenLog, $"DwmFlush failed 0x{hr:X8} ({what})\n"); } catch { }
+    }
     private string _phase = "";
 
     private void ShowScreenCore(Screen s, bool animate, int prevH, long tStart)
@@ -476,24 +484,35 @@ internal sealed unsafe partial class App
         if (!anim) ComposeBackground(Scale(WinW), Scale(height));
         long tComposed = System.Diagnostics.Stopwatch.GetTimestamp();
         // 창이 커지면 새 화면을 메모리에 먼저 그려 두고 크기를 바꾸자마자 붙인다 — 커진 아래가 다 칠할 때까지(한 프레임 넘게) 비어 보이지 않게
-        nint pre = !anim && height > prevH && prevH > 0 && Native.IsWindowVisible(_hwnd) ? PrePaint(Scale(WinW), Scale(height)) : 0;
         // 그래도 크기를 바꾸면 화면 합성기가 붙이기 전의 커진 창을 한 프레임 내보낸다(측정: 매번 한 장, 아래가 빔) — 새 창 자리를 완성된 그림 창으로 먼저 덮고,
-        // 그 그림이 화면에 나온 뒤(DwmFlush) 크기를 바꾸고 다 칠한 다음 걷는다
-        nint snap = pre != 0 && TargetWindow(height) is { } tw ? ShowSnapshot(pre, tw, Scale(WinW), Scale(height)) : 0;
-        if (snap != 0) try { DwmFlush(); } catch { }
-        _phase = "resize";
-        if (anim) StartHeightAnimation(prevH, height);
-        else { Native.KillTimer(_hwnd, TimerAnim); ResizeClient(height); }   // 진행 중이던 애니메이션이 새 화면 높이를 덮어쓰지 않도록
-        BlitPrePaint(pre, Scale(WinW), Scale(height));
-        Native.SetText(_hwnd, AppTitle + (Unlocked ? "" : "  " + T.CommonLockedSuffix));   // 작업 표시줄에도 같은 글자가 보이므로 버전은 창 안에 둔다
-        ComposeBackground();   // 새 디자인: 판·머리줄이 든 바탕 그림을 자식보다 먼저(자식은 그 그림을 이어 그린다) — 위에서 만들었으면 그대로(같은 크기 · 같은 화면)
-        long tResized = System.Diagnostics.Stopwatch.GetTimestamp();
-        _phase = "redraw";
-        Native.RedrawWindow(_hwnd, 0, 0, Native.RDW_INVALIDATE | Native.RDW_ERASE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
-        if (snap != 0)   // 다 칠한 본창이 화면에 나온 뒤에 덮개를 걷는다
+        // 그 그림이 화면에 나온 뒤(DwmFlush) 크기를 바꾸고 다 칠한 다음 걷는다.
+        // M02(Codex 0.5.22-M 검토): 미리 그린 그림(pre)과 덮개(snap)는 이 구간이 가진다 — 도중에 예외가 나도 finally 에서 반드시 지우고 걷는다
+        // (WndProc 이 예외를 삼키므로 그대로 두면 덮개가 본창 위에 남는다). 화면 효과일 뿐이라 실패하면 보통 다시 그리기로 돌아간다
+        nint pre = 0, snap = 0;
+        long tResized;
+        try
         {
-            try { DwmFlush(); } catch { }
-            Native.DestroyWindow(snap);
+            pre = !anim && height > prevH && prevH > 0 && Native.IsWindowVisible(_hwnd) ? PrePaint(Scale(WinW), Scale(height)) : 0;
+            snap = pre != 0 && TargetWindow(height) is { } tw ? ShowSnapshot(pre, tw, Scale(WinW), Scale(height)) : 0;
+            if (snap != 0) Flush("snapshot shown");
+            _phase = "resize";
+            if (anim) StartHeightAnimation(prevH, height);
+            else { Native.KillTimer(_hwnd, TimerAnim); ResizeClient(height); }   // 진행 중이던 애니메이션이 새 화면 높이를 덮어쓰지 않도록
+            BlitPrePaint(pre, Scale(WinW), Scale(height));
+            if (Program.TestFails("screen:after-snapshot") && snap != 0) throw new InvalidOperationException("test: screen:after-snapshot");
+            Native.SetText(_hwnd, AppTitle + (Unlocked ? "" : "  " + T.CommonLockedSuffix));   // 작업 표시줄에도 같은 글자가 보이므로 버전은 창 안에 둔다
+            ComposeBackground();   // 새 디자인: 판·머리줄이 든 바탕 그림을 자식보다 먼저(자식은 그 그림을 이어 그린다) — 위에서 만들었으면 그대로(같은 크기 · 같은 화면)
+            tResized = System.Diagnostics.Stopwatch.GetTimestamp();
+            _phase = "redraw";
+            Native.RedrawWindow(_hwnd, 0, 0, Native.RDW_INVALIDATE | Native.RDW_ERASE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
+            if (snap != 0) Flush("main painted");   // 다 칠한 본창이 화면에 나온 뒤에 덮개를 걷는다
+        }
+        finally
+        {
+            if (ScreenLog is not null && (pre != 0 || snap != 0))
+                try { File.AppendAllText(ScreenLog, $"transition prepaint {pre != 0} snapshot {snap != 0} completed {_phase == "redraw"}\n"); } catch { }
+            if (snap != 0) Native.DestroyWindow(snap);
+            if (pre != 0) Native.DeleteObject(pre);
         }
         if (ScreenLog is not null)   // 시험: 화면 바꾸기 단계별 시간(창 크기를 바꾼 뒤 다 칠할 때까지가 짧아야 한 번에 그려진 것으로 보인다)
         {
