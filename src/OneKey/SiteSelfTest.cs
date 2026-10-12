@@ -1086,6 +1086,36 @@ internal static class SiteSelfTest
                 Check("RL20", "Unverified|True|False/True", St(Autostart.SettleAfter(Sr("x", true, null, null), U, false, true)), "nothing could be read: the values from before the save");
                 Check("RL21", "Kept|True|True/True", St(Autostart.SettleAfter(Sr("busy", false, null, null), U, true, true)), "the change never started (lock busy): nothing changed, values from before the save");
                 Check("RL22", "True/True|True/False|False/False", $"{Autostart.SettingsFor(A, false).Auto}/{Autostart.SettingsFor(A, false).Admin}|{Autostart.SettingsFor(U, true).Auto}/{Autostart.SettingsFor(U, true).Admin}|{Autostart.SettingsFor(O, false).Auto}/{Autostart.SettingsFor(O, false).Admin}", "settings for each registration mode");
+                // C7-1(Codex 2026-10-12): 오류 문구가 없어도 확인 못 함 · 원하는 방식이 아님은 성공이 아니다
+                Check("RL23", "Unverified|True|True/True", St(Autostart.SettleAfter(Sr(null, true, A, null), U, true, true)), "no error text but the registration could not be read afterwards: unverified, never done");
+                Check("RL24", "Kept|True|True/True", St(Autostart.SettleAfter(Sr(null, true, A, A), U, true, true)), "no error text but the admin task is still there (wanted normal): not done - settings follow the registration");
+                Check("RL25", "Partial|True|False/True", St(Autostart.SettleAfter(Sr(null, true, A, O), U, true, true)), "no error text, registration became off (wanted normal): partial, not done");
+            }
+            {
+                // C7-1: 실제 경로 — 관리자 작업 조회 실패(null)를 "없음"으로 줄이지 않는다(조회 결과는 시험 대역, 등록 도구는 시험 모드라 실행하지 않고 적기만)
+                string runs = Path.Combine(Config.Dir, "autostart-tool-runs.txt");
+                int Runs() { try { return File.Exists(runs) ? File.ReadAllLines(runs).Length : 0; } catch { return -1; } }
+                try
+                {
+                    Autostart.SelfTestTaskState(true, before: null, after: null);
+                    int n0 = Runs();
+                    var r26 = Autostart.SwitchTo(Autostart.Mode.User);
+                    var s26 = Autostart.SettleAfter(r26, Autostart.Mode.User, true, true);
+                    Check("RL26", "True|True|(null)|(null)|0|Unverified", $"{r26.Error is not null}|{r26.Ran}|{r26.Before?.ToString() ?? "(null)"}|{r26.After?.ToString() ?? "(null)"}|{Runs() - n0}|{s26.Kind}", "the admin task cannot be read before the change: nothing is run, the result is 'could not check'");
+
+                    Autostart.SelfTestWriteLink(Autostart.ExePath, "--tray");   // 보통 방식 바로 가기가 이미 있다(이번 요청이 만들지 않음)
+                    Autostart.SelfTestTaskState(true, before: true, after: null);
+                    var r27 = Autostart.SwitchTo(Autostart.Mode.User);
+                    var s27 = Autostart.SettleAfter(r27, Autostart.Mode.User, true, true);
+                    bool link27 = Autostart.SelfTestState().StartsWith("Ours", StringComparison.Ordinal);
+                    Autostart.SelfTestTaskState(false);
+                    Autostart.SelfTestApply(false);   // 시험 바로 가기 정리
+                    Check("RL27", "True|Admin|(null)|Unverified|True|True", $"{r27.Error is not null}|{r27.Before?.ToString() ?? "(null)"}|{r27.After?.ToString() ?? "(null)"}|{s27.Kind}|{s27.Restore}|{link27}", "admin task removal ran but the task cannot be read afterwards: an error, 'could not check', never success; the shortcut is left alone");
+
+                    string R28(bool? b, bool? a) { Autostart.SelfTestTaskState(true, b, a); string? told = null; int rc = Autostart.RemoveForUninstall(false, m => told = m); return $"{rc}{(told is null ? "" : "+")}"; }
+                    Check("RL28", "2+|2+|0|1+|0", $"{R28(null, null)}|{R28(true, null)}|{R28(false, false)}|{R28(true, true)}|{R28(true, false)}", "uninstall: could not check before or after -> 2 with a notice (never 'nothing left'); none -> 0; still there -> 1; removed -> 0");
+                }
+                finally { Autostart.SelfTestTaskState(false); }
             }
         }
         catch (Exception ex) { sb.Append("FAIL RL00 exception ").Append(ex.GetType().Name).Append(": ").Append(ex.Message).Append('\n'); } }

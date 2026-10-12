@@ -439,6 +439,7 @@ internal static unsafe class Autostart
     /// </summary>
     private static bool? AdminTaskState()
     {
+        if (Program.IsTestMode && _testTaskOverride) return _testRemoveRan ? _testTaskAfter : _testTaskBefore;   // 자체 시험(RL26–RL28)만: 조회 실패를 흉내
         string file;
         if (TestTaskFile is string tf) file = tf;
         else
@@ -453,6 +454,16 @@ internal static unsafe class Autostart
         if (a != 0xFFFFFFFF) return true;
         int e = Marshal.GetLastWin32Error();
         return e is 2 or 3 ? false : null;   // ERROR_FILE_NOT_FOUND · ERROR_PATH_NOT_FOUND 만 "없음"
+    }
+
+    private static bool _testTaskOverride, _testRemoveRan;
+    private static bool? _testTaskBefore, _testTaskAfter;
+
+    /// <summary>자체 시험 전용: 관리자 작업 상태를 지우기(ToolRemove) 전 · 뒤 값으로 흉내 낸다(null = 확인 못 함). off 로 끈다.</summary>
+    internal static void SelfTestTaskState(bool on, bool? before = null, bool? after = null)
+    {
+        if (!Program.IsTestMode) return;
+        _testTaskOverride = on; _testTaskBefore = before; _testTaskAfter = after; _testRemoveRan = false;
     }
 
     /// <summary>검증 전용: 관리자 작업 대신 쓰는 표식 파일(검증 모드 + ONEKEY_TEST_ADMIN_TASK_FILE 이 절대 경로일 때만).</summary>
@@ -507,9 +518,10 @@ internal static unsafe class Autostart
         // D03: 호출마다 다른 결과 파일(앞 작업이 늦게 끝나도 섞이지 않게) — 이름에는 따옴표가 들어가지 않는다
         string resultFile = Path.Combine(Path.GetTempPath(), $"1Key-autostart-result-{Environment.ProcessId}-{Guid.NewGuid():N}.txt");
         script = "$resultFile = '" + resultFile.Replace("'", "''") + "'; " + script;
-        bool elevate = name == ToolAdmin || (name == ToolRemove && AdminTaskPresent());
+        bool elevate = name == ToolAdmin || (name == ToolRemove && AdminTaskState() != false);   // C7-1: 확인 못 하면 있을 수 있다 — 지우기는 관리자 권한으로
         if (Program.IsTestMode)
         {
+            if (name == ToolRemove) _testRemoveRan = true;
             try { File.AppendAllText(Path.Combine(Config.Dir, "autostart-tool-runs.txt"), "builtin " + name + (elevate ? " runas" : "") + (onlyTask ? " onlytask" : "") + "\n"); } catch { }
             // 흉내(ONEKEY_TEST_ADMIN_TASK_FILE 이 있을 때만, AS6 시험): 관리자 작업 = 표식 파일, 바로 가기 = 시험 폴더의 실제 바로 가기.
             // ONEKEY_TEST_AUTOSTART_CANCEL=1 이면 관리자 승인이 필요한 호출을 UAC [아니요]처럼 아무것도 바꾸지 않고 실패시킨다. _DELAY_MS 는 끝나기 전 잠금 · 종료를 맞추려고
@@ -713,14 +725,14 @@ internal static unsafe class Autostart
     /// </summary>
     public static Settle SettleAfter(SwitchResult r, Mode want, bool prevAuto, bool prevAdmin)
     {
-        if (r.Error is null) return new(Outcome.Done, false, false, false, r.After);
+        // C7-1(Codex 2026-10-12): 오류 문구가 없어도 실제 등록을 확인하지 못했거나 원하는 방식이 아니면 성공이 아니다 — 등록(After)을 먼저 본다
         if (!r.Ran) return new(Outcome.Kept, true, prevAuto, prevAdmin, r.After);
         if (r.After is not Mode a)
         {
             (bool Auto, bool Admin) b = r.Before is Mode bm ? SettingsFor(bm, prevAdmin) : (prevAuto, prevAdmin);
             return new(Outcome.Unverified, true, b.Auto, b.Admin, null);
         }
-        if (a == want) return new(Outcome.DoneLeft, false, false, false, a);
+        if (a == want) return r.Error is null ? new(Outcome.Done, false, false, false, a) : new(Outcome.DoneLeft, false, false, false, a);
         var v = SettingsFor(a, prevAdmin);
         return new(a == r.Before ? Outcome.Kept : Outcome.Partial, true, v.Auto, v.Admin, a);
     }
@@ -734,7 +746,8 @@ internal static unsafe class Autostart
     private static string? SwitchToLocked(Mode want, out bool bothLeft)
     {
         bothLeft = false;
-        Mode cur = CurrentMode();
+        // C7-1: 지금 등록을 확인하지 못하면 아무것도 바꾸지 않는다(관리자 작업 조회 실패를 "없음"으로 줄이지 않는다)
+        if (CurrentModeOrUnknown() is not Mode cur) return T.SetAutostartCannotCheck;
         if (cur == want && !NeedsCleanup(want)) return null;
         switch (want)
         {
@@ -747,7 +760,9 @@ internal static unsafe class Autostart
                 if (!LinkIsOurs()) return T.SetAutostartToolFailed;
                 if (cur != Mode.Admin) return null;
                 string? r = RunBuiltin(ToolRemove, onlyTask: true);   // 바로 가기는 이미 있으니 관리자 작업만
-                if (!AdminTaskPresent()) return null;
+                bool? task = AdminTaskState();
+                if (task == false) return null;
+                if (task is null) return r ?? T.SetAutostartCannotCheck;   // C7-1: 지웠는지 모른다 — 바로 가기는 두고(보통 방식은 됐을 수 있다) 확인 못 함으로
                 // AS6-2(Codex 2026-10-12): 관리자 작업을 못 지웠다(UAC 취소 등) — 예전 관리자 등록은 그대로 두고, 이번 요청이 만든 바로 가기만 되돌린다
                 // (원래 있던 바로 가기 · 다른 대상은 건드리지 않는다). 못 지우면 둘 다 남았다고 알린다
                 if (!hadLink) { string? le = Apply(false); bothLeft = le is not null || LinkIsOurs(); }
@@ -759,7 +774,9 @@ internal static unsafe class Autostart
                 {
                     string? e = RunBuiltin(ToolAdmin);
                     if (e is not null) return e;
-                    if (!AdminTaskPresent()) return T.SetAutostartToolFailed;
+                    bool? made = AdminTaskState();
+                    if (made is null) return T.SetAutostartCannotCheck;   // C7-1
+                    if (made == false) return T.SetAutostartToolFailed;
                 }
                 // 관리자 작업이 대신한다 — 예전 바로 가기를 지운다. 못 지우면 성공이라 하지 않고 남은 것을 알린다(D04) — 다음 저장 때 다시 지운다(NeedsCleanup)
                 if (LinkIsOurs()) { string? le = Apply(false); if (le is not null || LinkIsOurs()) return T.SetAutostartUserLeft(le ?? ""); }
@@ -786,18 +803,24 @@ internal static unsafe class Autostart
     public static int RemoveForUninstall(bool quiet, Action<string> notice)
     {
         // E01: 진행 중인 등록(1Key 가 꺼진 뒤 남은 자식 포함)이 끝나기를 먼저 기다린 뒤 상태를 읽는다 — "지금 작업 없음"만 보고 끝내지 않는다
-        bool left = false; string? err = null;
+        bool left = false, unknown = false; string? err = null;
         string? lockErr = WithLock(() =>
         {
-            if (!AdminTaskPresent()) return null;
+            if (AdminTaskState() == false) return null;   // 없음(확인함). C7-1: 확인 못 하면 있을 수 있으니 지우기는 시도한다
             err = RunBuiltin(ToolRemove);
-            left = AdminTaskPresent();
+            bool? after = AdminTaskState();
+            left = after == true; unknown = after is null;
             return null;
         }, wait: true);
         // F02(0.5.22-G, Codex 재검토): 자물쇠를 얻지 못했으면 진행 중인 등록이 없다고 말할 수 없다 — 지금 작업이 안 보여도 성공(0)으로 돌려주지 않는다
         if (lockErr is not null)
         {
             if (!quiet) notice(T.SetAutostartUninstallUnknown(AdminTaskName) + "\n\n" + lockErr);
+            return 2;
+        }
+        if (unknown)   // C7-1: 지운 뒤 남았는지 확인하지 못했다 — "남은 것 없음(0)"이 아니라 확인 못 함(2)
+        {
+            if (!quiet) notice(T.SetAutostartUninstallUnknown(AdminTaskName) + (err is null ? "" : "\n\n" + err));
             return 2;
         }
         if (!left) return 0;

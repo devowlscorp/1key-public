@@ -597,11 +597,13 @@ internal sealed unsafe partial class App
             string? tail = null;
             if (s.Restore && (s.AutoStart != _cfg.AutoStart || s.Admin != _cfg.RequireAdmin))
             {
-                if (Unlocked) tail = RestoreAutostartSettings(s.AutoStart, s.Admin) ? T.SetAutostartRestored : T.SetAutostartRestoreFailed;
+                // 확인 못 함이면 "지금 등록에 맞게"라고 하지 않는다 — 바꾸기 전 등록(또는 저장 전 값)으로 되돌렸다고만(C7-1)
+                if (Unlocked) tail = RestoreAutostartSettings(s.AutoStart, s.Admin) ? (s.Kind == Autostart.Outcome.Unverified ? T.SetAutostartRestoredGuess : T.SetAutostartRestored) : T.SetAutostartRestoreFailed;
                 else { _autostartRestorePending = (s.AutoStart, s.Admin); tail = T.SetAutostartRestoreLater; }
             }
-            if (r.Error is string why)
+            if (s.Kind != Autostart.Outcome.Done)   // C7-1: 오류 문구가 없어도 확인 못 함 · 원하는 방식이 아님이면 성공이라 알리지 않는다
             {
+                string why = r.Error ?? (s.Kind == Autostart.Outcome.Unverified ? T.SetAutostartCannotCheck : T.SetAutostartNotApplied);
                 msg = !r.Ran ? why
                     : s.Kind switch
                     {
@@ -648,7 +650,7 @@ internal sealed unsafe partial class App
             Autostart.Mode? now = Autostart.CurrentModeOrUnknown();
             var v = now is Autostart.Mode m ? Autostart.SettingsFor(m, p.Admin) : p;
             if (v.Auto == _cfg.AutoStart && v.Admin == _cfg.RequireAdmin) return;
-            ShowBalloon(AppTitle, RestoreAutostartSettings(v.Auto, v.Admin) ? T.SetAutostartRestoredAfterUnlock(Autostart.ModeName(now)) : T.SetAutostartRestoreFailed, Native.NIIF_WARNING);
+            ShowBalloon(AppTitle, !RestoreAutostartSettings(v.Auto, v.Admin) ? T.SetAutostartRestoreFailed : now is null ? T.SetAutostartRestoredGuess : T.SetAutostartRestoredAfterUnlock(Autostart.ModeName(now)), Native.NIIF_WARNING);
             return;
         }
         if (!_autostartMismatchTold && AutostartAdminMismatch()) { _autostartMismatchTold = true; ShowBalloon(AppTitle, T.SetAutostartAdminMismatch, Native.NIIF_WARNING); }
