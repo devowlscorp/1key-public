@@ -188,7 +188,7 @@ internal sealed unsafe partial class App
             }
 
             case 0x007E:   // WM_DISPLAYCHANGE: 화면 구성·해상도
-                CatWidget.EnvChanged();
+                CatWidget.EnvChanged(force: true);
                 break;
 
             case 0x0018:   // WM_SHOWWINDOW: 본창이 보이거나 숨는다 — 처리가 끝난 뒤 마스코트를 다시 맞춘다
@@ -531,7 +531,7 @@ internal sealed unsafe partial class App
             // 탐색기(작업 표시줄)가 다시 시작되면 트레이 아이콘이 사라진다. 다시 넣는다.
             _trayAdded = false;
             AddTrayIcon();
-            CatWidget.EnvChanged();   // 작업 표시줄이 새로 생겼다: 자리를 다시 맞춘다
+            CatWidget.EnvChanged(force: true);   // 작업 표시줄이 새로 생겼다: 자리를 다시 맞춘다
             return 0;
         }
         return Native.DefWindowProcW(hwnd, msg, wParam, lParam);

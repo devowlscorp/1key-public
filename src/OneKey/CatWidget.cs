@@ -74,12 +74,13 @@ internal static unsafe partial class CatWidget
         Evaluate();
     }
 
-    public static void EnvChanged()
+    /// <param name="force">화면 구성 바뀜 · 작업 표시줄 새로 생김: 같은 작업 영역 · 배율이어도 다시 맞춘다(설정 변경 알림만 바뀐 게 없으면 건너뜀).</param>
+    public static void EnvChanged(bool force = false)
     {
         if (!_wanted) return;
         // 0.5.15-K: Windows 는 설정 변경 알림(WM_SETTINGCHANGE)을 환경 변수·지역 설정 등 아무 설정에나 보낸다. 보이는 중이고 작업 영역·배율·색이
         // 그대로면 다시 맞추지 않는다 — 하던 동작(걷기·쉬는 동작·숨기)이 중간에 끊겼다(catseq 에서 79/98 장에서 끊김)
-        if (_shown && EnvOk(out Native.RECT w, out int d) && d == _dpi && w.left == _work.left && w.right == _work.right && w.bottom == _work.bottom
+        if (!force && _shown && EnvOk(out Native.RECT w, out int d) && d == _dpi && w.left == _work.left && w.right == _work.right && w.bottom == _work.bottom
             && FlipClock.MascotLight() == _light) { LogLine("envchanged same"); KeepOnTop(); return; }
         LogLine("envchanged redo");
         if (_shown) Hide(keepCheck: true);
