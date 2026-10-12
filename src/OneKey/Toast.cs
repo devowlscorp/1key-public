@@ -28,9 +28,17 @@ internal static unsafe class Toast
     public static int ShownCount { get; private set; }
     private static readonly Dictionary<nint, State> _state = new();
 
+    /// <summary>검증 전용(ONEKEY_TEST=1): 띄운 토스트 · 알림 풍선의 글을 설정 폴더의 notices.txt 에 한 줄씩(창 시험이 안내 문구를 읽는다). 실제 사용에서는 아무것도 하지 않는다.</summary>
+    internal static void TestNotice(string kind, string text)
+    {
+        if (!Program.IsTestMode) return;
+        try { File.AppendAllText(Path.Combine(Config.Dir, "notices.txt"), kind + "|" + text.Replace("\r", "").Replace("\n", " / ") + "\n"); } catch { }
+    }
+
     /// <summary>ms: 머무는 시간. 기본 1.8초(2026-09-30 사용자 요청으로 2.5초에서 줄임). warn: 실패·주의 알림이면 머리에 "⚠ 안내"(정보 알림은 아이콘 없음).</summary>
     public static void Show(nint owner, string text, int ms = 1800, bool warn = false)
     {
+        TestNotice("toast", text);
         if (!_registered)
         {
             Ctl.RegisterClass(Native.GetModuleHandleW(null), ClassName, &WndProc, 0);

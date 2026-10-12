@@ -460,6 +460,7 @@ internal sealed unsafe partial class App
             RegisterHotkeys(silent: true);   // 잠긴 채 시작했으면 아직 등록되지 않은 단축키가 있다
             ShowScreen(Screen.List);
             AfterLockWidgetDone();
+            ApplyPendingAutostartRestore();   // AS6-1: 잠긴 동안 끝난 자동 실행 결과의 되돌리기 · 등록과 설정의 어긋남 알림
             // T3: 쉬운 마스터면 실행 세션마다 한 번 바꾸기를 권한다(강제하지 않음).
             bool weakNow = !_weakMasterAdvised && weak;
             if (weakNow) _weakMasterAdvised = true;

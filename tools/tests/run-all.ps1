@@ -35,10 +35,10 @@ $map = [ordered]@{
   '^src/OneKey/(Backup|AppBackup)\.cs$'                                     = @("siteunit", "backup", "restorecopy")   # restorecopy: R07 copy before a restore over unreadable settings
   '^src/OneKey/(Dialog|Help|Backdrop)\.cs$'                                    = @("dialog", "help")
   '^src/OneKey/(Theme|Controls|Toggle|Dw|DwStatic|AppUiKit|AppPaint|Fx|Toast|ThinScroll|Gdiplus)\.cs$' = @("layout", "dw", "printclient")
-  '^src/OneKey/(AppList|AppEdit|AppAdvanced|AppWndProc|AppTray)\.cs$'          = @("layout", "settingsro", "many", "addforms")
+  '^src/OneKey/(AppList|AppEdit|AppAdvanced|AppWndProc|AppTray)\.cs$'          = @("layout", "settingsro", "many", "addforms", "autostartfail")
   '^src/OneKey/CtlAcc\.cs$'                                                    = @("a11y")
   '^src/OneKey/(i18n/strings\.tsv|L\.cs|Strings\.g\.cs)$'                      = @("i18ngen", "i18n")
-  '^src/OneKey/(App|Program|Native|WorkArea|Diag|Autostart|AutostartScripts)\.cs$' = @("startup", "handoff")
+  '^src/OneKey/(App|Program|Native|WorkArea|Diag|Autostart|AutostartScripts)\.cs$' = @("startup", "handoff", "autostartfail")
   # taskbar cat (0.5.15-0.5.22): the motion timing and the walk/peek checks; the art is checked when it is made (tools/cat), not here
   '^src/OneKey/(CatWidget|CatClips|CatGrowth|CatGuest|CatHunt|CatMenu|CatHearts)\.cs$' = @("catseq", "catwalk", "catpeek", "cattheme")
   '^src/OneKey/Assets/cat/'                                                    = @("catseq", "cattheme")

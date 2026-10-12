@@ -59,6 +59,7 @@ internal sealed unsafe partial class App
 
     private void ShowBalloon(string title, string text, uint iconFlag)
     {
+        Toast.TestNotice("balloon", text);
         if (!_trayAdded) return;
         var data = MakeTrayData();
         data.uFlags = Native.NIF_INFO;

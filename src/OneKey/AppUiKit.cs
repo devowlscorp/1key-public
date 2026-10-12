@@ -442,6 +442,7 @@ internal sealed unsafe partial class App
         _pageScroll = _pageScrollMax = _barShift = 0; _viewH = 0; _lastFocusSeen = 0;
         _phase = "clear";
         ClearPage();
+        bool enterSettings = s == Screen.Settings && _cur != Screen.Settings;   // AS6-1: 설정에 들어올 때 등록과 설정의 어긋남을 알린다(맨 아래)
         if (s != _cur) _screenSerial++;   // 다른 화면으로: 그 전 화면에서 시작한 작업의 결과는 버린다(R41-2)
         _cur = s;
         int avail = AvailableClientH();
@@ -522,6 +523,7 @@ internal sealed unsafe partial class App
         }
         FocusFirst();
         UpdateSiteWatch();   // 사이트 채우기: 잠금 해제·저장·삭제·잠금 뒤 감시를 켜거나 끈다
+        if (enterSettings && AutostartAdminMismatch()) Toast.Show(_hwnd, T.SetAutostartAdminMismatch, 8000);
     }
 
     /// <summary>

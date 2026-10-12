@@ -525,7 +525,7 @@ internal sealed unsafe partial class App
         {
             if (want == Autostart.Mode.Admin && Autostart.CurrentMode() != Autostart.Mode.Admin && Msg(T.SetAutostartAdminRisk, AppTitle, Native.MB_YESNO | Native.MB_ICONWARNING) != Native.IDYES)
                 Toast.Show(_hwnd, T.SetAutostartUnchanged, 4000);
-            else StartAutostartSwitch(want);
+            else StartAutostartSwitch(want, keep.AutoStart, keep.RequireAdmin);
         }
         else Toast.Show(_hwnd, T.SetSaved);
         UpdateTrayTip();
@@ -537,40 +537,124 @@ internal sealed unsafe partial class App
     private const uint WM_AUTOSTART_DONE = Native.WM_APP + 52;
     private const uint WM_AUTOSTART_SLOW = Native.WM_APP + 53;   // 등록이 1분 넘게 걸린다(아직 끝나지 않음 — busy 그대로)
     private bool _autostartBusy, _exitAfterAutostart;
-    private string? _autostartResult;
+    private Autostart.SwitchResult? _autostartRes;
+    // AS6(Codex 2026-10-12): 이번 요청의 원하는 방식과 저장 전 두 값(자동 실행 · 항상 관리자 권한) — 실패하면 실제 등록에 맞춰 되돌리는 데 쓴다
+    private Autostart.Mode _autostartWant;
+    private (bool Auto, bool Admin) _autostartPrev;
+    // 잠겨 있어 되돌리지 못한 값(잠금 해제 뒤 ApplyPendingAutostartRestore). 잠긴 동안 RequireAdmin 을 바꾸면 잠금 해제 AAD 가 어긋난다(Config.SecurityAad)
+    private (bool Auto, bool Admin)? _autostartRestorePending;
+    private bool _autostartMismatchTold;
 
     /// <summary>등록 · 지우기를 작업 스레드(STA — ShellExecuteEx)에서 하고 끝나면 WM_AUTOSTART_DONE. 하는 동안 화면 · 잠금 · 자동 잠금 타이머는 그대로 돈다.</summary>
-    private void StartAutostartSwitch(Autostart.Mode want)
+    private void StartAutostartSwitch(Autostart.Mode want, bool prevAuto, bool prevAdmin)
     {
         if (_autostartBusy) { Toast.Show(_hwnd, T.SetAutostartBusy, 3000); return; }
         _autostartBusy = true;
+        _autostartWant = want;
+        _autostartPrev = (prevAuto, prevAdmin);
         Toast.Show(_hwnd, T.SetAutostartWorking, 3000);
         nint hwnd = _hwnd;
         Autostart.SlowNotice = () => Native.PostMessageW(hwnd, WM_AUTOSTART_SLOW, 0, 0);   // D03: 1분이 넘으면 "아직 하는 중"(끝으로 치지 않는다)
-        var th = new Thread(() =>
+        try
         {
-            string? r;
-            try { r = Autostart.SwitchTo(want); } catch (Exception ex) { r = ex.Message; }
-            _autostartResult = r;
-            Native.PostMessageW(hwnd, WM_AUTOSTART_DONE, 0, 0);
-        }) { IsBackground = true, Name = "1Key autostart" };
-        th.SetApartmentState(ApartmentState.STA);
-        th.Start();
+            var th = new Thread(() =>
+            {
+                Autostart.SwitchResult r;
+                try { r = Autostart.SwitchTo(want); }
+                catch (Exception ex)
+                {
+                    Autostart.Mode? now = null;
+                    try { now = Autostart.CurrentModeOrUnknown(); } catch { }
+                    r = new(ex.Message, true, null, now, false);   // 어디까지 했는지 모른다 — 지금 등록만 읽어 판단한다
+                }
+                _autostartRes = r;
+                Native.PostMessageW(hwnd, WM_AUTOSTART_DONE, 0, 0);
+            }) { IsBackground = true, Name = "1Key autostart" };
+            th.SetApartmentState(ApartmentState.STA);
+            th.Start();
+        }
+        catch (Exception ex)   // 작업 스레드를 시작하지 못했다: 아무것도 바꾸지 않았다 — 바쁨을 풀고 저장 전 값으로(Codex 후속 ① 과 같은 종류)
+        {
+            _autostartRes = new(ex.Message, false, null, null, false);
+            OnAutostartDone();
+        }
     }
 
-    /// <summary>등록이 끝났다: 결과를 알리고 실제 상태를 다시 읽는다(잠겨 있으면 상자 대신 알림 풍선 — 잠금 화면 위에 상자를 띄우지 않는다).</summary>
+    /// <summary>
+    /// 등록이 끝났다: 실제 등록을 다시 읽고, 실패 · 부분 실패면 설정의 두 값을 실제 등록에 맞춰 되돌린 뒤(AS6-1 — Autostart.SettleAfter) 알린다.
+    /// 잠겨 있으면 값을 바꾸지 않고 잠금 해제 뒤로 미룬다. 종료를 미뤄 두었으면(E01) 결과 · 되돌리기를 먼저 마친 뒤 종료한다.
+    /// 잠겨 있거나 창이 숨어 있으면 상자 대신 알림 풍선 — 잠금 화면 위에 상자를 띄우지 않는다.
+    /// </summary>
     private void OnAutostartDone()
     {
         _autostartBusy = false;
-        if (_exitAfterAutostart) { _exitAfterAutostart = false; ExitApp(); return; }   // E01: 종료를 미뤄 두었다
-        string? err = _autostartResult; _autostartResult = null;
+        var res = _autostartRes; _autostartRes = null;
         _autostartOn = Autostart.IsOn();
-        if (err is not null)
+        string? msg = null;
+        if (res is { } r)
         {
-            if (Unlocked && Native.IsWindowVisible(_hwnd)) Msg(err, AppTitle, Native.MB_OK | Native.MB_ICONWARNING);
-            else ShowBalloon(AppTitle, err, Native.NIIF_WARNING);
+            var s = Autostart.SettleAfter(r, _autostartWant, _autostartPrev.Auto, _autostartPrev.Admin);
+            string? tail = null;
+            if (s.Restore && (s.AutoStart != _cfg.AutoStart || s.Admin != _cfg.RequireAdmin))
+            {
+                if (Unlocked) tail = RestoreAutostartSettings(s.AutoStart, s.Admin) ? T.SetAutostartRestored : T.SetAutostartRestoreFailed;
+                else { _autostartRestorePending = (s.AutoStart, s.Admin); tail = T.SetAutostartRestoreLater; }
+            }
+            if (r.Error is string why)
+            {
+                msg = !r.Ran ? why
+                    : s.Kind switch
+                    {
+                        Autostart.Outcome.Unverified => T.SetAutostartUnverified(why),
+                        Autostart.Outcome.Kept => T.SetAutostartNotChanged(why, Autostart.ModeName(s.Actual)),
+                        Autostart.Outcome.Partial => T.SetAutostartPartial(why, Autostart.ModeName(s.Actual)),
+                        _ => why,   // 원하는 방식은 됐고 남은 것이 있다(예전 바로 가기 등) — 사유가 그것을 말한다
+                    };
+                if (r.BothLeft) msg += "\n" + T.SetAutostartBothLeft;
+                if (tail is not null) msg += "\n" + tail;
+            }
+        }
+        if (_exitAfterAutostart) { _exitAfterAutostart = false; ExitApp(); return; }   // E01: 종료를 미뤄 두었다(되돌리기는 위에서 마쳤다 — 못 했으면 다음 실행에서 어긋남을 알린다)
+        if (msg is not null)
+        {
+            if (Unlocked && Native.IsWindowVisible(_hwnd)) Msg(msg, AppTitle, Native.MB_OK | Native.MB_ICONWARNING);
+            else ShowBalloon(AppTitle, msg, Native.NIIF_WARNING);
         }
         else if (Native.IsWindowVisible(_hwnd)) Toast.Show(_hwnd, _autostartOn ? T.SetAutostartOn : T.SetAutostartOff, 5000);
         else ShowBalloon(AppTitle, _autostartOn ? T.SetAutostartOn : T.SetAutostartOff, Native.NIIF_INFO);
+        if (_cur == Screen.Settings && _settingsDraft is null) FillSettings();   // 설정이 열려 있으면 스위치를 지금 값으로
     }
+
+    /// <summary>설정의 자동 실행 · 항상 관리자 권한 두 값만 바꿔 저장한다(다른 설정은 지금 값 그대로). 저장하지 못하면 메모리의 값도 되돌리고 false.</summary>
+    private bool RestoreAutostartSettings(bool auto, bool admin)
+    {
+        var keep = (_cfg.AutoStart, _cfg.RequireAdmin);
+        (_cfg.AutoStart, _cfg.RequireAdmin) = (auto, admin);
+        if (_cfg.Save()) { UpdateTrayTip(); return true; }
+        (_cfg.AutoStart, _cfg.RequireAdmin) = keep;
+        return false;
+    }
+
+    /// <summary>
+    /// 잠금을 푼 뒤: 잠긴 동안 끝난 등록 결과로 미뤄 둔 되돌리기를 한다(그사이 바뀌었을 수 있어 지금 등록을 다시 읽어 맞춘다). 미뤄 둔 것이 없으면
+    /// 실제 관리자 등록과 "항상 관리자 권한 꺼짐" 설정이 어긋나 있는지 보고 한 번 알린다(앱을 다시 켠 뒤에도 — AS6-1).
+    /// </summary>
+    private void ApplyPendingAutostartRestore()
+    {
+        if (_autostartBusy || !Unlocked) return;   // 바꾸는 중이면 그 결과가 다시 정한다
+        if (_autostartRestorePending is { } p)
+        {
+            _autostartRestorePending = null;
+            Autostart.Mode? now = Autostart.CurrentModeOrUnknown();
+            var v = now is Autostart.Mode m ? Autostart.SettingsFor(m, p.Admin) : p;
+            if (v.Auto == _cfg.AutoStart && v.Admin == _cfg.RequireAdmin) return;
+            ShowBalloon(AppTitle, RestoreAutostartSettings(v.Auto, v.Admin) ? T.SetAutostartRestoredAfterUnlock(Autostart.ModeName(now)) : T.SetAutostartRestoreFailed, Native.NIIF_WARNING);
+            return;
+        }
+        if (!_autostartMismatchTold && AutostartAdminMismatch()) { _autostartMismatchTold = true; ShowBalloon(AppTitle, T.SetAutostartAdminMismatch, Native.NIIF_WARNING); }
+    }
+
+    /// <summary>실제로는 관리자 로그온 작업이 등록돼 있는데 설정의 "항상 관리자 권한으로 실행"은 꺼져 있다(설치본에서만, 바꾸는 중이 아닐 때).</summary>
+    private bool AutostartAdminMismatch()
+        => !_autostartBusy && Autostart.IsInstalledCopy && !_cfg.RequireAdmin && Autostart.CurrentModeOrUnknown() == Autostart.Mode.Admin;
 }

@@ -431,16 +431,33 @@ internal static unsafe class Autostart
         return AdminTaskPresent();
     }
 
-    private static bool AdminTaskPresent()
+    private static bool AdminTaskPresent() => AdminTaskState() == true;
+
+    /// <summary>
+    /// 관리자 로그온 작업이 있는가: true 있음 · false 없음(파일 · 경로 없음) · null 확인하지 못함(권한 거부 등 — 없음으로 보지 않는다, AS6 · Codex 2026-10-12).
+    /// 검증 모드에서 ONEKEY_TEST_ADMIN_TASK_FILE 이 있으면 그 표식 파일로 대신한다(창 시험이 관리자 등록을 흉내 낸다 — RunBuiltin 참고).
+    /// </summary>
+    private static bool? AdminTaskState()
     {
-        string? sid;
-        try { sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value; } catch { sid = null; }
-        if (string.IsNullOrEmpty(sid)) return false;
-        string file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "Tasks", "1Key-AdminStartup-" + sid + Suffix);
+        string file;
+        if (TestTaskFile is string tf) file = tf;
+        else
+        {
+            string? sid;
+            try { sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value; } catch { sid = null; }
+            if (string.IsNullOrEmpty(sid)) return null;
+            file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "Tasks", "1Key-AdminStartup-" + sid + Suffix);
+        }
         uint a;
         fixed (char* p = file) a = GetFileAttributesW(p);
-        return a != 0xFFFFFFFF;
+        if (a != 0xFFFFFFFF) return true;
+        int e = Marshal.GetLastWin32Error();
+        return e is 2 or 3 ? false : null;   // ERROR_FILE_NOT_FOUND · ERROR_PATH_NOT_FOUND 만 "없음"
     }
+
+    /// <summary>검증 전용: 관리자 작업 대신 쓰는 표식 파일(검증 모드 + ONEKEY_TEST_ADMIN_TASK_FILE 이 절대 경로일 때만).</summary>
+    private static string? TestTaskFile
+        => Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_ADMIN_TASK_FILE") is { Length: > 0 } f && Path.IsPathRooted(f) ? f : null;
 
     /// <summary>
     /// 등록 도구 하나를 연다(명령 창 — 안내는 스크립트가 한다). 등록 도구(관리자용)는 스스로 UAC 를 묻는다. 지우기 도구는 스스로 묻지 않으므로
@@ -494,6 +511,21 @@ internal static unsafe class Autostart
         if (Program.IsTestMode)
         {
             try { File.AppendAllText(Path.Combine(Config.Dir, "autostart-tool-runs.txt"), "builtin " + name + (elevate ? " runas" : "") + (onlyTask ? " onlytask" : "") + "\n"); } catch { }
+            // 흉내(ONEKEY_TEST_ADMIN_TASK_FILE 이 있을 때만, AS6 시험): 관리자 작업 = 표식 파일, 바로 가기 = 시험 폴더의 실제 바로 가기.
+            // ONEKEY_TEST_AUTOSTART_CANCEL=1 이면 관리자 승인이 필요한 호출을 UAC [아니요]처럼 아무것도 바꾸지 않고 실패시킨다. _DELAY_MS 는 끝나기 전 잠금 · 종료를 맞추려고
+            if (TestTaskFile is string tf)
+            {
+                if (int.TryParse(Environment.GetEnvironmentVariable("ONEKEY_TEST_AUTOSTART_DELAY_MS"), out int dms) && dms > 0) Thread.Sleep(dms);
+                if (elevate && Environment.GetEnvironmentVariable("ONEKEY_TEST_AUTOSTART_CANCEL") == "1") return T.SetAutostartToolFailed;
+                try
+                {
+                    if (name == ToolAdmin) { File.WriteAllText(tf, "task"); return null; }
+                    if (name == ToolUser) return Apply(true);
+                    if (File.Exists(tf)) File.Delete(tf);
+                    return onlyTask ? null : Apply(false);
+                }
+                catch (Exception ex) { return ex.Message; }
+            }
             return null;
         }
         // E01(0.5.22-F, Codex 재검토): 실제 일을 하는 PowerShell 이 작업 자물쇠를 직접 쥔다 — 1Key 가 도중에 꺼져도 자식이 끝날 때까지 자물쇠가 남아
@@ -621,20 +653,87 @@ internal static unsafe class Autostart
         return Read().Link is LinkState.Ours or LinkState.OursDiffers ? Mode.User : Mode.Off;
     }
 
+    /// <summary>
+    /// 지금 등록 방식. 확인하지 못하면 null(관리자 작업 상태를 못 읽음, 또는 작업은 없는데 바로 가기를 못 읽음) — 꺼짐으로 보지 않는다(AS6, Codex 2026-10-12).
+    /// </summary>
+    public static Mode? CurrentModeOrUnknown()
+    {
+        if (!IsInstalledCopy) return Mode.Off;
+        bool? task = AdminTaskState();
+        if (task == true) return Mode.Admin;
+        if (task is null) return null;
+        Status s = Read();
+        if (s.Link is LinkState.Ours or LinkState.OursDiffers) return Mode.User;
+        return s.Link == LinkState.Unknown || s.DirError is not null ? null : Mode.Off;
+    }
+
     private static bool LinkIsOurs() => Read().Link is LinkState.Ours or LinkState.OursDiffers;
 
     /// <summary>관리자 자동 실행인데 예전 보통 자동 실행(바로 가기)이 남아 있다 — 같은 방식으로 저장해도 정리를 다시 한다(D04).</summary>
     public static bool NeedsCleanup(Mode want) => want == Mode.Admin && IsInstalledCopy && AdminTaskPresent() && LinkIsOurs();
 
     /// <summary>
+    /// 한 번의 바꾸기 결과(AS6 — 실패 사유 하나만 보고 판단하지 않게): Error 성공이면 null · Ran 바꾸기를 실제로 시작했는가(자물쇠를 못 얻으면 false — 아무것도 바꾸지 않음)
+    /// · Before/After 바꾸기 앞뒤의 실제 등록(null = 확인 못 함) · BothLeft 이번 요청이 만든 바로 가기를 되돌리지 못해 관리자 작업과 함께 남았다.
+    /// </summary>
+    public readonly record struct SwitchResult(string? Error, bool Ran, Mode? Before, Mode? After, bool BothLeft);
+
+    /// <summary>
     /// 요청한 방식으로 바꾼다(R04: 켜져 있는 채로 "항상 관리자 권한"만 바꾸면 예전에는 아무것도 하지 않아 관리자 작업이 남거나 바로 가기만 남았다).
     /// 새 방식을 먼저 등록하고 실제로 생겼는지 다시 읽은 뒤에 예전 것을 지운다 — 새 등록이 안 되면 예전 등록을 잃지 않는다. 오래 걸릴 수 있어(UAC · PowerShell)
-    /// 화면 스레드가 아닌 곳에서 부른다(R05, AppList.StartAutostartSwitch). 성공 null, 아니면 사유.
+    /// 화면 스레드가 아닌 곳에서 부른다(R05, AppList.StartAutostartSwitch). 앞뒤 실제 등록을 자물쇠 안에서 함께 읽어 돌려준다(AS6).
     /// </summary>
-    public static string? SwitchTo(Mode want) => WithLock(() => SwitchToLocked(want), wait: false);
-
-    private static string? SwitchToLocked(Mode want)
+    public static SwitchResult SwitchTo(Mode want)
     {
+        bool ran = false, both = false;
+        Mode? before = null, after = null;
+        string? err = WithLock(() =>
+        {
+            ran = true;
+            before = CurrentModeOrUnknown();
+            try { return SwitchToLocked(want, out both); }
+            finally { after = CurrentModeOrUnknown(); }
+        }, wait: false);
+        return new SwitchResult(err, ran, before, after, both);
+    }
+
+    /// <summary>바꾸기 결과의 종류: 성공 · 원하는 방식은 됐지만 예전 것이 남음 · 예전 그대로(실패) · 다른 방식이 됨(부분) · 확인 못 함.</summary>
+    public enum Outcome { Done, DoneLeft, Kept, Partial, Unverified }
+
+    /// <summary>바꾸기 뒤 설정의 두 값: Restore 이면 AutoStart · Admin 으로 되돌려 저장한다. Actual = 판단에 쓴 실제 등록(null = 모름).</summary>
+    public readonly record struct Settle(Outcome Kind, bool Restore, bool AutoStart, bool Admin, Mode? Actual);
+
+    /// <summary>
+    /// AS6-1(Codex 2026-10-12): 바꾸기가 끝난 뒤 설정의 "자동 실행" · "항상 관리자 권한" 두 값을 실제 등록에 맞춘다. 실패 사유 하나로 저장 전 값을
+    /// 무조건 되돌리지 않는다 — 부분 성공이면 반대로 어긋나므로, 실제 등록(After)을 기준으로 정한다. prev = 이번 저장 전의 두 값.
+    /// - 성공: 그대로. - 원하는 방식이 됐는데 사유가 있음(예전 바로 가기를 못 지움): 그대로(설정은 실제와 같다).
+    /// - 자물쇠를 못 얻어 시작도 못 함: 아무것도 안 바꿨으니 저장 전 값으로.
+    /// - 실제 등록을 읽었고 원하는 방식이 아님: 그 등록에 맞는 값으로(관리자 = 켬 · 켬, 보통 = 켬 · 끔, 꺼짐 = 끔 · 저장 전 관리자 값).
+    /// - 확인 못 함: 바꾸기 전 등록(읽었으면)에 맞추고 아니면 저장 전 값 — 새 등록을 먼저 하고 예전 것을 지우므로 실패하면 예전 등록이 남는 쪽이 보통이다. 안내는 "확인 못 함".
+    /// </summary>
+    public static Settle SettleAfter(SwitchResult r, Mode want, bool prevAuto, bool prevAdmin)
+    {
+        if (r.Error is null) return new(Outcome.Done, false, false, false, r.After);
+        if (!r.Ran) return new(Outcome.Kept, true, prevAuto, prevAdmin, r.After);
+        if (r.After is not Mode a)
+        {
+            (bool Auto, bool Admin) b = r.Before is Mode bm ? SettingsFor(bm, prevAdmin) : (prevAuto, prevAdmin);
+            return new(Outcome.Unverified, true, b.Auto, b.Admin, null);
+        }
+        if (a == want) return new(Outcome.DoneLeft, false, false, false, a);
+        var v = SettingsFor(a, prevAdmin);
+        return new(a == r.Before ? Outcome.Kept : Outcome.Partial, true, v.Auto, v.Admin, a);
+    }
+
+    /// <summary>등록 방식에 맞는 설정의 두 값: 관리자 = 켬 · 켬, 보통 = 켬 · 끔, 꺼짐 = 끔 · (관리자 값은 저장 전 그대로 — 수동 실행 때의 권한 설정).</summary>
+    public static (bool Auto, bool Admin) SettingsFor(Mode m, bool prevAdmin) => m switch { Mode.Admin => (true, true), Mode.User => (true, false), _ => (false, prevAdmin) };
+
+    /// <summary>안내용 등록 방식 이름.</summary>
+    public static string ModeName(Mode? m) => m switch { Mode.Admin => T.SetAutostartModeAdmin, Mode.User => T.SetAutostartModeUser, Mode.Off => T.SetAutostartModeOff, _ => T.SetAutostartModeUnknown };
+
+    private static string? SwitchToLocked(Mode want, out bool bothLeft)
+    {
+        bothLeft = false;
         Mode cur = CurrentMode();
         if (cur == want && !NeedsCleanup(want)) return null;
         switch (want)
@@ -643,11 +742,16 @@ internal static unsafe class Autostart
                 return RunBuiltin(ToolRemove);
             case Mode.User:
             {
-                if (!LinkIsOurs()) { string? e = RunBuiltin(ToolUser); if (e is not null) return e; }
+                bool hadLink = LinkIsOurs();
+                if (!hadLink) { string? e = RunBuiltin(ToolUser); if (e is not null) return e; }
                 if (!LinkIsOurs()) return T.SetAutostartToolFailed;
                 if (cur != Mode.Admin) return null;
                 string? r = RunBuiltin(ToolRemove, onlyTask: true);   // 바로 가기는 이미 있으니 관리자 작업만
-                return AdminTaskPresent() ? (r ?? T.SetAutostartAdminLeft(AdminTaskName)) : null;
+                if (!AdminTaskPresent()) return null;
+                // AS6-2(Codex 2026-10-12): 관리자 작업을 못 지웠다(UAC 취소 등) — 예전 관리자 등록은 그대로 두고, 이번 요청이 만든 바로 가기만 되돌린다
+                // (원래 있던 바로 가기 · 다른 대상은 건드리지 않는다). 못 지우면 둘 다 남았다고 알린다
+                if (!hadLink) { string? le = Apply(false); bothLeft = le is not null || LinkIsOurs(); }
+                return r ?? T.SetAutostartAdminLeft(AdminTaskName);
             }
             default:   // Admin
             {

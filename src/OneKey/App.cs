@@ -298,7 +298,9 @@ internal sealed unsafe partial class App
         // T2: 단일 인스턴스 잠금은 **쥔 채로** 자식에게 이 프로세스 번호를 넘긴다. 자식은 이 프로세스가 끝나기를(최대 10초) 기다린 뒤
         // 잠금을 잡는다. 그래서 쓰기 가능한 인스턴스가 동시에 둘이 되는 순간이 없다. UAC 를 취소하면 이 프로세스가 그대로 계속한다.
         // 모르는 새 형식의 파일이면(T9) 그 헤더의 관리자 권한 값은 믿지 않는다(기본값으로 읽혀 여기 오지 않는다).
-        if (_cfg.RequireAdmin && !Native.IsElevated() && !_cfg.Unsupported)
+        // 검증 전용: ONEKEY_TEST_NO_ELEVATE=1 이면 다시 띄우지 않는다 — "항상 관리자 권한"을 켠 시험 설정이 시작할 때 실제 UAC 창을 띄우지 않게(autostartfail)
+        bool noElevate = Program.IsTestMode && Environment.GetEnvironmentVariable("ONEKEY_TEST_NO_ELEVATE") == "1";
+        if (_cfg.RequireAdmin && !Native.IsElevated() && !_cfg.Unsupported && !noElevate)
         {
             string args = (fromAutostart ? "--tray " : string.Empty) + (Program.TookOver ? "--took-over " : string.Empty) + Program.HandoffArg;
             if (Autostart.RestartElevated(args)) return 0;

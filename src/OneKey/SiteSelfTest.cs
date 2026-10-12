@@ -1071,6 +1071,22 @@ internal static class SiteSelfTest
                 if (ev2 != 0) Native.CloseHandle(ev2);
                 Check("RL12", "2|2|True|True", $"{rc}|{rcQuiet}|{told is not null}|{toldQuiet is null}", "F02: when uninstall cannot get the autostart lock it reports 'could not check' (2), never 'nothing left' (0); quiet stays silent");
             }
+            {
+                // AS6-1(Codex 2026-10-12, 후보 7): 바꾸기 뒤 설정 두 값은 실패 사유가 아니라 실제 등록(After)으로 정한다
+                static string St(Autostart.Settle s) => $"{s.Kind}|{s.Restore}|{(s.Restore ? $"{s.AutoStart}/{s.Admin}" : "-")}";
+                var A = Autostart.Mode.Admin; var U = Autostart.Mode.User; var O = Autostart.Mode.Off;
+                static Autostart.SwitchResult Sr(string? e, bool ran, Autostart.Mode? b, Autostart.Mode? a) => new(e, ran, b, a, false);
+                Check("RL13", "Kept|True|True/True", St(Autostart.SettleAfter(Sr("cancel", true, A, A), U, true, true)), "admin -> normal, UAC cancelled: admin task kept, so both settings go back to on / on");
+                Check("RL14", "Done|False|-", St(Autostart.SettleAfter(Sr(null, true, A, U), U, true, true)), "a successful change keeps what was saved");
+                Check("RL15", "Kept|True|True/False", St(Autostart.SettleAfter(Sr("cancel", true, U, U), A, true, false)), "normal -> admin, UAC cancelled: shortcut kept, settings back to on / off");
+                Check("RL16", "Kept|True|False/True", St(Autostart.SettleAfter(Sr("cancel", true, O, O), A, false, true)), "off -> admin cancelled: stays off, the manual-start admin value is the one from before the save");
+                Check("RL17", "Partial|True|False/True", St(Autostart.SettleAfter(Sr("odd", true, A, O), U, true, true)), "partial: the registration became something else (off) - settings follow the real registration, not the old values");
+                Check("RL18", "DoneLeft|False|-", St(Autostart.SettleAfter(Sr("old shortcut left", true, U, A), A, true, false)), "the wanted mode is in place but something old is left: settings already match, no restore");
+                Check("RL19", "Unverified|True|True/True", St(Autostart.SettleAfter(Sr("x", true, A, null), U, true, true)), "registration could not be read afterwards: never treated as off or success - follow the registration read before");
+                Check("RL20", "Unverified|True|False/True", St(Autostart.SettleAfter(Sr("x", true, null, null), U, false, true)), "nothing could be read: the values from before the save");
+                Check("RL21", "Kept|True|True/True", St(Autostart.SettleAfter(Sr("busy", false, null, null), U, true, true)), "the change never started (lock busy): nothing changed, values from before the save");
+                Check("RL22", "True/True|True/False|False/False", $"{Autostart.SettingsFor(A, false).Auto}/{Autostart.SettingsFor(A, false).Admin}|{Autostart.SettingsFor(U, true).Auto}/{Autostart.SettingsFor(U, true).Admin}|{Autostart.SettingsFor(O, false).Auto}/{Autostart.SettingsFor(O, false).Admin}", "settings for each registration mode");
+            }
         }
         catch (Exception ex) { sb.Append("FAIL RL00 exception ").Append(ex.GetType().Name).Append(": ").Append(ex.Message).Append('\n'); } }
         return sb.ToString();
