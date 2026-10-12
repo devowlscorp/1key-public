@@ -56,12 +56,12 @@ function Has($id) { [CEU]::GetDlgItem($m, $id) -ne [IntPtr]::Zero }
 function Click($id, $ms = 700) { [void][CEU]::PostMessageW([CEU]::GetDlgItem($m, $id), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero); Start-Sleep -Milliseconds $ms }
 function SetText($id, $s) { [void][CEU]::SendMessageW([CEU]::GetDlgItem($m, $id), 0x000C, [IntPtr]::Zero, [string]$s) }
 function Prop($n) { [int][CEU]::GetPropW($m, $n) }
-function Cat() { [CEU]::Find([uint32]$p.Id, "OneKeyCat", $true) -ne [IntPtr]::Zero }
-function State() { "$(Prop 'OneKeyTestWalker')/$(Prop 'OneKeyTestWalkerShows')/$(Prop 'OneKeyWalkerWhy')/$(Cat)" }
+function CatShown() { [CEU]::Find([uint32]$p.Id, "OneKeyCat", $true) -ne [IntPtr]::Zero }
+function State() { "$(Prop 'OneKeyTestWalker')/$(Prop 'OneKeyTestWalkerShows')/$(Prop 'OneKeyWalkerWhy')/$(CatShown)" }
 # waits until the show count is above $gen and the cat is shown again (prop and window); "" on timeout
 function WaitReshown([int]$gen, [int]$ms = 6000) {
   $t = [Environment]::TickCount
-  while ([Environment]::TickCount - $t -lt $ms) { if ((Prop 'OneKeyTestWalkerShows') -gt $gen -and (Prop 'OneKeyTestWalker') -eq 1 -and (Cat)) { return $true }; Start-Sleep -Milliseconds 100 }
+  while ([Environment]::TickCount - $t -lt $ms) { if ((Prop 'OneKeyTestWalkerShows') -gt $gen -and (Prop 'OneKeyTestWalker') -eq 1 -and (CatShown)) { return $true }; Start-Sleep -Milliseconds 100 }
   $false
 }
 
@@ -81,17 +81,17 @@ try {
   if (-not $cur) { [void][CEU]::PostMessageW([CEU]::GetDlgItem($m, 2032), 0x0100, [IntPtr]0x20, [IntPtr]::Zero); Start-Sleep -Milliseconds 300 }
   Click 2012 900
   [void][CEU]::PostMessageW($m, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)   # WM_CLOSE -> to the tray, the cat appears
-  $t0 = [Environment]::TickCount; while ([Environment]::TickCount - $t0 -lt 6000 -and -not ((Prop 'OneKeyTestWalker') -eq 1 -and (Cat))) { Start-Sleep -Milliseconds 100 }
+  $t0 = [Environment]::TickCount; while ([Environment]::TickCount - $t0 -lt 6000 -and -not ((Prop 'OneKeyTestWalker') -eq 1 -and (CatShown))) { Start-Sleep -Milliseconds 100 }
   Start-Sleep -Seconds 3   # settle: intro done, work area and scale recorded
   $s0 = State
-  Check CE00 "True|1|0|True" "$envOk|$(Prop 'OneKeyTestWalker')|$(Prop 'OneKeyWalkerWhy')|$(Cat)" "taskbar at the bottom, cat shown with reason 0 (state $s0)"
+  Check CE00 "True|1|0|True" "$envOk|$(Prop 'OneKeyTestWalker')|$(Prop 'OneKeyWalkerWhy')|$(CatShown)" "taskbar at the bottom, cat shown with reason 0 (state $s0)"
 
   # CE01 plain WM_SETTINGCHANGE: same work area / scale / colour -> no rebuild
   $g1 = Prop 'OneKeyTestWalkerShows'
   [void][CEU]::SendMessageW($m, 0x001A, [IntPtr]::Zero, [IntPtr]::Zero)
   Start-Sleep -Seconds 2
   $s1 = State
-  Check CE01 "1|$g1|True" "$(Prop 'OneKeyTestWalker')|$(Prop 'OneKeyTestWalkerShows')|$(Cat)" "plain WM_SETTINGCHANGE: still shown, show count unchanged (before $s0, after $s1)"
+  Check CE01 "1|$g1|True" "$(Prop 'OneKeyTestWalker')|$(Prop 'OneKeyTestWalkerShows')|$(CatShown)" "plain WM_SETTINGCHANGE: still shown, show count unchanged (before $s0, after $s1)"
 
   # CE02 WM_DISPLAYCHANGE -> forced re-fit
   $g2 = Prop 'OneKeyTestWalkerShows'
