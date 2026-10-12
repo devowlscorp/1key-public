@@ -1,7 +1,7 @@
 ﻿# README 스크린샷: 시험용 설정 폴더(ONEKEY_TEST=1, 따로 된 접미사)에 예시 항목을 넣고 밝음·어두움으로 목록·설정·잠금 위젯을,
 # Windows 테마로 작업 표시줄 고양이와 정시 시계를 찍는다. 사용자의 1Key 와 설정은 건드리지 않는다. 창이 뜨므로 PC 를 쓰지 않을 때만.
 #   powershell -ExecutionPolicy Bypass -File tools\readme-shots.ps1 [-Exe <1Key.exe>] [-Out docs\images]
-param([string]$Exe = "", [string]$Out = "")
+param([string]$Exe = "", [string]$Out = "", [switch]$NoTaskbar)   # -NoTaskbar: no taskbar / clock shots (they copy the real screen corner - skip while another 1Key cat or tray icons are there)
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "tests\lib\Check.ps1")
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -86,7 +86,7 @@ try {
     $cfg = Join-Path $sp "cfg-$theme"; if (Test-Path $cfg) { Remove-Item $cfg -Recurse -Force }; New-Item -ItemType Directory -Force $cfg | Out-Null
     $env:ONEKEY_CONFIG_DIR = $cfg
     $env:ONEKEY_TEST_LOCKWIDGET = "0"
-    $taskbar = ($theme -eq "light") -eq $winLight   # 작업 표시줄 고양이는 Windows 테마 색: 그 테마 차례에만 찍는다
+    $taskbar = (($theme -eq "light") -eq $winLight) -and -not $NoTaskbar   # 작업 표시줄 고양이는 Windows 테마 색: 그 테마 차례에만 찍는다
     $env:ONEKEY_TEST_CLOCK = $(if ($taskbar) { "1" } else { $null })
     Start1Key
     SetText 101 "Readme-Shots-77"; SetText 102 "Readme-Shots-77"; Click 103 1500; CloseBox
