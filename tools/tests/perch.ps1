@@ -69,20 +69,25 @@ function CatWnd() { [PEU]::Find([uint32]$p.Id, "OneKeyCat", $true) }
 function CatShown() { (Prop 'OneKeyTestWalker') -eq 1 -and (CatWnd) -ne [IntPtr]::Zero }
 function Perch() { Prop 'OneKeyTestCatPerch' }
 function Drop([int]$x, [int]$y) { [void][PEU]::PostMessageW((CatWnd), 0x8034, [IntPtr]$x, [IntPtr]$y) }
-# waits until the cat sits (not falling: CatY steady for 600 ms) - returns "x|y|perch"
-function WaitSettled([int]$ms = 8000) {
+# waits until the cat sits: no fall / motion (OneKeyTestCatBusy 0) and the same place for 500 ms - returns "x|y|perch"
+# (a fall from high up takes about 4 s; a rest motion may start 1.5 s after landing - it does not move the cat's place)
+function WaitSettled([int]$ms = 10000) {
   $t = [Environment]::TickCount; $last = ""; $since = $t
+  Pump 200
   while ([Environment]::TickCount - $t -lt $ms) {
     Pump 100
     $now = "$(Prop 'OneKeyTestCatX')|$(Prop 'OneKeyTestCatY')|$(Perch)"
-    if ($now -ne $last) { $last = $now; $since = [Environment]::TickCount } elseif ([Environment]::TickCount - $since -ge 600) { break }
+    if ($now -ne $last -or (Prop 'OneKeyTestCatBusy') -ne 0) { $last = $now; $since = [Environment]::TickCount } elseif ([Environment]::TickCount - $since -ge 500) { break }
   }
   $last
 }
+# test forms stay on top of the PC's own windows (a background test cannot bring a window to the front; a window behind
+# another one has its top edge covered, and the cat rightly does not sit there)
+function Raise($f) { [void][PEU]::SetWindowPos($f.Handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010); Pump 200 }
 function NewForm([string]$title, [int]$x, [int]$y, [int]$w, [int]$h) {
   $f = New-Object System.Windows.Forms.Form
   $f.Text = $title; $f.StartPosition = "Manual"; $f.Left = $x; $f.Top = $y; $f.Width = $w; $f.Height = $h; $f.ShowInTaskbar = $false
-  $f.Show(); Pump 300; $f
+  $f.TopMost = $true; $f.Show(); Pump 300; $f
 }
 function OnA([string]$why) {
   $r = [PEU]::Frame($A.Handle)
@@ -112,7 +117,7 @@ try {
   # form A in the middle of the work area
   $A = NewForm "perch A" ($wa.Left + 500) ($wa.Top + 420) 640 360
   $B = NewForm "perch B" ($wa.Left + 60) ($wa.Top + 120) 300 200
-  $A.Activate(); Pump 300
+  Raise $A
   $r = [PEU]::Frame($A.Handle)
   Drop ([int](($r.L + $r.R) / 2)) ([int]($r.T - 260))
   $s1 = WaitSettled
@@ -130,31 +135,31 @@ try {
 
   # PE04 B over the seat
   $r = [PEU]::Frame($A.Handle); $cx = (Prop 'OneKeyTestCatX') + [int]($cw / 2)
-  $B.Left = $cx - 150; $B.Top = $r.T - 60; $B.Activate(); Pump 300
+  $B.Left = $cx - 150; $B.Top = $r.T - 60; Raise $B
   $s4 = WaitSettled
   Check PE04 "0|True" "$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "B covers the seat: cat fell to the taskbar ($s4)"
-  $B.Left = $wa.Left + 60; $B.Top = $wa.Top + 120; Pump 300
+  $B.Left = $wa.Left + 60; $B.Top = $wa.Top + 120; Raise $A
 
   # PE05 minimized
-  $A.Activate(); OnA "PE05"
+  Raise $A; OnA "PE05"
   $A.WindowState = "Minimized"; $s5 = WaitSettled
   Check PE05 "0|True" "$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "A minimized: cat fell to the taskbar ($s5)"
   $A.WindowState = "Normal"; Pump 600
 
   # PE06 maximized
-  $A.Activate(); OnA "PE06"
+  Raise $A; OnA "PE06"
   $A.WindowState = "Maximized"; $s6 = WaitSettled
   Check PE06 "0|True" "$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "A maximized: cat fell to the taskbar ($s6)"
   $A.WindowState = "Normal"; Pump 600
 
   # PE09 display change -> back on the taskbar
-  $A.Activate(); OnA "PE09"
+  Raise $A; OnA "PE09"
   [void][PEU]::SendMessageW($m, 0x007E, [IntPtr]::Zero, [IntPtr]::Zero); Pump 300
   $s9 = WaitSettled
   Check PE09 "0|True|True" "$(Perch)|$(CatShown)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "display change: shown again on the taskbar, not on A ($s9)"
 
   # PE07 closed
-  $A.Activate(); OnA "PE07"
+  Raise $A; OnA "PE07"
   $A.Close(); $s7 = WaitSettled
   Check PE07 "0|True" "$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "A closed: cat fell to the taskbar ($s7)"
 
