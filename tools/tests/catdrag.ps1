@@ -85,24 +85,29 @@ function CatCenter() {
   }
   $null
 }
-function Move($x, $y) { [void][CDU]::SetCursorPos($x, $y); [CDU]::mouse_event(0x0001, 0, 0, 0, [UIntPtr]::Zero) }
+# (not "Move" - that is a PowerShell alias of Move-Item and silently wins over a function of the same name)
+function Set-TestCursor($x, $y) { [void][CDU]::SetCursorPos($x, $y); [CDU]::mouse_event(0x0001, 0, 0, 0, [UIntPtr]::Zero) }
+# guard before any press: the REAL cursor must be at (x, y) and the window under the real cursor must be the test cat
+function Assert-OnCat($x, $y, $w) {
+  $cp = New-Object CDU+PT; [void][CDU]::GetCursorPos([ref]$cp)
+  if ([Math]::Abs($cp.X - $x) -gt 1 -or [Math]::Abs($cp.Y - $y) -gt 1) { throw "the cursor is at $($cp.X),$($cp.Y), not on the cat at $x,$y - stopped before pressing" }
+  if (-not [CDU]::Under($cp.X, $cp.Y, $w)) { throw "the window under the cursor is not the test cat - stopped before pressing" }
+}
 # press on the cat (guarded), move to (tx, ty) in steps, let go
 function DragTo($tx, $ty, [int]$steps = 16) {
   $c = CatCenter; if (-not $c) { throw "no cat to press" }
-  if (-not [CDU]::Under($c[0], $c[1], $c[2])) { throw "the window under the cursor is not the test cat - stopped before pressing" }
-  Move $c[0] $c[1]; Start-Sleep -Milliseconds 120
-  if (-not [CDU]::Under($c[0], $c[1], $c[2])) { throw "the window under the cursor is not the test cat - stopped before pressing" }
+  Set-TestCursor $c[0] $c[1]; Start-Sleep -Milliseconds 120
+  Assert-OnCat $c[0] $c[1] $c[2]
   [CDU]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 80
-  for ($i = 1; $i -le $steps; $i++) { Move ([int]($c[0] + ($tx - $c[0]) * $i / $steps)) ([int]($c[1] + ($ty - $c[1]) * $i / $steps)); Start-Sleep -Milliseconds 30 }
+  for ($i = 1; $i -le $steps; $i++) { Set-TestCursor ([int]($c[0] + ($tx - $c[0]) * $i / $steps)) ([int]($c[1] + ($ty - $c[1]) * $i / $steps)); Start-Sleep -Milliseconds 30 }
   Start-Sleep -Milliseconds 150
   [CDU]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
   $c
 }
 function ClickCat() {
   $c = CatCenter; if (-not $c) { throw "no cat to click" }
-  if (-not [CDU]::Under($c[0], $c[1], $c[2])) { throw "the window under the cursor is not the test cat - stopped before clicking" }
-  Move $c[0] $c[1]; Start-Sleep -Milliseconds 150
-  if (-not [CDU]::Under($c[0], $c[1], $c[2])) { throw "the window under the cursor is not the test cat - stopped before clicking" }
+  Set-TestCursor $c[0] $c[1]; Start-Sleep -Milliseconds 150
+  Assert-OnCat $c[0] $c[1] $c[2]
   [CDU]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [CDU]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
 }
 function WaitX([int]$want, [int]$tol, [int]$ms) { $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt $ms) { $x = Prop 'OneKeyTestCatX'; if ([Math]::Abs($x - $want) -le $tol) { return $x }; Start-Sleep -Milliseconds 100 }; Prop 'OneKeyTestCatX' }
