@@ -19,6 +19,14 @@
 #      (log: "clock closed by fall" then "fallplan"; it does not jump straight down)
 # PE12 dropped high above form D, D closed while the cat is still falling: the next fall starts where the cat is in the air
 #      (log "fall from perch at x,y": below the drop point, above the seat on D it was falling to), and it sits on the taskbar
+# 0.5.28-B (Codex C28-1, C27-2 follow-up) - 1Key is started again with test switches for each of these:
+# PE13 ONEKEY_TEST_FAIL=cat:fall-dib (the motion window picture fails right when the fall should start): the cat sits on the
+#      ground at once, not busy, clicks reach it again (no WS_EX_TRANSPARENT, WindowFromPoint = cat), log "clip dib failed"
+# PE14 ONEKEY_TEST_CAT_WALK=1 on wide form W: while it walks, W's edge is moved in just past the cat - the walk stops inside
+#      (log "perch narrowed: motion stopped"), and the walks after that stay on W for 6 s
+# PE15 same run: while it walks away, form B covers only the spot it left - it stays on W; B then covers where it is - it falls
+# PE16 ONEKEY_TEST_CAT_WALK=1 + ONEKEY_TEST_FAIL=cat:walk-slow (walk pictures take 2 s): W narrows while a walk is being
+#      prepared - the walk is dropped when it is ready (log "perch range changed while loading"), the cat stays on W, inside it
 # Own config folder and instance suffix; the real 1Key is not touched. Windows appear: only while nobody uses the PC.
 #   powershell -ExecutionPolicy Bypass -File tools\tests\perch.ps1 [-Exe <1Key.exe>]
 # ASCII only.
@@ -26,7 +34,7 @@ param([string]$Exe = "")
 $ErrorActionPreference = "Continue"
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-$ids = @(); 0..12 | ForEach-Object { $ids += "PE{0:D2}" -f $_ }
+$ids = @(); 0..16 | ForEach-Object { $ids += "PE{0:D2}" -f $_ }
 Start-Checks -Required $ids
 
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
@@ -101,6 +109,29 @@ function NewForm([string]$title, [int]$x, [int]$y, [int]$w, [int]$h) {
   $f = New-Object System.Windows.Forms.Form
   $f.Text = $title; $f.StartPosition = "Manual"; $f.Left = $x; $f.Top = $y; $f.Width = $w; $f.Height = $h; $f.ShowInTaskbar = $false
   $f.TopMost = $true; $f.Show(); Pump 300; $f
+}
+# 1Key again with the given test switches (same config: master and widget mode already set); cat shown on the taskbar
+function Restart1Key([hashtable]$envs) {
+  Quit1Key; Pump 600
+  foreach ($k in "ONEKEY_TEST_FAIL", "ONEKEY_TEST_CAT_WALK") { Remove-Item "env:$k" -ErrorAction Ignore }
+  foreach ($k in $envs.Keys) { Set-Item "env:$k" $envs[$k] }
+  Start1Key
+  SetText 101 $master; Click 103 1500
+  [void][PEU]::PostMessageW($m, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero); Pump 1200   # to the tray
+  $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt 6000 -and -not (CatShown)) { Pump 100 }
+  Pump 1500
+}
+function CatCenter() { $w = CatWnd; if ($w -eq [IntPtr]::Zero) { return -99999 }; $r = New-Object PEU+RECT; [void][PEU]::GetWindowRect($w, [ref]$r); [int](($r.L + $r.R) / 2) }
+function LogText() { if (Test-Path $log) { Get-Content $log -Raw } else { "" } }
+# waits until the cat window's centre is more than $dist px from $from (it is walking); returns the centre or -99999
+function WaitMoved([int]$from, [int]$dist, [int]$ms = 15000) { $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt $ms) { Pump 30; $c = CatCenter; if ([Math]::Abs($c - $from) -gt $dist) { return $c } }; -99999 }
+function OnForm($f) {
+  Raise $f
+  $r = [PEU]::Frame($f.Handle)
+  Drop ([int](($r.L + $r.R) / 2)) ([int]($r.T - 260))
+  $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt 8000 -and (Prop 'OneKeyTestCatBusy') -ne 0) { Pump 100 }
+  Pump 300
+  (Perch) -eq [int64]$f.Handle
 }
 function OnA([string]$why) {
   $r = [PEU]::Frame($A.Handle)
@@ -245,11 +276,68 @@ try {
   while ([Environment]::TickCount - $t8 -lt 4000) { if ((Prop 'OneKeyTestCatDucked') -eq 1) { $ducks++ }; Pump 25 }
   $s8 = WaitSettled
   Check PE08 "0|0|True" "$ducks|$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "dropped above the 1Key window: never hidden while falling past it, sits on the taskbar ($s8; window $($mr.L),$($mr.T),$($mr.R),$($mr.B))"
+
+  # PE13 the motion window picture fails right when the fall should start
+  Restart1Key @{ ONEKEY_TEST_FAIL = "cat:fall-dib" }
+  Drop ([int]($wa.Left + $wa.Width * 0.4)) ($wa.Top + 80)
+  Pump 2500
+  $cw13 = CatWnd; $r13 = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw13, [ref]$r13)
+  $tr13 = ([int64][PEU]::GetWindowLongPtrW($cw13, -20) -band 0x20) -ne 0
+  $hit13 = [PEU]::RootAt([int](($r13.L + $r13.R) / 2), [int]($r13.T + ($r13.B - $r13.T) * 0.6)) -eq $cw13
+  $lt = LogText
+  Check PE13 "0|True|False|True|True" "$(Prop 'OneKeyTestCatBusy')|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)|$tr13|$hit13|$($lt.Contains('clip dib failed'))" "fall picture window failed: on the ground at once, not busy, click-through off, hit again, logged"
+
+  # PE14 / PE15 walking on a wide window
+  Restart1Key @{ ONEKEY_TEST_CAT_WALK = "1" }
+  $W = NewForm "perch W" ($wa.Left + 200) ($wa.Top + 450) 1300 300
+  $onW = OnForm $W
+  $c0 = CatCenter
+  $c1 = WaitMoved $c0 40
+  $wr = [PEU]::Frame($W.Handle)
+  if ($c1 -gt $c0) { $W.Width = ($c1 + 70) - $W.Left } else { $nl = $c1 - 70; $W.Width = $W.Right - $nl; $W.Left = $nl }
+  Pump 150
+  $wr = [PEU]::Frame($W.Handle)
+  $tS = [Environment]::TickCount; $last = CatCenter; $stillSince = $tS
+  while ([Environment]::TickCount - $tS -lt 2500) { Pump 30; $c = CatCenter; if ([Math]::Abs($c - $last) -gt 1) { $last = $c; $stillSince = [Environment]::TickCount } elseif ([Environment]::TickCount - $stillSince -ge 400) { break } }
+  $stopMs = $stillSince - $tS
+  $inside = ($last -ge $wr.L) -and ($last -le $wr.R)
+  $out = 0; $t6 = [Environment]::TickCount; $wr = [PEU]::Frame($W.Handle)
+  while ([Environment]::TickCount - $t6 -lt 6000) { Pump 50; $c = CatCenter; if ((Perch) -eq [int64]$W.Handle -and ($c -lt $wr.L -or $c -gt $wr.R)) { $out++ } }
+  $lt = LogText
+  Check PE14 "True|True|True|True|0|True" "$onW|$($c1 -ne -99999)|$($stopMs -le 900)|$inside|$out|$($lt.Contains('perch narrowed: motion stopped'))" "walking on W, edge moved in past the cat: stopped inside in $stopMs ms (at $last, W $($wr.L)..$($wr.R)); later walks outside W: $out samples"
+  $W.Left = $wa.Left + 200; $W.Width = 1300; Pump 600
+  # PE15: cover only the spot it left, then where it is
+  $c0 = CatCenter
+  $c1 = WaitMoved $c0 90
+  $wr = [PEU]::Frame($W.Handle)
+  $B.Width = 50; $B.Height = 150; $B.Left = $c0 - 25; $B.Top = $wr.T - 40; Raise $B; Pump 300
+  $stay = (Perch) -eq [int64]$W.Handle
+  $cn = CatCenter
+  $B.Left = $cn - 25; Raise $B
+  $t15 = [Environment]::TickCount; while ([Environment]::TickCount - $t15 -lt 1500 -and (Perch) -ne 0) { Pump 30 }
+  $fell = (Perch) -eq 0
+  Check PE15 "True|True|True" "$($c1 -ne -99999)|$stay|$fell" "walking on W: B over the spot it left ($c0) - still on W; B over where it is ($cn) - fell"
+  $B.Left = $wa.Left + 60; $B.Top = $wa.Top + 120; $B.Width = 300; $B.Height = 200
+
+  # PE16 W narrows while a walk is being prepared (walk pictures take 2 s in this run)
+  Restart1Key @{ ONEKEY_TEST_CAT_WALK = "1"; ONEKEY_TEST_FAIL = "cat:walk-slow" }
+  $W.Left = $wa.Left + 200; $W.Width = 1300
+  $onW16 = OnForm $W
+  $t16 = [Environment]::TickCount; while ([Environment]::TickCount - $t16 -lt 8000 -and (Prop 'OneKeyTestCatBusy') -ne 1) { Pump 20 }
+  $loading = (Prop 'OneKeyTestCatBusy') -eq 1
+  $c16 = CatCenter
+  $W.Left = $c16 - 110; $W.Width = 220; Pump 200
+  $wr = [PEU]::Frame($W.Handle)
+  $maxOff = 0; $t16 = [Environment]::TickCount
+  while ([Environment]::TickCount - $t16 -lt 4000) { Pump 40; $c = CatCenter; $maxOff = [Math]::Max($maxOff, [Math]::Abs($c - $c16)) }
+  $lt = LogText
+  Check PE16 "True|True|True|True|True" "$onW16|$loading|$((Perch) -eq [int64]$W.Handle)|$($maxOff -le 40)|$($lt.Contains('perch range changed while loading'))" "walk being prepared when W narrowed to $($wr.L)..$($wr.R): dropped, still on W, moved at most $maxOff px"
+  $W.Close()
 } catch { Add-Failure ("exception: " + $_) }
 finally {
-  foreach ($f in @($A, $B, $C, $D)) { if ($f) { try { $f.Close() } catch { } } }
+  foreach ($f in @($A, $B, $C, $D, $W)) { if ($f) { try { $f.Close() } catch { } } }
   Quit1Key; Stop-TestInstances $suffix
-  foreach ($v in "ONEKEY_TEST_CAT_LOG", "ONEKEY_TEST_LOCKWIDGET", "ONEKEY_TEST_NO_AUTOLOCK", "ONEKEY_TEST_PERCH_CLASS") { Remove-Item "env:$v" -ErrorAction Ignore }
+  foreach ($v in "ONEKEY_TEST_CAT_LOG", "ONEKEY_TEST_LOCKWIDGET", "ONEKEY_TEST_NO_AUTOLOCK", "ONEKEY_TEST_PERCH_CLASS", "ONEKEY_TEST_FAIL", "ONEKEY_TEST_CAT_WALK") { Remove-Item "env:$v" -ErrorAction Ignore }
   "log kept: $log"
 }
 Complete-Checks

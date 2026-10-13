@@ -425,12 +425,14 @@ internal static unsafe partial class CatWidget
         nint hwnd = _hwnd;
         _clipLoading = true;
         _playName = name; _steps = steps;
+        SetProps();   // 시험 값 OneKeyTestCatBusy = 1(준비 시작 — perch.ps1 가 걷기 준비를 안다)
         ThreadPool.QueueUserWorkItem(_ =>
         {
             var arts = new ClipArt[infos.Length];
             for (int i = 0; i < infos.Length; i++)
                 if ((arts[i] = PrepareClip(infos[i], k, gen)!) is null) { arts = null!; break; }
             if (name == "fall" && Program.TestFails("cat:fall-prepare")) arts = null!;   // 시험(catdrag CD08): 떨어지기 그림 준비 실패 — 공중에 멈추지 않고 바로 앉는지
+            if (name == "walk" && Program.TestFails("cat:walk-slow")) Thread.Sleep(2000);   // 시험(perch PE16): 걷기 준비가 늦는 동안 앉은 창이 좁아진다
             _ready = arts;
             Native.PostMessageW(hwnd, WM_CLIPREADY, gen, 0);
         });
@@ -501,14 +503,23 @@ internal static unsafe partial class CatWidget
         if (fall) _holdAir = false;                // (앞 차례의 늦은 알림이면 그대로 둔다)
         if (arts is null || arts.Length == 0 || arts[0].Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed)
         {
-            if (fall && _shown && !_dragOn) { Render(); SetProps(); }   // 떨어지기를 못 하면 그 자리에 바로 앉는다(시험 자리 값도 — catdrag CD08)
-            SyncPassThrough();
-            ScheduleNextClip(Environment.TickCount64); return;
+            ClipReadyFailed(fall); return;
+        }
+        // 0.5.28-B(Codex C27-2 재검토): 준비하는 동안 앉은 창이 좁아졌으면, 그 전 범위로 짠 걸음이 새 범위 밖으로 나가는지 다시 본다 — 나가면 버린다
+        if (_perch != 0 && _playName != "fall" && PathLeaves(_steps, 0, WinX, MinX, MaxX))
+        {
+            LogLine($"perch range changed while loading: {_playName} dropped (range {MinX}..{MaxX})");
+            ClipReadyFailed(false); return;
         }
         FreeClipDib();
         int mw = 0, mh = 0;
         foreach (var a in arts) { mw = Math.Max(mw, a.CellW); mh = Math.Max(mh, a.CellH); }
-        if (!MakeDib(mw, mh, out _cxmem, out _cxdib, out _cxold, out _cxbits)) { FreeClipDib(); ScheduleNextClip(Environment.TickCount64); return; }
+        // 0.5.28-B(Codex C28-1): 동작 창 그림(DIB)을 못 만들면 다른 실패와 같은 정리 — 떨어지던 중이면 바닥에 앉히고 누름 통과를 푼다
+        if ((fall && Program.TestFails("cat:fall-dib")) || !MakeDib(mw, mh, out _cxmem, out _cxdib, out _cxold, out _cxbits))
+        {
+            LogLine("clip dib failed");
+            FreeClipDib(); ClipReadyFailed(fall); return;
+        }
         _cxStride = mw;
         _arts = arts; _baseX = WinX;
         _clipOn = true; _clipFrame = -1;
@@ -554,6 +565,18 @@ internal static unsafe partial class CatWidget
         if (_shown) { _from = _gaze = Center; Render(); }
         ScheduleNextClip(Environment.TickCount64);
         SetProps();
+    }
+
+    /// <summary>
+    /// 동작을 시작하지 못했다(그림 준비 실패 · 늦은 알림 · 시계 · 누름 · 범위가 바뀜 · 동작 창 그림 실패 — 0.5.28-B 에서 한 곳으로, Codex C28-1):
+    /// 떨어지던 중이면 그 아래 바닥에 바로 앉히고(시험 자리 값도), 누름 통과를 풀고, 다음 동작을 계획한다.
+    /// </summary>
+    private static void ClipReadyFailed(bool fall)
+    {
+        if (fall && _shown && !_dragOn) { Render(); SetProps(); }   // 떨어지기를 못 하면 그 자리에 바로 앉는다(catdrag CD08)
+        SyncPassThrough();
+        ScheduleNextClip(Environment.TickCount64);
+        SetProps();   // OneKeyTestCatBusy = 0
     }
 
     /// <summary>0 없음 · 1 하트 줄만 · 2 떠오르는 하트까지 — 상호작용 동작이 시작되면 띄운다.</summary>
