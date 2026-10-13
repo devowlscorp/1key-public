@@ -547,6 +547,7 @@ internal static unsafe partial class CatWidget
         HuntTick(_clipFrame);   // 사냥: 누름 · 떠남에 따라 남은 걸음을 바꾸고, 잡는 장이면 하트(CatHunt.cs)
         var s = _steps[_clipFrame];
         bool ok = RenderStep(_clipFrame);
+        if (Program.IsTestMode && _owner != 0) Native.SetPropW(_owner, "OneKeyTestCatSitX", CurrentSitX());   // perch.ps1: 걷는 중 지금 자리
         NotePush(ok);
         if (DumpDir is not null && (_playName == "hunt" ? _clipFrame % 2 == 0 : _clipFrame < 4 || _clipFrame % 6 == 0 || _clipFrame >= _steps.Length - 4)) DumpClipFrame(_playName == "hunt" ? $"hunt{_clipGen}" : _playName, _clipFrame);   // 사냥은 판마다 따로(다음 사냥이 덮어쓰지 않게)
         LogTick(t0, $"{_playName} {_clipFrame} s{_clipFrame} c{s.Art}:{s.Cell}{(s.Mirror ? "m" : "")} x{_cx}");

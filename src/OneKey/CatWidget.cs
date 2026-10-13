@@ -958,6 +958,10 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestCatY", _shown ? WinY : 0);   // 0.5.27(perch.ps1): 앉은 고양이 창 위 · 앉은 창
         Native.SetPropW(_owner, "OneKeyTestCatPerch", _shown ? _perch : 0);
         Native.SetPropW(_owner, "OneKeyTestCatBusy", _holdAir || _clipOn || _clipLoading ? 1 : 0);   // 떨어지기 · 동작 중(perch.ps1 이 끝나기를 기다린다)
+        Native.SetPropW(_owner, "OneKeyTestCatSitX", _shown ? CurrentSitX() : 0);   // perch.ps1: 지금 실제 자리(걷는 중이면 지금 걸음 — 걸음마다도 고친다) · 고양이 가운데 · 다니는 범위
+        Native.SetPropW(_owner, "OneKeyTestCatSitCx", _sitCx);
+        Native.SetPropW(_owner, "OneKeyTestCatMin", _shown ? MinX : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatMax", _shown ? MaxX : 0);
         Native.SetPropW(_owner, "OneKeyTestCatPeeks", _peekCount);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
