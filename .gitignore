@@ -37,3 +37,4 @@ docs/test-logs/
 !/work/README.md
 
 # 후원 화면(src/OneKey/Extra/)은 이 공개 저장소에 둔다(2026-10-12 사용자 결정). 이 폴더를 빼고 빌드하면 앱은 후원 화면 없이 만들어진다.
+__pycache__/
