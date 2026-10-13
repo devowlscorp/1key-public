@@ -819,8 +819,10 @@ internal static unsafe partial class CatWidget
     }
 
     /// <summary>
-    /// 떨어지기(1차 — 새 그림은 나중에, 2026-10-13 사용자): 사냥 점프(HJ)의 앞발을 아래로 뻗은 장(14 · 15)으로 중력처럼 빨라지며 내려오고, 닿으면 착지 ·
-    /// 일어서기 장(16~40), 돌아서 앉기(WI)로 정면. 화면 가운데 쪽을 보고 떨어진다. 그림이 없으면 false(그냥 앉는다).
+    /// 떨어지기(1차 — 새 그림은 나중에, 2026-10-13 사용자): 사냥 점프(HJ)의 앞발을 아래로 뻗은 장(14 · 15 · 16)으로 중력처럼 빨라지며 내려오고, 닿으면 착지 ·
+    /// 일어서기 장(17~40), 돌아서 앉기(WI)로 정면. 화면 가운데 쪽을 보고 떨어진다. 그림이 없으면 false(그냥 앉는다).
+    /// 0.5.25(사용자: 조금 빠르다 — 프레임을 보강해 더 부드럽게 천천히): 이 동작만 틱을 3배로(<see cref="FallTickMs"/> 15.625 ms, 64장/초) — 공중은 틱마다
+    /// 자리를 옮기고, 착지 · 돌아앉기 장은 세 틱씩 보여 예전 빠르기 그대로. 중력은 반(1300 px/s²), 놓자마자 0.16초 매달렸다가 떨어진다.
     /// </summary>
     private static bool StartFall(int height)
     {
@@ -831,19 +833,22 @@ internal static unsafe partial class CatWidget
         if (jump.Frames < 41) return false;
         bool m = _posX + _w / 2 > (_work.left + _work.right) / 2;   // 오른쪽에 있으면 왼쪽(화면 가운데)을 보고
         int sink = SitSinkPx;
-        double g = 2600.0 * _dpi / 96.0, tick = ClipTickMs / 1000.0;   // 중력(px/s², 96dpi 기준) — 800px 를 0.8초쯤
+        double g = 1300.0 * _dpi / 96.0, tick = FallTickMs / 1000.0;   // 중력(px/s², 96dpi 기준) — 550px 를 0.9초쯤
+        const int Slow = 3;   // 착지 · 돌아앉기 장은 세 틱씩(46.875 / 15.625 ms — 예전 빠르기)
         var steps = new List<PlayStep>();
+        for (int i = 0; i < 10; i++) steps.Add(new PlayStep(0, 14, m, 0, sink + height));   // 놓자마자 잠깐 매달림
         for (int i = 1; ; i++)
         {
             double t = i * tick, fallen = 0.5 * g * t * t;
             int left = (int)Math.Round(height - fallen);
             if (left <= 0) break;
-            steps.Add(new PlayStep(0, fallen < height * 0.5 ? 14 : 15, m, 0, sink + left));
-            if (steps.Count > 200) break;
+            double f = fallen / height;
+            steps.Add(new PlayStep(0, f < 0.4 ? 14 : f < 0.8 ? 15 : 16, m, 0, sink + left));
+            if (steps.Count > 400) break;
         }
-        for (int c = 16; c <= 40; c++) steps.Add(new PlayStep(0, c, m, 0, sink));   // 착지 → 웅크림 → 일어섬(옆으로 선 자세 = 걷기 자세)
+        for (int c = 17; c <= 40; c++) for (int r = 0; r < Slow; r++) steps.Add(new PlayStep(0, c, m, 0, sink));   // 착지 → 웅크림 → 일어섬(옆으로 선 자세 = 걷기 자세)
         int lastB = Math.Max(1, back.Frames - 1);
-        for (int i = 0; i < back.Frames; i++) steps.Add(new PlayStep(1, i, m, 0, sink * (lastB - i) / lastB));   // 정면으로 돌아앉기
+        for (int i = 0; i < back.Frames; i++) for (int r = 0; r < Slow; r++) steps.Add(new PlayStep(1, i, m, 0, sink * (lastB - i) / lastB));   // 정면으로 돌아앉기
         _holdAir = true;   // 그림 준비가 끝날 때까지 놓은 자리에(OnClipReady 가 푼다)
         Render();
         LogLine($"fallplan height {height} steps {steps.Count}");
@@ -1011,7 +1016,12 @@ internal static unsafe partial class CatWidget
                     if (Native.GetCapture() == hwnd) Native.ReleaseCapture();
                     if (was && inside && _shown && _owner != 0)
                     {
-                        if (EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
+                        if (EnvOk(out _, out _))
+                        {
+                            Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
+                            // 0.5.25(2026-10-13 사용자): 눌러 1Key 창을 열 때도 이름 · 단계 · 하트 딱지(마우스를 올렸을 때와 같은 것) — 동작 · 숨기 · 메뉴 판 중이 아닐 때
+                            if (!_clipOn && !_peekOn && !CatMenu.IsOpen && !SeqTest && !WalkTest && !PeekTest && !FullTest) { ShowHearts(false); _hoverShown = true; LogLine("click hearts"); }
+                        }
                         else Evaluate();
                     }
                     return 0;

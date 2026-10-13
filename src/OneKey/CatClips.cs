@@ -74,7 +74,7 @@ internal static unsafe partial class CatWidget
     }
     // BlendFrames: 동작 처음·끝 몇 장을 쉬는 그림과 섞을지. 0.5.15-Y 부터 0 — 쉬는 그림과 동작 첫·끝 장은 다른 그림이라 섞으면 윤곽이 두 겹이 되고
     // 다른 고양이로 바뀌듯 보였다(전체 시험, 사용자: 변신하듯). 대신 그림 띠 앞뒤에 RIFE 로 이은 사이 장이 들어 있다(work/cat-motions/flf/cat_edges.py)
-    private const int ClipTickMs = 47, BlendFrames = 0, SeqGapMs = 600;   // 47 → 46.875 ms(StartTicks 가 15.625 의 배수로) = 1.33배
+    private const int ClipTickMs = 47, BlendFrames = 0, SeqGapMs = 600, FallTickMs = 16;   // FallTickMs: 떨어지기 틱(16 → 15.625 ms, 0.5.25)   // 47 → 46.875 ms(StartTicks 가 15.625 의 배수로) = 1.33배
     private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
     /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
     /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).
@@ -517,7 +517,7 @@ internal static unsafe partial class CatWidget
         if (_heartsPending > 0 && _playName.StartsWith('I')) ShowHearts(_heartsPending == 2, ClipTop(arts[0]), note: albumNote);
         else if (albumNote.Length > 0 && !CatMenu.IsOpen && !CatHearts.IsOpen) ShowHearts(false, ClipTop(arts[0]), note: albumNote, noteOnly: true);
         _heartsPending = 0;
-        if (!StartTicks(ClipTickMs)) { EndClip(); return; }
+        if (!StartTicks(_playName == "fall" ? FallTickMs : ClipTickMs)) { EndClip(); return; }   // 떨어지기만 64장/초(0.5.25)
         _lastTickTs = Stopwatch.GetTimestamp();   // 첫 틱의 간격 = 시작부터(시작 멈춤 재기)
     }
 

@@ -2,7 +2,7 @@
 # only the cat of the current theme loses points (0.5.24, user 2026-10-13).
 # CD00 environment: taskbar at the bottom, cat shown after closing the window, at the default home (right end)
 # CD01 the 1Key window shown (tray click): the cat stays shown
-# CD02 a plain click on the cat (real mouse, no move) opens the 1Key window; the cat stays
+# CD02 a plain click on the cat (real mouse, no move) opens the 1Key window; the cat stays; the name / stage / hearts label shows (0.5.25)
 # CD03 drag up-left and let go high: the cat falls (log: drag start, drop, fallplan, clipstart fall) and ends at the drop x; the click did not open 1Key
 # CD04 drag a little along the taskbar and let go low: no fall, the cat sits at the new x at once
 # CD05 the cat record keeps the spot (P line) and a new 1Key run shows the cat there
@@ -143,8 +143,10 @@ try {
   Check CD01 "True|True" "$main1|$(CatShown)" "1Key window shown: the cat stays"
   CloseMain; Start-Sleep -Seconds 4
 
-  ClickCat; Start-Sleep -Milliseconds 1500
-  Check CD02 "True|True" "$(MainShown)|$(CatShown)" "plain click on the cat opens the 1Key window; the cat stays"
+  ClickCat; Start-Sleep -Milliseconds 500
+  $hearts2 = [CDU]::Find([uint32]$p.Id, "OneKeyCatHearts", $true) -ne [IntPtr]::Zero
+  Start-Sleep -Milliseconds 1000
+  Check CD02 "True|True|True" "$(MainShown)|$(CatShown)|$hearts2" "plain click on the cat opens the 1Key window; the cat stays; the hearts label shows"
   CloseMain; Start-Sleep -Seconds 5
 
   # CD03 drag up-left, let go high
