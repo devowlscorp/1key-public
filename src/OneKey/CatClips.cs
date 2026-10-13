@@ -500,7 +500,7 @@ internal static unsafe partial class CatWidget
         if (fall) _holdAir = false;                // (앞 차례의 늦은 알림이면 그대로 둔다)
         if (arts is null || arts.Length == 0 || arts[0].Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed)
         {
-            if (fall && _shown && !_dragOn) Render();
+            if (fall && _shown && !_dragOn) { Render(); SetProps(); }   // 떨어지기를 못 하면 그 자리에 바로 앉는다(시험 자리 값도 — catdrag CD08)
             ScheduleNextClip(Environment.TickCount64); return;
         }
         FreeClipDib();

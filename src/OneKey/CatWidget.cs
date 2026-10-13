@@ -775,6 +775,9 @@ internal static unsafe partial class CatWidget
     private static bool _ducked;
     private static Native.RECT _coverCat;
     private static bool _coverHit;
+    private static int _coverSeen;          // 시험 기록: 본 1Key 창 수 · 첫 창(클래스와 자리)
+    private static string _coverFirst = "";
+    private static long _coverLogAt;
 
     private static void OwnCoverTick()
     {
@@ -782,9 +785,14 @@ internal static unsafe partial class CatWidget
         bool hit = false;
         if (Native.GetWindowRect(_hwnd, out _coverCat) && _coverCat.right > _coverCat.left)
         {
-            _coverHit = false;
+            _coverHit = false; _coverSeen = 0; _coverFirst = "";
             EnumThreadWindows(GetCurrentThreadId(), &CoverProc, 0);
             hit = _coverHit;
+            if (LogPath is not null && Environment.TickCount64 - _coverLogAt >= 2000)   // 시험 기록: 겹침 판정 근거(catdrag CD09)
+            {
+                _coverLogAt = Environment.TickCount64;
+                LogLine($"cover cat {_coverCat.left},{_coverCat.top},{_coverCat.right},{_coverCat.bottom} own {_coverSeen} {_coverFirst} hit {hit} ducked {_ducked}");
+            }
         }
         if (hit == _ducked) return;
         _ducked = hit;
@@ -803,6 +811,7 @@ internal static unsafe partial class CatWidget
             string cls = Native.GetClassName(h);
             bool mine = cls.StartsWith("OneKeyMainWindow", StringComparison.Ordinal) || cls is Dialog.ClassName or Chip.ClassName or LockWidget.ClassName or LockWidget.InputClass;
             if (!mine || !Native.GetWindowRect(h, out Native.RECT r)) return 1;
+            if (_coverSeen++ == 0) _coverFirst = $"{cls}@{r.left},{r.top},{r.right},{r.bottom}";
             if (r.left < _coverCat.right && r.right > _coverCat.left && r.top < _coverCat.bottom && r.bottom > _coverCat.top) { _coverHit = true; return 0; }
         }
         catch { }
@@ -1082,7 +1091,13 @@ internal static unsafe partial class CatWidget
                         {
                             Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
                             // 0.5.25(2026-10-13 사용자): 눌러 1Key 창을 열 때도 이름 · 단계 · 하트 딱지(마우스를 올렸을 때와 같은 것) — 동작 · 숨기 · 메뉴 판 중이 아닐 때
-                            if (!_clipOn && !_peekOn && !CatMenu.IsOpen && !SeqTest && !WalkTest && !PeekTest && !FullTest) { ShowHearts(false); _hoverShown = true; LogLine("click hearts"); }
+                            if (!CatMenu.IsOpen && !SeqTest && !WalkTest && !PeekTest && !FullTest)
+                            {
+                                // 동작 · 숨기 중이면 지금 고양이가 그려진 창의 가운데 위에(걷는 중에도 뜨게 — catdrag CD02 에서 걷는 중 클릭이 빠졌다)
+                                if ((_clipOn || _peekOn) && Native.GetWindowRect(hwnd, out Native.RECT cr)) ShowHearts(false, cr.top, headCx: (cr.left + cr.right) / 2);
+                                else ShowHearts(false);
+                                _hoverShown = true; LogLine("click hearts");
+                            }
                         }
                         else Evaluate();
                     }
