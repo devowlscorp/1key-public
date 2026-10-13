@@ -75,7 +75,7 @@ internal static unsafe partial class CatWidget
     // BlendFrames: 동작 처음·끝 몇 장을 쉬는 그림과 섞을지. 0.5.15-Y 부터 0 — 쉬는 그림과 동작 첫·끝 장은 다른 그림이라 섞으면 윤곽이 두 겹이 되고
     // 다른 고양이로 바뀌듯 보였다(전체 시험, 사용자: 변신하듯). 대신 그림 띠 앞뒤에 RIFE 로 이은 사이 장이 들어 있다(work/cat-motions/flf/cat_edges.py)
     private const int ClipTickMs = 47, BlendFrames = 0, SeqGapMs = 600, FallTickMs = 16;   // FallTickMs: 떨어지기 틱(16 → 15.625 ms, 0.5.25)   // 47 → 46.875 ms(StartTicks 가 15.625 의 배수로) = 1.33배
-    private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033;
+    private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033, WM_TESTDROP = 0x8034;
     /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
     /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).
     /// 0.5.15-R: 옆모습 그림이 정면보다 작게 그려져 있어(사용자: 커졌다 작아졌다) 걷기를 1.16배로 키웠다 → 보폭도 1.16배(3.42).</summary>
@@ -106,9 +106,9 @@ internal static unsafe partial class CatWidget
     // 작업 영역 폭에 대한 비율, 다음에 켜도 그 자리), 옮긴 적이 없으면 예전처럼 작업 표시줄 오른쪽 끝. 범위 폭은 예전과 같이 작업 영역의 5분의 1 —
     // 집이 범위의 오른쪽 끝이고(옮기지 않았으면 예전과 똑같다), 왼쪽 끝 가까이에 놓으면 범위를 오른쪽으로 민다.
     private static int HomeX => HomeOf(_work, _w, _dpi);
-    private static int MaxX => RangeOf(_work, _w, _dpi).Max;
+    private static int MaxX => _perch != 0 ? PerchRange(_perchRect).Max : RangeOf(_work, _w, _dpi).Max;   // 0.5.27: 창 위면 그 창 폭 안
     /// <summary>다니는 범위의 왼쪽 끝(앉은 고양이 창 왼쪽).</summary>
-    private static int MinX => RangeOf(_work, _w, _dpi).Min;
+    private static int MinX => _perch != 0 ? PerchRange(_perchRect).Min : RangeOf(_work, _w, _dpi).Min;
     private static int RightLimit(Native.RECT work, int w, int dpi) => work.right - w - (int)Math.Round(MarginLogical * dpi / 96.0);
     private static int HomeOf(Native.RECT work, int w, int dpi)
     {
@@ -212,7 +212,7 @@ internal static unsafe partial class CatWidget
     private static string? _interact;
 
     /// <summary>상호작용 동작(I1 쓰다듬기 · I2 츄르 주기 · I3 놀아 주기)을 할 수 있나: 밝은 고양이(동작 그림은 밝은 고양이뿐)이고 그림이 있을 때.</summary>
-    internal static bool CanInteract(string name) => _shown && HasInteractArt(_light) && ClipIndex(name) >= 0;
+    internal static bool CanInteract(string name) => _shown && !_ducked && HasInteractArt(_light) && ClipIndex(name) >= 0;   // 0.5.27(Codex 0.5.26 후속): 1Key 창에 가려 숨은 동안은 아니다
 
     /// <summary>그 색 고양이에게 상호작용 그림이 있나(키우기도 이것을 따른다 — CatGrowth). 동작 그림은 아직 밝은 고양이뿐: 검은 고양이 그림이 들어오면 여기만 바꾼다.</summary>
     internal static bool HasInteractArt(bool light) => ClipIndex("I1") >= 0 && (light || HasPng("catclip_I1_dark.jpg"));   // 0.5.22: 검은 고양이도(색만 바꾼 띠)
@@ -268,6 +268,7 @@ internal static unsafe partial class CatWidget
     private static void StartPeek(long now)
     {
         _wantFront = false;
+        if (_perch != 0 && !PeekTest) { ScheduleNextClip(now); return; }   // 0.5.27: 빼꼼(작업 표시줄 뒤로 숨기)은 작업 표시줄에서만
         if (_sitTop < 0) { ScheduleNextClip(now); return; }
         // 눈 아래 끝 + 여유까지만 내려간다: 귀·눈은 늘 보인다
         _peekDepth = Math.Max(1, PeekLine() - (EyeBottom() + Math.Max(2, (int)Math.Round(3 * _dpi / 96.0))));

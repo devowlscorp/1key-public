@@ -151,6 +151,7 @@ internal static unsafe partial class CatWidget
         }
         _shown = false;
         _ducked = false;   // 다시 보일 때 겹침을 처음부터 본다(OwnCoverTick)
+        ClearPerch();      // 0.5.27: 창 위 자리는 저장하지 않는다 — 다시 나오면 작업 표시줄 집에서(사용자 결정)
         SetProps();
     }
 
@@ -261,6 +262,8 @@ internal static unsafe partial class CatWidget
         int cw = _w > 0 && dpi == _dpi ? _w : ch;   // 그림을 만들기 전이면 키만큼으로 어림
         var (rl, rr) = RangeOf(work, cw, dpi);   // 0.5.24: 옮긴 집이면 그 범위(옮기지 않았으면 예전처럼 오른쪽 5분의 1)
         int zl = rl - m, zt = work.bottom - 3 * ch, zr = Math.Min(work.right, rr + cw + 2 * m), zb = work.bottom + 4 * ch;
+        if (_perch != 0 && _shown && Native.GetWindowRect(_hwnd, out Native.RECT c))   // 0.5.27: 창 위에 앉아 있으면 고양이 둘레만
+        { zl = c.left - m; zr = c.right + m; zt = c.top - ch; zb = c.bottom + ch; }
         return r.left < zr && r.right > zl && r.top < zb && r.bottom > zt;
     }
 
@@ -279,7 +282,7 @@ internal static unsafe partial class CatWidget
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]
     private static void OnForeground(nint hook, uint ev, nint hwnd, int idObject, int idChild, uint thread, uint time)
     {
-        try { if (_shown && _hwnd != 0 && TaskbarAbove()) KeepOnTop(); } catch { }
+        try { if (_shown && _hwnd != 0 && TaskbarAbove()) KeepOnTop(); if (_perch != 0) PerchTick(); } catch { }   // 다른 창이 앞으로 와 앉은 자리를 덮었을 수 있다
     }
 
     [DllImport("user32.dll")] private static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint hmod, delegate* unmanaged[Stdcall]<nint, uint, nint, int, int, uint, uint, void> proc, uint idProcess, uint idThread, uint flags);
@@ -544,7 +547,7 @@ internal static unsafe partial class CatWidget
     /// 높아 앞발을 선에 맞추면 옆다리가 떠 보인다 — 살짝 내려 앞발이 작업 표시줄과 겹치게). 9방향 그림에서 잰 차이는 앉은 키의 10~14 %. 끄는 중 · 떨어지기 전이면 손 자리.
     /// </summary>
     private static int WinY => _dragOn || _holdAir ? _dragY : GroundY;
-    private static int GroundY => _work.bottom - _h + SitSinkPx;
+    private static int GroundY => SurfaceY - _h + SitSinkPx;   // 0.5.27: 앉은 창이 있으면 그 창의 윗변(CatPerch.cs)
     private static int SitSinkPx => _sitTop < 0 ? 0 : (int)Math.Round((_sitBot - _sitTop) * 0.11);
 
     /// <summary>지금 시선 그림(시선이 막 바뀌었으면 앞 그림과 섞어서)을 제자리에 내보낸다.</summary>
@@ -748,7 +751,7 @@ internal static unsafe partial class CatWidget
         else flip = Math.Min(1, (t - _clockFlipAt).TotalMilliseconds / ClockFlipMs);
         float s = _dpi / 96f;
         double fw = FlipClock.LogicalW * s, fhh = FlipClock.LogicalH * s;
-        double tx = Math.Clamp(WinX + _w / 2.0, _work.left + fw / 2, _work.right - fw / 2), ty = _work.bottom - _h - 8 * s - fhh / 2;
+        double tx = Math.Clamp(WinX + _w / 2.0, _work.left + fw / 2, _work.right - fw / 2), ty = SurfaceY - _h - 8 * s - fhh / 2;   // 창 위에 앉아 있으면 그 머리 위로
         double u = Math.Clamp(pos, 0, 1);
         double ox = _work.right + fw * 0.30, oy = _work.bottom + fhh * 0.42;
         double bx = ox + (tx - ox) * u * u;
@@ -783,7 +786,10 @@ internal static unsafe partial class CatWidget
     {
         if (_hwnd == 0 || !_shown || _dragOn) return;
         bool hit = false;
-        if (Native.GetWindowRect(_hwnd, out _coverCat) && _coverCat.right > _coverCat.left)
+        // 0.5.27(2026-10-13 사용자: 떨어뜨릴 때 1Key 창이 있는 곳에서는 창 뒤에 가려져 안 보인다): 놓은 뒤 떨어지는 동안(그림 준비 · 떨어지기 동작)은
+        // 1Key 창 앞을 지나가도 숨지 않는다 — 앉은 뒤에 겹쳐 있으면 그때 숨는다(단추 · 입력칸을 가리지 않게)
+        bool falling = _holdAir || ((_clipOn || _clipLoading) && _playName == "fall");
+        if (!falling && Native.GetWindowRect(_hwnd, out _coverCat) && _coverCat.right > _coverCat.left)
         {
             _coverHit = false; _coverSeen = 0; _coverFirst = "";
             EnumThreadWindows(GetCurrentThreadId(), &CoverProc, 0);
@@ -844,6 +850,7 @@ internal static unsafe partial class CatWidget
         // 그 자리에 떠 있었고, 높이 놓아도 OnClipReady 가 시계 중이라 떨어지기를 거절했다
         if (_clock != ClockPhase.None) { FlipClock.Hide(); _clock = ClockPhase.None; LogLine("clock closed by drag"); }
         _hoverStart = 0; _hoverShown = false;
+        ClearPerch();   // 0.5.27: 들어 올리면 앉아 있던 창에서 떨어진다
         _dragOn = true; _holdAir = false;
         _from = _gaze = Center; _pending = -1; _seq = Array.Empty<int>();
         LogLine($"drag start {p.x},{p.y}");
@@ -877,16 +884,9 @@ internal static unsafe partial class CatWidget
     {
         _dragOn = false;
         int x = Math.Clamp(_dragX, _work.left, Math.Max(_work.left, _work.right - _w));
-        int room = Math.Max(1, _work.right - _work.left - _w);
-        CatGrowth.SetHome((x - _work.left) / (double)room);
-        _posX = Math.Clamp(x, MinX, MaxX);
-        int lift = GroundY - _dragY;
-        LogLine($"drop x {x} home {HomeX} min {MinX} max {MaxX} lift {lift}");
-        _dragX = _posX;   // 떨어지는 곳은 집(범위 안으로 맞춘 자리) 바로 위
-        if (lift > _h / 4 && StartFall(lift)) return;
-        Render();
-        _nextClipAt = Math.Max(_nextClipAt, Environment.TickCount64 + 1500);
-        SetProps();
+        LogLine($"drop x {x} y {_dragY} home {HomeX} min {MinX} max {MaxX}");
+        // 0.5.27: 놓은 자리 바로 아래 보이는 창의 윗변이 있으면 거기에 착지(그 창 위가 자리 — 집은 그대로), 없으면 작업 표시줄(그 자리가 새 집)
+        LandFrom(x, _dragY, 0);
     }
 
     /// <summary>
@@ -939,6 +939,8 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestCatLight", _shown ? (_light ? 2 : 1) : 0);
         Native.SetPropW(_owner, "OneKeyTestCatX", _shown ? WinX : 0);
         Native.SetPropW(_owner, "OneKeyTestCatW", _shown ? _w : 0);   // 앉은 고양이 창 폭(catdrag.ps1 — 놓은 자리 계산)
+        Native.SetPropW(_owner, "OneKeyTestCatY", _shown ? WinY : 0);   // 0.5.27(perch.ps1): 앉은 고양이 창 위 · 앉은 창
+        Native.SetPropW(_owner, "OneKeyTestCatPerch", _shown ? _perch : 0);
         Native.SetPropW(_owner, "OneKeyTestCatPeeks", _peekCount);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
@@ -1120,10 +1122,18 @@ internal static unsafe partial class CatWidget
                 case (int)WM_CLIPREADY:
                     OnClipReady((int)wParam);
                     return 0;
+                case (int)WM_TESTDROP:   // 시험 전용(perch.ps1): 실제 마우스 없이 (x, y) 에서 집어 들었다 놓기 — 손 자리는 머리 위쪽(MoveDrag 와 같다)
+                    if (Program.IsTestMode && _shown && !_dragOn)
+                    {
+                        var tp = new Native.POINT { x = (int)wParam, y = (int)lParam };
+                        BeginDrag(tp); EndDrag();
+                    }
+                    return 0;
                 case 0x0113:             // WM_TIMER
                     if (wParam == (nint)TimerTick) Tick();
                     else if (wParam == (nint)TimerCheck) { if (_wanted && !_shown) Evaluate(); else Native.KillTimer(hwnd, TimerCheck); }
                     else if (wParam == (nint)TimerTop) { if (_shown && TaskbarAbove()) { KeepOnTop(); LogLine("taskbar above -> top"); } }
+                    else if (wParam == (nint)TimerPerch) PerchTick();   // 0.5.27: 앉은 창 점검(CatPerch.cs)
                     return 0;
                 case 0x0084:             // WM_NCHITTEST: 보이지 않을 때는 통과
                     if (!_shown) return -1;

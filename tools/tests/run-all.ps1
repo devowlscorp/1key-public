@@ -41,7 +41,7 @@ $map = [ordered]@{
   '^src/OneKey/(i18n/strings\.tsv|L\.cs|Strings\.g\.cs)$'                      = @("i18ngen", "i18n")
   '^src/OneKey/(App|Program|Native|WorkArea|Diag|Autostart|AutostartScripts)\.cs$' = @("startup", "handoff", "autostartfail")
   # taskbar cat (0.5.15-0.5.22): the motion timing and the walk/peek checks; the art is checked when it is made (tools/cat), not here
-  '^src/OneKey/(CatWidget|CatClips|CatGrowth|CatGuest|CatHunt|CatMenu|CatHearts)\.cs$' = @("catseq", "catwalk", "catpeek", "cattheme", "catenv", "catdrag")
+  '^src/OneKey/(CatWidget|CatClips|CatGrowth|CatGuest|CatHunt|CatMenu|CatHearts|CatPerch)\.cs$' = @("catseq", "catwalk", "catpeek", "cattheme", "catenv", "catdrag", "perch")
   '^src/OneKey/Assets/cat/'                                                    = @("catseq", "cattheme")
   '^src/OneKey/(FlipClock|MascotGreet)\.cs$'                                    = @("lockwidget\integration", "lockseq", "cattheme")
   '^src/OneKey/HelpArt\.cs$'                                                   = @("help", "dialog", "widget")
