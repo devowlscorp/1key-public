@@ -111,7 +111,9 @@ function ClickCat() {
   $w = $c[2]
   Invoke-RmClick $c[0] $c[1] { [CDU]::UnderCursor($w) }.GetNewClosure()
 }
-function WaitX([int]$want, [int]$tol, [int]$ms) { $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt $ms) { $x = Prop 'OneKeyTestCatX'; if ([Math]::Abs($x - $want) -le $tol) { return $x }; Start-Sleep -Milliseconds 100 }; Prop 'OneKeyTestCatX' }
+# 0.5.27: the place is set when the cat is let go (before the 4 s fall) - also wait until the fall / motion is over (OneKeyTestCatBusy 0),
+# otherwise the next drag pressed where the cat was going to sit while it was still in the air (the cursor guard stopped the test)
+function WaitX([int]$want, [int]$tol, [int]$ms) { $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt $ms) { $x = Prop 'OneKeyTestCatX'; if ([Math]::Abs($x - $want) -le $tol -and (Prop 'OneKeyTestCatBusy') -eq 0) { return $x }; Start-Sleep -Milliseconds 100 }; Prop 'OneKeyTestCatX' }
 function Setup1Key([bool]$fresh) {
   Start1Key
   if ($fresh) { SetText 101 $master; SetText 102 $master; Click 103 1500 } else { SetText 101 $master; Click 103 1500 }
