@@ -218,7 +218,22 @@ internal static class CatGrowth
         return 5;
     }
 
-    /// <summary>켜져 있던 시간만큼 줄인다(두 고양이 모두).</summary>
+    /// <summary>
+    /// 집 자리(0.5.24, 2026-10-13 사용자: 고양이를 끌어 옮기면 그 자리에서 지낸다): 작업 영역 폭(고양이 폭을 뺀)에 대한 비율 0~1, 옮긴 적이 없으면 NaN
+    /// (작업 표시줄 오른쪽 끝). 고양이 기록 파일에 함께 쓴다(P 줄 — 예전 판은 모르는 줄이라 건너뛴다).
+    /// </summary>
+    public static double HomeRatio { get { Load(); return _home < 0 ? double.NaN : _home / 10000.0; } }
+    public static void SetHome(double ratio)
+    {
+        Load();
+        int v = (int)Math.Round(Math.Clamp(ratio, 0, 1) * 10000);
+        if (v == _home) return;
+        _home = v;
+        Save();
+    }
+    private static int _home = -1;
+
+    /// <summary>켜져 있던 시간만큼 줄인다(지금 테마의 고양이만).</summary>
     public static void Tick() => Update();
 
     private static void Update()
@@ -229,8 +244,12 @@ internal static class CatGrowth
         _lastUnbiased = now;
         if (el <= 0) return;
         bool changed = false;
+        // 0.5.24(2026-10-13 사용자): 지금 테마의 고양이만 줄어든다 — 테마를 바꿔 안 보이는 고양이는 그 점수 그대로 기다린다(예전에는 두 마리가 같이 줄어
+        // 하루쯤 다른 테마로 쓰면 키운 고양이가 콩떡으로 돌아가 "바꾸면 처음부터"처럼 보였다)
+        var cur = Of(FlipClock.MascotLight());
         foreach (var c in _cats)
         {
+            if (c != cur) continue;
             if (c.Score == 0) { c.Carry = 0; continue; }
             c.Carry += el;
             if (c.Carry < DecayMs) continue;
@@ -264,6 +283,7 @@ internal static class CatGrowth
                         continue;
                     }
                     if (v.Length >= 2 && v[0] == "C") { int.TryParse(v[1], out _catchTotal); continue; }   // 놀잇감 잡은 횟수
+                    if (v.Length >= 2 && v[0] == "P") { if (int.TryParse(v[1], out int hp) && hp is >= 0 and <= 10000) _home = hp; continue; }   // 집 자리(0.5.24): 만분율
                     if (v.Length >= 3 && v[0] == "M") { int.TryParse(v[1], out _breakDay); int.TryParse(v[2], out _toyDay); continue; }   // 오늘의 할 일: 쉬기 · 놀잇감 날
                     if (v.Length >= 4 && v[0] == "S")   // 출근 도장: S 마지막날 연속 모두
                     {
@@ -309,7 +329,8 @@ internal static class CatGrowth
             if (!Directory.Exists(Config.Dir)) return;
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
             QueueWrite(FilePath, System.Text.Encoding.UTF8.GetBytes(Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
-                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n"));
+                + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n"
+                + (_home >= 0 ? $"P {_home}\n" : "")));
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }

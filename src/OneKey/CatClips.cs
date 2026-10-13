@@ -102,9 +102,27 @@ internal static unsafe partial class CatWidget
 
     private static int CurW => _clipOn ? _ccw : _w;
     private static int CurH => _clipOn ? _cch : _h;
-    private static int HomeX => _work.right - _w - (int)Math.Round(MarginLogical * _dpi / 96.0);
-    /// <summary>다니는 범위의 왼쪽 끝(앉은 고양이 창 왼쪽): 작업 표시줄 오른쪽 5분의 1(사내판과 같음 — 너무 넓지 않게).</summary>
-    private static int MinX => Math.Min(HomeX, _work.right - (_work.right - _work.left) / 5);
+    // 집과 다니는 범위(앉은 고양이 창 왼쪽, 화면 좌표). 0.5.24(2026-10-13 사용자: 끌어서 옮기기): 집 = 끌어다 놓은 자리(CatGrowth.HomeRatio —
+    // 작업 영역 폭에 대한 비율, 다음에 켜도 그 자리), 옮긴 적이 없으면 예전처럼 작업 표시줄 오른쪽 끝. 범위 폭은 예전과 같이 작업 영역의 5분의 1 —
+    // 집이 범위의 오른쪽 끝이고(옮기지 않았으면 예전과 똑같다), 왼쪽 끝 가까이에 놓으면 범위를 오른쪽으로 민다.
+    private static int HomeX => HomeOf(_work, _w, _dpi);
+    private static int MaxX => RangeOf(_work, _w, _dpi).Max;
+    /// <summary>다니는 범위의 왼쪽 끝(앉은 고양이 창 왼쪽).</summary>
+    private static int MinX => RangeOf(_work, _w, _dpi).Min;
+    private static int RightLimit(Native.RECT work, int w, int dpi) => work.right - w - (int)Math.Round(MarginLogical * dpi / 96.0);
+    private static int HomeOf(Native.RECT work, int w, int dpi)
+    {
+        int right = RightLimit(work, w, dpi);
+        double r = CatGrowth.HomeRatio;
+        if (double.IsNaN(r)) return right;
+        return Math.Clamp(work.left + (int)Math.Round(r * Math.Max(0, work.right - work.left - w)), work.left, Math.Max(work.left, right));
+    }
+    private static (int Min, int Max) RangeOf(Native.RECT work, int w, int dpi)
+    {
+        int right = RightLimit(work, w, dpi), span = Math.Max(0, right - (work.right - (work.right - work.left) / 5));
+        int max = Math.Min(right, Math.Max(HomeOf(work, w, dpi), work.left + span));
+        return (Math.Max(work.left, max - span), Math.Max(work.left, max));
+    }
 
     /// <summary>catclips.txt(실행 파일에 든 목록). 없으면 빈 목록.</summary>
     private static ClipInfo[] Clips()
@@ -361,14 +379,14 @@ internal static unsafe partial class CatWidget
         double k = (_sitBot - _sitTop) / (double)loop.SitH;
         double dx = WalkStripPx * k, cyclePx = dx * WalkCycle;
         int x = WinX;
-        double roomL = x - MinX, roomR = HomeX - x;
+        double roomL = x - MinX, roomR = MaxX - x;
         int dir;
         if (roomL < cyclePx && roomR < cyclePx) return false;
         if (roomL < cyclePx) dir = 1;
         else if (roomR < cyclePx) dir = -1;
         else
         {
-            double pos = (x - MinX) / Math.Max(1.0, HomeX - MinX);   // 0 = 왼쪽 끝, 1 = 집
+            double pos = (x - MinX) / Math.Max(1.0, MaxX - MinX);   // 0 = 왼쪽 끝, 1 = 오른쪽 끝
             dir = pos > 0.8 ? (_rnd.Next(4) == 0 ? 1 : -1) : pos < 0.2 ? (_rnd.Next(4) == 0 ? -1 : 1) : _rnd.Next(2) == 0 ? -1 : 1;
             if ((dir < 0 ? roomL : roomR) < cyclePx) dir = -dir;
         }
@@ -393,7 +411,7 @@ internal static unsafe partial class CatWidget
             for (int i = 0; i < back.Frames; i++) steps.Add(new PlayStep(2, i, m, moved, lift * (lastB - i) / lastB));
         }
         else for (int i = turn.Frames - 1; i >= 0; i--) steps.Add(new PlayStep(0, i, m, moved, lift * i / last));     // 거꾸로: 옆 → 서기 → 앉기
-        LogLine($"walkplan dir {dir} cycles {cycles} dx {dx:0.000} from {x} min {MinX} home {HomeX}");
+        LogLine($"walkplan dir {dir} cycles {cycles} dx {dx:0.000} from {x} min {MinX} home {HomeX} max {MaxX}");
         StartPlay("walk", back is not null ? new[] { turn, loop, back } : new[] { turn, loop }, steps.ToArray());
         return true;
     }
@@ -477,7 +495,13 @@ internal static unsafe partial class CatWidget
     {
         var arts = _ready; _ready = null;
         _clipLoading = false;
-        if (arts is null || arts.Length == 0 || arts[0].Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed) { ScheduleNextClip(Environment.TickCount64); return; }
+        bool fall = _holdAir && gen == _clipGen;   // 떨어지기(CatWidget.StartFall)를 준비한 이번 차례: 놓은 자리에서 기다리던 것을 푼다 — 시작하지 못하면 바로 앉는다
+        if (fall) _holdAir = false;                // (앞 차례의 늦은 알림이면 그대로 둔다)
+        if (arts is null || arts.Length == 0 || arts[0].Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed)
+        {
+            if (fall && _shown && !_dragOn) Render();
+            ScheduleNextClip(Environment.TickCount64); return;
+        }
         FreeClipDib();
         int mw = 0, mh = 0;
         foreach (var a in arts) { mw = Math.Max(mw, a.CellW); mh = Math.Max(mh, a.CellH); }
@@ -519,7 +543,7 @@ internal static unsafe partial class CatWidget
     {
         StopTicks();
         if (_clipOn && _steps.Length > 0 && _steps[^1].Dx != 0)
-            _posX = Math.Clamp(_baseX + (int)Math.Round(_steps[^1].Dx), MinX, HomeX);
+            _posX = Math.Clamp(_baseX + (int)Math.Round(_steps[^1].Dx), MinX, MaxX);
         if (_playName == "hunt" && _gPhase is GuestPhase.Enter or GuestPhase.Idle) GuestLeave();
         _clipOn = false; _arts = Array.Empty<ClipArt>();
         FreeClipDib();

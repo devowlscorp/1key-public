@@ -2,15 +2,16 @@ namespace OneKey;
 
 /// <summary>
 /// 작업 표시줄 위 고양이(<see cref="CatWidget"/>)를 앱 상태와 잇는다(2026-10-06 사용자 결정, Codex 09:43): 설정에서 켰고, 마스터가 있고 잠금이 풀렸고,
-/// 복구 전용·종료 중이 아니고, 본창이 숨었을(닫혀 트레이로 간) 때만 보고 싶다. 본창이 보이거나 숨을 때(WM_SHOWWINDOW 뒤), 잠글 때, 설정을 저장할 때,
-/// 자동 잠금 점검(15초)마다 다시 맞춘다. 마스코트를 누르면 트레이 아이콘과 같은 ShowMainWindow.
+/// 복구 전용·종료 중이 아닐 때. 0.5.24(2026-10-13 사용자: 누르면 본창이 뜨면서 고양이가 없어져 아쉽다)부터 본창이 열려 있어도 그대로 있다(예전에는 본창이
+/// 숨었을 — 트레이로 간 — 때만). 본창이 보이거나 숨을 때(WM_SHOWWINDOW 뒤), 잠글 때, 설정을 저장할 때, 자동 잠금 점검(15초)마다 다시 맞춘다.
+/// 마스코트를 누르면 트레이 아이콘과 같은 ShowMainWindow.
 /// </summary>
 internal sealed unsafe partial class App
 {
     private const uint WM_WALKER_CLICK = Native.WM_APP + 47;   // 마스코트를 눌렀다
     private const uint WM_WALKER_SYNC = Native.WM_APP + 48;    // 본창 보임/숨김이 바뀐 뒤 다시 맞추기
 
-    private bool WalkerWanted => !_walkerHidden && ((_cfg.Walker && _cfg.HasMaster && Unlocked && !_createMode && !_recoveryOnly && !_exiting && !Native.IsWindowVisible(_hwnd))
+    private bool WalkerWanted => !_walkerHidden && ((_cfg.Walker && _cfg.HasMaster && Unlocked && !_createMode && !_recoveryOnly && !_exiting)
         || LockedWalker);
 
     /// <summary>오른쪽 클릭 메뉴의 [고양이 숨기기]: 다음에 1Key 창(또는 잠금 위젯)을 열 때까지 숨긴다(ShowMainWindow 가 끈다). 설정은 바꾸지 않는다.</summary>

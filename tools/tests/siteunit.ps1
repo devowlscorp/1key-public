@@ -36,7 +36,8 @@ $cfg = "$sp\siteunit_cfg"; if (Test-Path $cfg) { Get-ChildItem $cfg -Recurse | R
 try {
   $env:ONEKEY_TEST = "1"; $env:ONEKEY_CONFIG_DIR = $cfg; $env:ONEKEY_INSTANCE_SUFFIX = ".siteunit"; $env:ONEKEY_TEST_FAIL = $null
   $p = Start-Process $exe -ArgumentList "--selftest-site" -PassThru
-  if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force -ErrorAction Ignore; throw "selftest did not finish in 30 s" }
+  # 90 s (was 30): the same 250 checks took 20 s on 2026-10-12 and 36 s on 2026-10-13 for both 0.5.23 and 0.5.24 - PC load, not the build
+  if (-not $p.WaitForExit(90000)) { Stop-Process -Id $p.Id -Force -ErrorAction Ignore; throw "selftest did not finish in 90 s" }
   $out = "$cfg\selftest-site.txt"
   if (-not (Test-Path $out)) { throw "no selftest-site.txt" }
   foreach ($line in [IO.File]::ReadAllLines($out, [Text.Encoding]::UTF8)) {

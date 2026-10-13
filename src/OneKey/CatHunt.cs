@@ -57,7 +57,7 @@ internal static unsafe partial class CatWidget
         int sitH = _sitBot - _sitTop;
         _huntLeap = Math.Round(sitH * (fly ? 0.45 : 0.85));
         int x = WinX;
-        double roomL = x - MinX, roomR = HomeX - x;
+        double roomL = x - MinX, roomR = MaxX - x;
         int dir = roomL >= roomR ? -1 : 1;
         double room = dir < 0 ? roomL : roomR;
         if (room < _huntLeap + dx) return false;
@@ -77,7 +77,7 @@ internal static unsafe partial class CatWidget
             for (int i = 1; i < wig.Frames; i++) steps.Add(new PlayStep(HArtWiggle, i == wig.Frames - 1 ? 0 : i, m, moved, lift));   // 끝 장 = 첫 장(웅크림)
         AppendRise(steps, all[hr], back, m, moved, lift);
         _huntKind = kind; _huntCatchReq = _huntGiveUp = _huntSpliced = false; _huntCatchStep = -1; _huntGuestAt = 0;
-        LogLine($"huntplan {kind} dir {dir} cycles {cycles} leap {_huntLeap:0} from {x} min {MinX} home {HomeX}");
+        LogLine($"huntplan {kind} dir {dir} cycles {cycles} leap {_huntLeap:0} from {x} min {MinX} home {HomeX} max {MaxX}");
         StartPlay("hunt", new[] { turn, loop, crouch, wig, all[hp], all[hr], back }, steps.ToArray());
         return true;
     }

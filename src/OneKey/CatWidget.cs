@@ -252,12 +252,14 @@ internal static unsafe partial class CatWidget
         return pid != (uint)Environment.ProcessId && CoversCat(menu, work, dpi);
     }
 
-    /// <summary>창이 고양이가 다니는 곳(작업 영역 오른쪽 5분의 1 + 여유, 작업 표시줄 위 선에서 위로 고양이 키의 3배 ~ 화면 아래)을 덮나. 자리를 모르면 true.</summary>
+    /// <summary>창이 고양이가 다니는 곳(다니는 범위 + 여유, 작업 표시줄 위 선에서 위로 고양이 키의 3배 ~ 화면 아래)을 덮나. 자리를 모르면 true.</summary>
     private static bool CoversCat(nint h, Native.RECT work, int dpi)
     {
         if (!Native.GetWindowRect(h, out Native.RECT r) || r.right <= r.left || r.bottom <= r.top) return true;
         int m = (int)Math.Round(MarginLogical * dpi / 96.0), ch = (int)Math.Round(HeightLogical * dpi / 96.0);
-        int zl = work.right - (work.right - work.left) / 5 - m, zt = work.bottom - 3 * ch, zr = work.right, zb = work.bottom + 4 * ch;
+        int cw = _w > 0 && dpi == _dpi ? _w : ch;   // 그림을 만들기 전이면 키만큼으로 어림
+        var (rl, rr) = RangeOf(work, cw, dpi);   // 0.5.24: 옮긴 집이면 그 범위(옮기지 않았으면 예전처럼 오른쪽 5분의 1)
+        int zl = rl - m, zt = work.bottom - 3 * ch, zr = Math.Min(work.right, rr + cw + 2 * m), zb = work.bottom + 4 * ch;
         return r.left < zr && r.right > zl && r.top < zb && r.bottom > zt;
     }
 
@@ -480,7 +482,7 @@ internal static unsafe partial class CatWidget
 
     private static void HoverTick(long now)
     {
-        if (SeqTest || WalkTest || PeekTest || FullTest || CatMenu.IsOpen || _hwnd == 0 || !_shown) { _hoverStart = 0; return; }
+        if (SeqTest || WalkTest || PeekTest || FullTest || CatMenu.IsOpen || _hwnd == 0 || !_shown || _pressed || _dragOn || _holdAir) { _hoverStart = 0; return; }
         Native.GetCursorPos(out Native.POINT cp);
         bool inside = Native.GetWindowRect(_hwnd, out Native.RECT r) && cp.x >= r.left && cp.x < r.right && cp.y >= r.top && cp.y < r.bottom;
         if (!inside) { _hoverStart = 0; _hoverShown = false; return; }
@@ -534,13 +536,14 @@ internal static unsafe partial class CatWidget
         _dpi = 0;
     }
 
-    /// <summary>앉은 고양이 창의 왼쪽: 집(작업 표시줄 오른쪽 끝) 또는 걷기로 간 자리(다니는 범위 안 — CatClips.cs).</summary>
-    private static int WinX => _posX == int.MinValue ? HomeX : Math.Clamp(_posX, MinX, HomeX);
+    /// <summary>앉은 고양이 창의 왼쪽: 집(끌어다 놓은 자리, 없으면 작업 표시줄 오른쪽 끝) 또는 걷기로 간 자리(다니는 범위 안 — CatClips.cs). 끄는 중 · 떨어지기 전이면 손 자리.</summary>
+    private static int WinX => _dragOn || _holdAir ? _dragX : _posX == int.MinValue ? HomeX : Math.Clamp(_posX, MinX, MaxX);
     /// <summary>
     /// 앉은 고양이 창의 위: 작업 표시줄 위 선보다 <see cref="SitSinkPx"/> 만큼 아래까지(0.5.15-J, 2026-10-09 사용자: 정면에서 보면 뒷다리(옆다리)가 앞발보다
-    /// 높아 앞발을 선에 맞추면 옆다리가 떠 보인다 — 살짝 내려 앞발이 작업 표시줄과 겹치게). 9방향 그림에서 잰 차이는 앉은 키의 10~14 %.
+    /// 높아 앞발을 선에 맞추면 옆다리가 떠 보인다 — 살짝 내려 앞발이 작업 표시줄과 겹치게). 9방향 그림에서 잰 차이는 앉은 키의 10~14 %. 끄는 중 · 떨어지기 전이면 손 자리.
     /// </summary>
-    private static int WinY => _work.bottom - _h + SitSinkPx;
+    private static int WinY => _dragOn || _holdAir ? _dragY : GroundY;
+    private static int GroundY => _work.bottom - _h + SitSinkPx;
     private static int SitSinkPx => _sitTop < 0 ? 0 : (int)Math.Round((_sitBot - _sitTop) * 0.11);
 
     /// <summary>지금 시선 그림(시선이 막 바뀌었으면 앞 그림과 섞어서)을 제자리에 내보낸다.</summary>
@@ -756,9 +759,96 @@ internal static unsafe partial class CatWidget
 
     private static void CancelPress()
     {
+        _dragOn = _holdAir = false;   // 끄는 중에 숨으면(환경이 바뀌는 등) 놓은 자리는 버리고 다음에 집에서
         if (!_pressed) return;
         _pressed = false;
         if (_hwnd != 0 && Native.GetCapture() == _hwnd) Native.ReleaseCapture();
+    }
+
+    // ------------------------------------------------------------------ 끌어 옮기기(0.5.24, 2026-10-13 사용자)
+    // 누른 채 조금(Windows 끌기 거리 이상) 움직이면 끌기: 하던 동작 · 메뉴 · 하트를 접고 고양이가 손을 따라온다(목덜미를 잡힌 듯 — 커서가 머리 위쪽).
+    // 놓으면 그 자리 아래 작업 표시줄로 떨어져 착지하고(높이 놓았으면 — 사냥 점프의 공중 · 착지 장을 빌려 씀), 그 자리가 새 집이 된다(다음에 켜도 —
+    // CatGrowth.HomeRatio). 놓기까지 움직이지 않았으면 예전처럼 클릭(1Key 창 열기).
+    private static bool _dragOn, _holdAir;
+    private static int _dragX, _dragY;
+    private static Native.POINT _pressAt;
+
+    private static Native.POINT ScreenOf(nint hwnd, nint lParam)
+    {
+        Native.GetWindowRect(hwnd, out Native.RECT r);
+        return new Native.POINT { x = r.left + (short)(lParam & 0xFFFF), y = r.top + (short)((lParam >> 16) & 0xFFFF) };
+    }
+
+    /// <summary>끌기 시작: 동작 · 숨기 · 메뉴 · 하트를 접고 정면 그림으로 커서를 따라간다.</summary>
+    private static void BeginDrag(Native.POINT p)
+    {
+        if (CatMenu.IsOpen) CatMenu.Close();
+        CatHearts.Close();
+        StopClip();
+        _hoverStart = 0; _hoverShown = false;
+        _dragOn = true; _holdAir = false;
+        _from = _gaze = Center; _pending = -1; _seq = Array.Empty<int>();
+        LogLine($"drag start {p.x},{p.y}");
+        MoveDrag(p);
+        SetProps();
+    }
+
+    /// <summary>커서가 머리 위쪽(목덜미)에 오게. 작업 영역 안(아래는 앉는 자리까지)으로만.</summary>
+    private static void MoveDrag(Native.POINT p)
+    {
+        _dragX = Math.Clamp(p.x - _w / 2, _work.left, Math.Max(_work.left, _work.right - _w));
+        _dragY = Math.Clamp(p.y - (int)Math.Round(_h * 0.2), _work.top, GroundY);
+        Render();
+    }
+
+    /// <summary>놓았다: 그 자리가 새 집. 높이 놓았으면 떨어져 착지한다(그림이 준비될 때까지는 놓은 자리에 그대로).</summary>
+    private static void EndDrag()
+    {
+        _dragOn = false;
+        int x = Math.Clamp(_dragX, _work.left, Math.Max(_work.left, _work.right - _w));
+        int room = Math.Max(1, _work.right - _work.left - _w);
+        CatGrowth.SetHome((x - _work.left) / (double)room);
+        _posX = Math.Clamp(x, MinX, MaxX);
+        int lift = GroundY - _dragY;
+        LogLine($"drop x {x} home {HomeX} min {MinX} max {MaxX} lift {lift}");
+        _dragX = _posX;   // 떨어지는 곳은 집(범위 안으로 맞춘 자리) 바로 위
+        if (lift > _h / 4 && StartFall(lift)) return;
+        Render();
+        _nextClipAt = Math.Max(_nextClipAt, Environment.TickCount64 + 1500);
+        SetProps();
+    }
+
+    /// <summary>
+    /// 떨어지기(1차 — 새 그림은 나중에, 2026-10-13 사용자): 사냥 점프(HJ)의 앞발을 아래로 뻗은 장(14 · 15)으로 중력처럼 빨라지며 내려오고, 닿으면 착지 ·
+    /// 일어서기 장(16~40), 돌아서 앉기(WI)로 정면. 화면 가운데 쪽을 보고 떨어진다. 그림이 없으면 false(그냥 앉는다).
+    /// </summary>
+    private static bool StartFall(int height)
+    {
+        int ij = ClipIndex("HJ"), ii = ClipIndex("WI");
+        if (ij < 0 || ii < 0 || _sitTop < 0) return false;
+        var all = Clips();
+        var jump = all[ij]; var back = all[ii];
+        if (jump.Frames < 41) return false;
+        bool m = _posX + _w / 2 > (_work.left + _work.right) / 2;   // 오른쪽에 있으면 왼쪽(화면 가운데)을 보고
+        int sink = SitSinkPx;
+        double g = 2600.0 * _dpi / 96.0, tick = ClipTickMs / 1000.0;   // 중력(px/s², 96dpi 기준) — 800px 를 0.8초쯤
+        var steps = new List<PlayStep>();
+        for (int i = 1; ; i++)
+        {
+            double t = i * tick, fallen = 0.5 * g * t * t;
+            int left = (int)Math.Round(height - fallen);
+            if (left <= 0) break;
+            steps.Add(new PlayStep(0, fallen < height * 0.5 ? 14 : 15, m, 0, sink + left));
+            if (steps.Count > 200) break;
+        }
+        for (int c = 16; c <= 40; c++) steps.Add(new PlayStep(0, c, m, 0, sink));   // 착지 → 웅크림 → 일어섬(옆으로 선 자세 = 걷기 자세)
+        int lastB = Math.Max(1, back.Frames - 1);
+        for (int i = 0; i < back.Frames; i++) steps.Add(new PlayStep(1, i, m, 0, sink * (lastB - i) / lastB));   // 정면으로 돌아앉기
+        _holdAir = true;   // 그림 준비가 끝날 때까지 놓은 자리에(OnClipReady 가 푼다)
+        Render();
+        LogLine($"fallplan height {height} steps {steps.Count}");
+        StartPlay("fall", new[] { jump, back }, steps.ToArray());
+        return true;
     }
 
     private static void SetProps()
@@ -772,6 +862,7 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestCatGaze", _gaze);
         Native.SetPropW(_owner, "OneKeyTestCatLight", _shown ? (_light ? 2 : 1) : 0);
         Native.SetPropW(_owner, "OneKeyTestCatX", _shown ? WinX : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatW", _shown ? _w : 0);   // 앉은 고양이 창 폭(catdrag.ps1 — 놓은 자리 계산)
         Native.SetPropW(_owner, "OneKeyTestCatPeeks", _peekCount);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
@@ -898,14 +989,25 @@ internal static unsafe partial class CatWidget
                     Native.SetCursor(Native.LoadCursorW(0, (nint)32649 /* IDC_HAND */));
                     return 1;
                 case 0x0201:             // WM_LBUTTONDOWN
-                    if (_shown) { _pressed = true; Native.SetCapture(hwnd); }
+                    if (_shown) { _pressed = true; _pressAt = ScreenOf(hwnd, lParam); Native.SetCapture(hwnd); }
                     return 0;
-                case 0x0202:             // WM_LBUTTONUP: 같은 누름을 고양이 안에서 떼었을 때만 클릭
+                case 0x0200:             // WM_MOUSEMOVE: 누른 채 Windows 끌기 거리 이상 움직이면 끌기(0.5.24)
+                    if (_pressed && _shown && Native.GetCapture() == hwnd)
+                    {
+                        var mp = ScreenOf(hwnd, lParam);
+                        if (_dragOn) MoveDrag(mp);
+                        else if (Math.Abs(mp.x - _pressAt.x) > Math.Max(2, Native.GetSystemMetrics(68 /* SM_CXDRAG */))
+                              || Math.Abs(mp.y - _pressAt.y) > Math.Max(2, Native.GetSystemMetrics(69 /* SM_CYDRAG */)))
+                            BeginDrag(mp);
+                    }
+                    return 0;
+                case 0x0202:             // WM_LBUTTONUP: 끄는 중이면 놓기, 아니면 같은 누름을 고양이 안에서 떼었을 때만 클릭
                 {
                     bool was = _pressed && Native.GetCapture() == hwnd;
                     int x = (short)(lParam & 0xFFFF), y = (short)((lParam >> 16) & 0xFFFF);
                     bool inside = x >= 0 && y >= 0 && x < CurW && y < CurH;
                     _pressed = false;
+                    if (_dragOn) { if (Native.GetCapture() == hwnd) Native.ReleaseCapture(); if (_dragOn) EndDrag(); return 0; }
                     if (Native.GetCapture() == hwnd) Native.ReleaseCapture();
                     if (was && inside && _shown && _owner != 0)
                     {
@@ -919,8 +1021,9 @@ internal static unsafe partial class CatWidget
                 case 0x0205:             // WM_RBUTTONUP: 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자) — 앱이 메뉴를 띄운다(lParam 1)
                     if (_shown && _owner != 0 && !_pressed && EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 1);
                     return 0;
-                case 0x0215:             // WM_CAPTURECHANGED
+                case 0x0215:             // WM_CAPTURECHANGED: 끄는 중에 잡기를 잃으면(다른 창이 가져감 등) 그 자리에 놓는다
                     _pressed = false;
+                    if (_dragOn && _shown) EndDrag();
                     return 0;
                 case (int)WM_ANIMTICK:   // 동작 틱(CatClips.cs의 틱 스레드)
                     Interlocked.Exchange(ref _tickPending, 0);
