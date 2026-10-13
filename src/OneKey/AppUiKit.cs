@@ -207,6 +207,7 @@ internal sealed unsafe partial class App
             Screen.AddKind => (Help.ListTitle, Help.List),   // 새 디자인 머리줄의 [?](시안): 추가할 것들의 설명은 목록 도움말에 있다
             Screen.Edit => (Help.EditTitle, Help.Edit),
             Screen.Settings => (Help.SettingsTitle, Help.Settings),
+            Screen.Widget => (T.CatGuideTitle, T.HelpCat),   // 위젯 화면(0.5.26)의 [?] = 고양이 돌보는 방법
             Screen.Advanced => (Help.AdvancedTitle, Help.Advanced),
             Screen.Master => (Help.MasterTitle, Help.Master),
             Screen.BackupMake or Screen.Restore => (T.HelpBackupTitle, T.HelpBackup),
@@ -440,6 +441,9 @@ internal sealed unsafe partial class App
         ApplyLanguage(LangCode(wantLang));
         if (_pageDragOffset >= 0) { _pageDragOffset = -1; Native.ReleaseCapture(); }   // 스크롤 막대를 끄는 중에 화면이 바뀌면 끌기를 끝낸다
         _pageScroll = _pageScrollMax = _barShift = 0; _viewH = 0; _lastFocusSeen = 0;
+        // 위젯 화면을 다시 만들 때(테마 · 언어가 바뀌는 등) 입력 중이던 이름은 그대로(0.5.26)
+        _widgetNames = _cur == Screen.Widget && s == Screen.Widget && C(IdCatNameLight) != 0
+            ? (Native.GetWindowText(C(IdCatNameLight)), Native.GetWindowText(C(IdCatNameDark))) : null;
         _phase = "clear";
         ClearPage();
         bool enterSettings = s == Screen.Settings && _cur != Screen.Settings;   // AS6-1: 설정에 들어올 때 등록과 설정의 어긋남을 알린다(맨 아래)
@@ -466,6 +470,7 @@ internal sealed unsafe partial class App
             case Screen.Advanced: BuildAdvanced(); break;
             case Screen.Master: BuildMaster(); break;
             case Screen.Settings: BuildSettingsScreen(); break;
+            case Screen.Widget: BuildWidgetScreen(); break;
             case Screen.AddKind: BuildAddKind(); break;
             case Screen.LaunchEdit: BuildLaunchEdit(); break;
             case Screen.PickProgram: BuildPickProgram(); break;

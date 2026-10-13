@@ -14,7 +14,7 @@ internal sealed unsafe partial class App
 
     private static readonly string ClassName = Program.WindowClass;
     private const string AppTitle = "1Key";
-    public const string Version = "0.5.25";
+    public const string Version = "0.5.26";
 
     /// <summary>버전을 크기 비교가 가능한 정수로. "0.2.0" → 0x000200.</summary>
     public static int VersionCode
@@ -110,7 +110,7 @@ internal sealed unsafe partial class App
     private const string IcWidget = "\uE776", IcTray = "\uE896";
     private const string IcLock = "", IcAdd = "", IcEye = "", IcEyeOff = "", IcPower = "";
 
-    private enum Screen { Lock, List, Edit, Advanced, Master, Settings, AddKind, LaunchEdit, PickProgram, BackupMake, Restore, Extra }
+    private enum Screen { Lock, List, Edit, Advanced, Master, Settings, AddKind, LaunchEdit, PickProgram, BackupMake, Restore, Extra, Widget }
 
     // 배포본 전용 추가 화면(src/OneKey/Extra/ — 저장소에 올리지 않는 폴더). 폴더가 없으면(저장소에서 받아 빌드) 아래 부분 메서드는
     // 구현이 없어 컴파일러가 부르는 곳까지 지운다: 설정에 줄이 생기지 않고 Screen.Extra 로 가는 길도 없다.

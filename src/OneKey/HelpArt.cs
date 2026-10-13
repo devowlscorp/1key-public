@@ -13,6 +13,8 @@ namespace OneKey;
 ///   stages:2                 고양이 크기 단계 빵 여섯 개(지금 단계는 크게, 아직 안 된 단계는 흐린 실루엣) — 고양이 수첩(0.5.20)
 ///   album:wave=1|groom=0|…   고양이 앨범 칸(본 장면 = 그림 + 이름, 못 본 장면 = 흐린 실루엣 + "?") — 고양이 수첩
 ///   missions:stamp=1|pet=0|pw=1/3|…  오늘의 할 일 칸(0.5.21-G 사용자: 크기 단계처럼 칸을 미리 두고 달성하면 채우기) — 동그란 칸 + 아이콘 + 이름 + 점수
+///   위젯 화면(0.5.26): stagebar:2(단계 그림 + 아래 이름) · albumw:…(앨범을 5열 작은 칸으로) · cat:light|dark(지금 고양이 그림)
+///   본창 화면에 둘 때는 SetSpec(pageBg) — 금속 조각이 그려진 바탕 그림을 이어 칠한다(상자 안에서는 카드 색)
 /// 창 글자는 화면 읽기용으로 읽기 쉬운 형태(키는 " + ", 나머지는 ", ")로 둔다.
 /// </summary>
 internal static unsafe class HelpArt
@@ -20,17 +22,20 @@ internal static unsafe class HelpArt
     public const string ClassName = "OneKeyHelpArt";
     public const int Height = 36;
     private const int AlbumCell = 84, AlbumCap = 18, AlbumGap = 8, AlbumCols = 4, StagesH = 48;
+    private const int AlbumWCell = 60, AlbumWCols = 5, StageNameH = 18;   // 위젯 화면(0.5.26)
     private const int MisSlot = 38, MisCap = 51, MisCols = 5, MisColW = 72, MisRowGap = 6;   // MisCap: 이름 두 줄 + 점수 줄(0.5.25 — 예전 34 = 이름 한 줄 + 점수)
 
     /// <summary>그림 줄의 높이(논리 px): 앨범은 칸 줄 수만큼, 단계 줄은 48, 나머지는 36.</summary>
     public static int HeightFor(string spec)
     {
         string kind = spec.Split(':', 2)[0];
-        if (kind == "album")
+        if (kind is "album" or "albumw")
         {
-            int n = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|').Length : 0, rows = (n + AlbumCols - 1) / AlbumCols;
-            return rows * (AlbumCell + AlbumCap) + Math.Max(0, rows - 1) * AlbumGap;
+            int cols = kind == "album" ? AlbumCols : AlbumWCols, cell = kind == "album" ? AlbumCell : AlbumWCell;
+            int n = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|').Length : 0, rows = (n + cols - 1) / cols;
+            return rows * (cell + AlbumCap) + Math.Max(0, rows - 1) * AlbumGap;
         }
+        if (kind == "stagebar") return StagesH + StageNameH;
         if (kind == "missions")
         {
             int n = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|').Length : 0, rows = (n + MisCols - 1) / MisCols;
@@ -47,27 +52,52 @@ internal static unsafe class HelpArt
         return _images[name] = CatWidget.LoadPng(name);   // 작은 그림 18장 — 프로세스가 끝날 때까지 둔다
     }
     private static readonly Dictionary<nint, string> _spec = new();
+    private static readonly HashSet<nint> _pageBg = new();   // 본창 화면의 그림(바탕 그림을 이어 칠한다)
     private static bool _registered;
 
-    public static nint Create(nint parent, string spec, int x, int y, int w, int h)
+    /// <summary>창 종류를 등록한다(본창이 Make 로 직접 만들 때 — 위젯 화면).</summary>
+    public static void EnsureClass()
     {
         if (!_registered) { Ctl.RegisterClass(Native.GetModuleHandleW(null), ClassName, &WndProc, 0); _registered = true; }
+    }
+
+    /// <summary>화면 읽기용 글(창 글자).</summary>
+    private static string Readable(string spec)
+    {
         string kind = spec.Split(':', 2)[0];
         string[] items = spec.Contains(':') ? spec.Split(':', 2)[1].Split('|') : Array.Empty<string>();
-        string readable = kind switch
+        return kind switch
         {
             "keys" => string.Join(" + ", items),
             "mark" => "",
-            "stages" => "",
-            "album" => string.Join(", ", items.Where(s => s.EndsWith("=1")).Select(s => CatGrowth.AlbumName(s.Split('=')[0]))),
+            "stages" or "cat" => "",
+            "stagebar" => items.Length > 0 && int.TryParse(items[0], out int st) ? CatGrowth.StageName(st) : "",
+            "album" or "albumw" => string.Join(", ", items.Where(s => s.EndsWith("=1")).Select(s => CatGrowth.AlbumName(s.Split('=')[0]))),
             "missions" => string.Join(", ", items.Select(s => { var kv = s.Split('='); return Mission(kv[0]).Name.Replace('\n', ' ') + " " + (kv.Length > 1 && kv[1].Contains('/') ? kv[1] : kv.Length > 1 && kv[1] == "1" ? "✓" : "○"); })),
             _ => string.Join(", ", items.Select(s => s.TrimStart('*'))),
         };
+    }
+
+    public static nint Create(nint parent, string spec, int x, int y, int w, int h)
+    {
+        EnsureClass();
+        string readable = Readable(spec);
         nint c;
         fixed (char* pc = ClassName) fixed (char* pt = readable)
             c = Native.CreateWindowExW(0, pc, pt, Native.WS_CHILD | Native.WS_VISIBLE, x, y, w, h, parent, 0, Native.GetModuleHandleW(null), 0);
         if (c != 0) { _spec[c] = spec; Native.SendMessageW(c, Native.WM_SETFONT, Theme.FontBody, 0); }
         return c;
+    }
+
+    /// <summary>그림 사양을 넣거나 바꾼다(같으면 그대로). pageBg: 본창 화면 — 바탕 그림(금속 조각)을 이어 칠한다.</summary>
+    public static void SetSpec(nint h, string spec, bool pageBg)
+    {
+        if (h == 0) return;
+        if (pageBg) _pageBg.Add(h);
+        if (_spec.TryGetValue(h, out string? old) && old == spec) return;
+        _spec[h] = spec;
+        Native.SetText(h, Readable(spec));
+        Native.InvalidateRect(h, 0, false);
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
@@ -77,7 +107,7 @@ internal static unsafe class HelpArt
         {
             switch (msg)
             {
-                case Native.WM_NCDESTROY: _spec.Remove(hwnd); break;
+                case Native.WM_NCDESTROY: _spec.Remove(hwnd); _pageBg.Remove(hwnd); break;
                 case Native.WM_ERASEBKGND: return 1;
                 case Native.WM_PAINT: Paint(hwnd); return 0;
                 case 0x0084: return -1;   // WM_NCHITTEST: HTTRANSPARENT — 그림은 누르는 것이 아니다
@@ -106,7 +136,7 @@ internal static unsafe class HelpArt
 
     private static void Paint(nint hwnd)
     {
-        Ctl.Paint(hwnd, Theme.CardBrush, (dc, w, h) =>
+        Ctl.Paint(hwnd, _pageBg.Contains(hwnd) ? Theme.BgBrush : Theme.CardBrush, (dc, w, h) =>
         {
             int S(int v) => Ctl.S(hwnd, v);
             if (!_spec.TryGetValue(hwnd, out string? spec)) return;
@@ -129,15 +159,40 @@ internal static unsafe class HelpArt
                     }
                     return;
                 }
-                case "album":
+                case "stagebar":   // 위젯 화면(0.5.26 시안): 단계 여섯 칸 — 그림(지금 단계는 크게) + 아래 이름(지금은 진하게)
                 {
-                    int cell = S(AlbumCell), cap = S(AlbumCap), gap = S(AlbumGap);
-                    int x0 = (w - (AlbumCols * cell + (AlbumCols - 1) * gap)) / 2;
+                    int cur = items.Length > 0 && int.TryParse(items[0], out int c) ? c : 0;
+                    int colW = w / 6, x0 = (w - colW * 6) / 2, ih = S(StagesH), nh = S(StageNameH);
+                    for (int i = 0; i < 6; i++)
+                    {
+                        int sz = i == cur ? S(40) : S(28), cx = x0 + i * colW, y = (ih - sz) / 2;
+                        nint img = Image($"album_stage{i}.png");
+                        if (i <= cur) Gdiplus.DrawImageSmooth(dc, img, cx + (colW - sz) / 2, y, sz, sz);
+                        else Gdiplus.DrawImageTinted(dc, img, cx + (colW - sz) / 2, y, sz, sz, Theme.SecondaryText, 0.30f);
+                        Ctl.Text(dc, i == cur ? Theme.FontSmallStrong : Theme.FontSmall, CatGrowth.StageName(i), i == cur ? Theme.ControlText : Theme.SecondaryText,
+                                 cx, ih, cx + colW, ih + nh, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
+                    }
+                    return;
+                }
+                case "cat":   // 위젯 화면: 지금 고양이(정면 그림, 238×256 비율로 칸 높이에 맞춘다)
+                {
+                    bool dark = items.Length > 0 && items[0] == "dark";
+                    int ch = h, cw = (int)Math.Round(h * 238.0 / 256);
+                    if (cw > w) { cw = w; ch = (int)Math.Round(w * 256.0 / 238); }
+                    Gdiplus.DrawImageSmooth(dc, Image(dark ? "cat_dark_center.png" : "cat_light_center.png"), (w - cw) / 2, (h - ch) / 2, cw, ch);
+                    return;
+                }
+                case "album":
+                case "albumw":
+                {
+                    int cols = kind == "album" ? AlbumCols : AlbumWCols;
+                    int cell = S(kind == "album" ? AlbumCell : AlbumWCell), cap = S(AlbumCap), gap = S(AlbumGap);
+                    int x0 = (w - (cols * cell + (cols - 1) * gap)) / 2;
                     for (int i = 0; i < items.Length; i++)
                     {
                         string[] kv = items[i].Split('=');
                         bool seen = kv.Length > 1 && kv[1] == "1";
-                        int cx = x0 + (i % AlbumCols) * (cell + gap), cy = (i / AlbumCols) * (cell + cap + gap), pad = S(4);
+                        int cx = x0 + (i % cols) * (cell + gap), cy = (i / cols) * (cell + cap + gap), pad = S(4);
                         Gdiplus.FillRoundRect(dc, cx, cy, cell, cell, S(10), Theme.Mix(Theme.CardBg, Theme.ControlText, Theme.IsDark ? 0.07 : 0.045));
                         nint img = Image($"album_{kv[0]}.png");
                         if (seen && !CatWidget.IsLight && CatWidget.HasPng($"album_{kv[0]}_dark.png")) img = Image($"album_{kv[0]}_dark.png");   // 검은 고양이의 수첩이면 검은 고양이 카드(0.5.22)

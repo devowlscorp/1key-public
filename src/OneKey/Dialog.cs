@@ -167,6 +167,19 @@ internal static unsafe class Dialog
     /// 고양이 메뉴는 상자가 떠 있어도 눌리므로 두 번째 상자가 첫 상자의 루프 안에 겹쳐 열렸고, 바깥 상자는 안쪽 상자가 끝나야 사라졌다. 새 상자를 열기 전에
     /// 같은 꼬리표의 상자를 숨기고 끝냄 표시를 해 두면, 겹쳐 있어도 눈에 보이는 것은 새 상자 하나이고 새 상자를 닫으면 바깥 루프도 바로 끝난다.
     /// </summary>
+    /// <summary>떠 있는 상자가 모두 그 꼬리표다(하나 이상).</summary>
+    public static bool OnlyTagged(string tag)
+    {
+        bool any = false;
+        foreach (var st in _state.Values)
+        {
+            if (st.Done) continue;
+            if (st.Tag != tag) return false;
+            any = true;
+        }
+        return any;
+    }
+
     public static void CloseTagged(string tag)
     {
         foreach (var (h, st) in _state.ToArray())

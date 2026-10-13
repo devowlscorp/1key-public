@@ -120,6 +120,8 @@ internal sealed unsafe partial class App
     private void OnWalkerCommand(int cmd, int gen)
     {
         if (ModalUp && cmd is IdCatOpen or IdCatSettings) { BringModalForward(); return; }
+        // [수첩](0.5.26 위젯 화면): 고양이 상자(수첩 · 안내)만 떠 있으면 그것을 닫고 연다. 다른 상자(확인 등)가 떠 있으면 그 상자를 앞으로
+        if (ModalUp && cmd == IdCatNote && Unlocked && !OnLockScreen && !Dialog.OnlyTagged("cat")) { BringModalForward(); return; }
         if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestCatMenu", cmd);
         switch (cmd)
         {
@@ -127,7 +129,7 @@ internal sealed unsafe partial class App
             case IdCatTreat: CatWidget.Interact("I2"); break;
             case IdCatPlay: CatWidget.Interact("I3"); break;
             // 수첩 · 안내는 한 번에 하나(0.5.25): 열려 있던 쪽은 닫고 새로 연다 — 겹쳐 열리면 먼저 연 상자의 [닫기]가 듣지 않았다(Dialog.CloseTagged)
-            case IdCatNote: Dialog.CloseTagged("cat"); Dialog.Show(_hwnd, CatNoteText(), T.CatNoteTitle, Native.MB_OK, width: 440, okText: T.CommonClose, fold: false, tag: "cat"); break;
+            case IdCatNote: OnCatNote(); break;   // 0.5.26: 잠금이 풀려 있으면 위젯 화면(잠겨 있으면 예전 수첩 상자)
             case IdCatGuide: Dialog.CloseTagged("cat"); Dialog.Show(_hwnd, T.HelpCat, T.CatGuideTitle, Native.MB_OK, width: 460, okText: T.CommonClose, fold: false, tag: "cat"); break;
             case IdCatOpen: OnWalkerClick(gen, fromMenu: true); break;
             case IdCatLock: if (Unlocked) LockNow(); break;

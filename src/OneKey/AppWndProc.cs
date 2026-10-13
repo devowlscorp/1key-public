@@ -199,6 +199,10 @@ internal sealed unsafe partial class App
                 SyncWalker();
                 return 0;
 
+            case WM_WIDGET_OPEN:
+                OpenWidgetFromCat();
+                return 0;
+
             case WM_WALKER_CLICK:
                 if (lParam == 1) OnWalkerMenu((int)wParam); else OnWalkerClick((int)wParam);
                 return 0;
@@ -622,6 +626,18 @@ internal sealed unsafe partial class App
             case IdListLock: LockNow(); return;
             case IdListMin: if (WidgetButton) HideToTray(); else Native.ShowWindow(_hwnd, Native.SW_MINIMIZE); return;
             case IdRowSettings: ShowScreen(Screen.Settings); return;
+            case IdRowWidget: if (_cfg.Walker) ShowScreen(Screen.Widget); return;
+            case IdWBack: LeaveWidget(ask: true); return;     // 이름을 바꿨으면 버릴지 묻는다
+            case IdWCancel: LeaveWidget(ask: false); return;
+            case IdWSave: SaveWidget(); return;
+            case IdWPet: case IdWTreat: case IdWPlay:
+                CatWidget.Interact(id == IdWPet ? "I1" : id == IdWTreat ? "I2" : "I3");
+                UpdateWidget();
+                return;
+            case IdWGuide:
+                Dialog.CloseTagged("cat");
+                Dialog.Show(_hwnd, T.HelpCat, T.CatGuideTitle, Native.MB_OK, width: 460, okText: T.CommonClose, fold: false, tag: "cat");
+                return;
             case IdListAutoLock:   // 목록 판의 자동 잠금 칸: 설정 화면의 자동 잠금으로
                 ShowScreen(Screen.Settings);
                 if (C(IdAutoLock) is nint al and not 0) { Ctl.ShowFocus = true; Native.SetFocus(al); }
@@ -713,6 +729,7 @@ internal sealed unsafe partial class App
         if (id == TimerAnim) { StepHeightAnimation(); return; }
         if (id == TimerSite) { SiteTick(); return; }
         if (id == TimerKbd) { UpdateKbd(); return; }
+        if (id == TimerWidget) { UpdateWidget(); return; }   // 반복: 위젯 화면의 상태 2초마다(화면을 떠나면 스스로 끈다)
         if (id == TimerUsage) { UpdateUsage(); return; }   // 반복: 고급 화면의 사용량 1초마다(화면을 떠나면 스스로 끈다)   // 반복 타이머(아래의 한 번짜리 끄기 앞에서): 잠금 화면 키보드 상태 0.25초
         Native.KillTimer(_hwnd, id);
         if (id == TimerChipExpire)

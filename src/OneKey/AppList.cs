@@ -158,9 +158,13 @@ internal sealed unsafe partial class App
         var draft = _settingsDraft;
         bool draftDirty = draft is { } d0 && SettingsDiffer(d0);
         string setText = draftDirty ? T.ListSettings + " \u00B7 " + T.ListSettingsDirty : T.ListSettings;
-        int setW = Math.Min(WinW - 44 - addW - 16, BarPillW(setText, 72));
+        // [위젯](0.5.26, 2026-10-13 사용자): [설정] 왼쪽 — 고양이 상태 · 놀기 · 미션 · 앨범 · 이름. 트레이 위젯 모드가 꺼져 있으면 흐리게(눌리지 않음)
+        int widW = BarPillW(T.ListWidget, 64);
+        int setW = Math.Min(WinW - 44 - addW - 16 - widW - 8, BarPillW(setText, 72));
         nint set = BarPill(IdRowSettings, setText, Btn.PillMain, WinW - 22 - setW, by, setW);
         if (set != 0 && !draftDirty) Tip(set, T.ListSettingsSummary);
+        nint wid = BarPill(IdRowWidget, T.ListWidget, Btn.PillMain, WinW - 22 - setW - 8 - widW, by, widW);
+        if (wid != 0) { Tip(wid, T.ListWidgetTip); if (!_cfg.Walker) Native.EnableWindow(wid, false); }
         _page.Height = by + MetalUi.PillMainH + 16;
     }
 
@@ -224,16 +228,8 @@ internal sealed unsafe partial class App
         Name(T.SetLanguage, y, langLabel);
         Make(Dropdown.ClassName, "", Native.WS_TABSTOP, lx + langLabel, y + (RH - 34) / 2, rx + 6 - lx - langLabel, 34, IdLang);
         Sep(y + RH); y += RH + 1;
-        y = Pair(y, IdLaunchProgNames, T.SetLaunchProgNames, IdLaunchFolderNames, T.SetLaunchFolderNames, false, out _);
-        // 고양이 이름(0.5.17-H, 2026-10-10 사용자: 흰 고양이·검은 고양이 따로 — 예 "시로"·"쿠로"는 자리 표시 글로). 오른쪽 클릭 메뉴 맨 위와 하트 옆에 보인다
-        // 한 줄에 둘을 넣으면 자리 표시 글이 잘려 두 줄로(흰 고양이 · 검은 고양이)
-        int nameW = Math.Min(150, (rx - lx) / 2);
-        Name(T.SetCatNameLight, y, rx - lx - nameW - 8);
-        Tip(CatNameField(IdCatNameLight, T.SetCatNameLightCue, rx - nameW, y, nameW), T.SetCatNameTip);
-        Sep(y + RH); y += RH + 1;
-        Name(T.SetCatNameDark, y, rx - lx - nameW - 8);
-        Tip(CatNameField(IdCatNameDark, T.SetCatNameDarkCue, rx - nameW, y, nameW), T.SetCatNameTip);
-        y += RH;
+        // 고양이 이름(0.5.17-H)은 0.5.26 부터 위젯 화면에(2026-10-13 사용자: 고양이에 관한 것은 위젯으로). 저장값은 그대로 — ReadSettings 는 칸이 없으면 저장된 이름
+        y = Pair(y, IdLaunchProgNames, T.SetLaunchProgNames, IdLaunchFolderNames, T.SetLaunchFolderNames, true, out _);
         _page.Cards.Add((cx, top, cw, y - top));
 
         // 보안: 자동 잠금(이름 · ‹ 숫자 › · 단계 점) + 마스터·백업 버튼
