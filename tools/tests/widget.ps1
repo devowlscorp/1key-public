@@ -45,7 +45,8 @@ public class WGU {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   public static string Cls(IntPtr h) { var t = new StringBuilder(256); GetClassNameW(h, t, 256); return t.ToString(); }
-  public static string Text(IntPtr h) { var t = new StringBuilder(512); GetWindowTextW(h, t, 512); return t.ToString(); }
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, StringBuilder l);
+  public static string Text(IntPtr h) { var t = new StringBuilder(512); SendMessageW(h, 0x000D, (IntPtr)512, t); return t.ToString(); }   // WM_GETTEXT: GetWindowText does not read an EDIT of another process
   public static IntPtr Find(uint pid, string cls, bool vis) { IntPtr f = IntPtr.Zero; EnumWindows((h,l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && Cls(h) == cls && (!vis || IsWindowVisible(h))) { f = h; return false; } return true; }, IntPtr.Zero); return f; }
   public static int CountChildren(IntPtr p, string cls) { int n = 0; EnumChildWindows(p, (h,l) => { if (Cls(h) == cls && IsWindowVisible(h)) n++; return true; }, IntPtr.Zero); return n; }
   public static bool Shot(IntPtr h, string path) {

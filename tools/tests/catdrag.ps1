@@ -171,7 +171,10 @@ try {
   # CD09 a 1Key window over the cat hides it; moved away, the cat is back
   ShowMain
   $cr = New-Object CDU+RECT; $cw = CatWnd; [void][CDU]::GetWindowRect($cw, [ref]$cr)
-  [void][CDU]::SetWindowPos($m, [IntPtr]::Zero, $cr.L - 120, $cr.T - 300, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010)
+  # the window's bottom goes 12 px below the cat's bottom so it really covers the cat (0.5.26: with "top = cat top - 300" a short window
+  # ended 3 px above the cat - the cover log showed no overlap at all)
+  $mr = New-Object CDU+RECT; [void][CDU]::GetWindowRect($m, [ref]$mr)
+  [void][CDU]::SetWindowPos($m, [IntPtr]::Zero, $cr.L - 120, $cr.B + 12 - ($mr.B - $mr.T), 0, 0, 0x0001 -bor 0x0004 -bor 0x0010)
   Start-Sleep -Milliseconds 800
   $duck = Prop 'OneKeyTestCatDucked'; $hidden = -not [CDU]::IsWindowVisible($cw)
   ParkMain; Start-Sleep -Milliseconds 800

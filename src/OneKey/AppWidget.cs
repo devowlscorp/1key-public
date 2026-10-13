@@ -60,15 +60,12 @@ internal sealed unsafe partial class App
         int Wrapped(int id, string text, int at, string alt = "")   // alt: 바뀌어 들어올 수 있는 글(높이는 둘 가운데 큰 쪽)
         {
             int h = Math.Max(16, Math.Max(TextH(smallFont, text, rx - lx), TextH(smallFont, alt, rx - lx))) + 2;
-            nint s = Label(text, lx, at, rx - lx, h, smallFont, note, true, Native.SS_LEFT, vcenter: false);
-            if (id != 0 && s != 0) _controls[id] = s;
+            Label(text, lx, at, rx - lx, h, smallFont, note, true, Native.SS_LEFT, vcenter: false, id: id);
             return at + h;
         }
         nint Line(int id, int x, int at, int w, int h, nint font, uint color)
         {
-            nint s = Label("", x, at, w, h, font, color, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS, userText: true);
-            if (s != 0) _controls[id] = s;
-            return s;
+            return Label("", x, at, w, h, font, color, true, Native.SS_LEFT | Native.SS_ENDELLIPSIS, userText: true, id: id);
         }
 
         // 1. 지금 상태: 왼쪽 고양이 그림, 오른쪽 이름 · 단계 / 하트 / 점수 · 크기 / 다음 단계까지, 아래 줄어듦 안내와 단계 줄

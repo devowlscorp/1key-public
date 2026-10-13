@@ -29,7 +29,7 @@ internal sealed unsafe partial class App
 
     /// <summary>STATIC 글자. onCard 면 카드 배경, 아니면 창 배경 위.</summary>
     /// userText: 사용자가 넣은 문자열(항목 이름)이면 true. & 를 단축키 밑줄 표시로 바꾸지 않고 그대로 보인다(SS_NOPREFIX).
-    private nint Label(string text, int x, int y, int w, int h, nint font, uint color, bool onCard, uint align = Native.SS_LEFT, bool vcenter = true, bool userText = false)
+    private nint Label(string text, int x, int y, int w, int h, nint font, uint color, bool onCard, uint align = Native.SS_LEFT, bool vcenter = true, bool userText = false, int id = 0)
     {
         if (_page.Metal)
         {
@@ -37,7 +37,7 @@ internal sealed unsafe partial class App
             if (font == _font) { font = Theme.Sized(13.5, true); if (color == Theme.ControlText) color = Metal.Ref(Metal.Ink(Theme.IsDark)); }
             if (color == Theme.SecondaryText) color = Metal.Ref(Metal.InkNote(Theme.IsDark));
         }
-        nint s = Make("STATIC", text, align | (vcenter ? Native.SS_CENTERIMAGE : 0) | (userText ? Native.SS_NOPREFIX : 0), x, y, w, h, 0, 0, font);
+        nint s = Make("STATIC", text, align | (vcenter ? Native.SS_CENTERIMAGE : 0) | (userText ? Native.SS_NOPREFIX : 0), x, y, w, h, id, 0, font);   // id: 바뀌는 글줄(위젯 화면 — 시험 · 화면 읽기가 번호로 찾는다)
         if (s != 0) _staticStyle[s] = (onCard ? Theme.CardBrush : Theme.BgBrush, color);
         return s;
     }
