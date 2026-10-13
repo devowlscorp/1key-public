@@ -494,6 +494,15 @@ internal static class SiteSelfTest
                 $"{wc[0].Valid},{wc[0].Color}|{wc[1].Valid}|{wc[2].Valid},{wc[2].Color}|{serc.Contains("l0.color=blue\n")}|{serc.Contains("l1.color=pink\n")}|{serc.Contains("l2.color=")}|0x{(WebIcon.LetterColor("blue") is uint bc ? ((bc & 0xFF) << 16 | (bc & 0xFF00) | (bc >> 16)) : 0):X6}",
                 "letter icon colour: a listed name is kept and written, none = default (not written), an unknown name = not runnable and kept as it was");
             LaunchStore.Items.Clear(); LaunchStore.Items.AddRange(keepItems);
+            // 고양이 보안 습관(0.5.25): 저장된 비밀번호를 바꿨나 — 로그인 양식(2)은 둘째 칸, 그 밖(문구 1 · 여러 칸 3)은 값이 있던 칸 아무거나
+            static List<ExtraInput> Mo(params string[] v) => v.Select(x => new ExtraInput(x, null)).ToList();
+            static Slot Sl(int form, string first, params string[] more) => new Slot { Form = form, Password = first, More = Mo(more) };
+            Check("PW01", "True|False|True|True|False|False|True",
+                $"{App.PasswordChanged("id", Mo("pw1"), 2, Sl(2, "id", "pw2"))}|{App.PasswordChanged("id", Mo("pw"), 2, Sl(2, "id2", "pw"))}"
+                + $"|{App.PasswordChanged("a", Mo(), 1, Sl(1, "b"))}|{App.PasswordChanged("x", Mo("y", "z"), 3, Sl(3, "x", "y", "q"))}"
+                + $"|{App.PasswordChanged("id", Mo(""), 2, Sl(2, "id", "new"))}|{App.PasswordChanged("id", Mo("pw"), 2, Sl(2, "id", "pw"))}"
+                + $"|{App.PasswordChanged("old", Mo(), 1, Sl(1, "new"))}",
+                "password-change reward: login item = its second input (password), ID-only change does not count; phrase / several inputs = any input that had a value; empty -> value and no change do not count");
             // 이미지 머리: PNG 크기·ICO 프레임 수·위치, 그 밖의 형식
             byte[] Png(uint wpx, uint hpx)
             {

@@ -259,7 +259,7 @@ internal sealed unsafe partial class App
             return;
         }
         _editDirty = false;
-        if (keep.Password.Length > 0 && e.Password.Length > 0 && e.Password != keep.Password)
+        if (PasswordChanged(keep.Password, keep.More, keep.Form, e))
             CatGrowth.AwardHabit(FlipClock.MascotLight(), CatGrowth.Habit.Password);   // 고양이 보안 습관 보상: 저장된 비밀번호를 바꿨다(하루 세 번까지)
         _quietHotkeyReport = true;
         try { ShowScreen(Screen.List); }   // 여기서 단축키가 다시 등록된다 (결과는 아래에서 한 번만 보여 준다)
@@ -267,6 +267,21 @@ internal sealed unsafe partial class App
         string report = RegisterHotkeys(silent: false);
         if (report.Length > 0) Dialog.Show(_hwnd, report, AppTitle, Native.MB_OK | Native.MB_ICONWARNING, share: "hotkeys");
         UpdateTrayTip();
+    }
+
+    /// <summary>
+    /// 저장된 비밀번호를 바꿨나(고양이 보안 습관 보상). 0.5.25(2026-10-13 사용자: 오늘 비밀번호를 두 번 바꿨는데 수첩에 없다): 예전에는 첫 칸만 봤는데,
+    /// 로그인 양식(ID · 비밀번호 두 칸)은 첫 칸이 ID 이고 비밀번호는 둘째 칸(More[0])이라 비밀번호를 바꿔도 세지 않았다. 이제 로그인 양식은 둘째 칸,
+    /// 그 밖의 양식(문구 · 여러 칸)은 원래 값이 있던 칸 가운데 하나라도 다른(빈칸이 아닌) 값으로 바뀌면. ID 만 바꾼 것은 세지 않는다.
+    /// </summary>
+    internal static bool PasswordChanged(string oldFirst, List<ExtraInput> oldMore, int oldForm, Slot e)
+    {
+        static bool Changed(string before, string after) => before.Length > 0 && after.Length > 0 && before != after;
+        if (e.Form == FormLogin && oldForm == FormLogin && e.More.Count == 1 && oldMore.Count == 1) return Changed(oldMore[0].Value, e.More[0].Value);
+        if (Changed(oldFirst, e.Password)) return true;
+        for (int i = 0; i < Math.Min(oldMore.Count, e.More.Count); i++)
+            if (Changed(oldMore[i].Value, e.More[i].Value)) return true;
+        return false;
     }
 
     private void DeleteEdit()
