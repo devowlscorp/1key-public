@@ -24,7 +24,7 @@
   <img src="docs/images/cat/motions-light.webp" alt="앞발 인사, 야옹, 그루밍, 기지개, 벌러덩 동작" width="680">
 </picture>
 
-<img src="docs/images/taskbar-cat.png" alt="작업 표시줄 고양이와 정시 플립시계" width="420">
+<img src="docs/images/taskbar-cat.png" alt="정시 플립시계가 08:59 에서 09:00 으로 넘어가고, 작업 표시줄의 검은 고양이가 올려다봄" width="620">
 
 ### 같이 놀기
 
