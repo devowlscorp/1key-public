@@ -429,6 +429,7 @@ internal static unsafe partial class CatWidget
             var arts = new ClipArt[infos.Length];
             for (int i = 0; i < infos.Length; i++)
                 if ((arts[i] = PrepareClip(infos[i], k, gen)!) is null) { arts = null!; break; }
+            if (name == "fall" && Program.TestFails("cat:fall-prepare")) arts = null!;   // 시험(catdrag CD08): 떨어지기 그림 준비 실패 — 공중에 멈추지 않고 바로 앉는지
             _ready = arts;
             Native.PostMessageW(hwnd, WM_CLIPREADY, gen, 0);
         });
@@ -527,7 +528,7 @@ internal static unsafe partial class CatWidget
         long t0 = Stopwatch.GetTimestamp();
         NoteTickTiming();
         if (!_clipOn || _arts.Length == 0) { StopTicks(); return; }
-        if ((_clipFrame & 3) == 0) HoverTick(Environment.TickCount64);   // 동작 중에도 이름표(네 걸음마다)
+        if ((_clipFrame & 3) == 0) { OwnCoverTick(); HoverTick(Environment.TickCount64); }   // 동작 중에도 1Key 창 겹침 · 이름표(네 걸음마다)
         _clipFrame++;
         if (_clipFrame >= _steps.Length) { EndClip(); LogTick(t0, "S"); return; }
         HuntTick(_clipFrame);   // 사냥: 누름 · 떠남에 따라 남은 걸음을 바꾸고, 잡는 장이면 하트(CatHunt.cs)

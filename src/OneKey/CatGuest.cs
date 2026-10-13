@@ -265,15 +265,21 @@ internal static unsafe partial class CatWidget
         double ox = px - wx, oy = py - wy;   // 창 안 가운데
         var o = new Span<uint>((void*)_gBits, _gWin * _gWin);
         o.Clear();
-        // 누름 자리: 그림 둘레 원(알파 1/255 — 거의 안 보이지만 누를 수 있다). 떠나거나 잡힐 때는 없다
-        if (_gPhase is GuestPhase.Enter or GuestPhase.Idle)
+        // 누름 자리 + 반짝임(0.5.25, 2026-10-13 사용자: 눌러야 한다는 걸 알 수 없다): 누를 수 있는 동안(들어오는 중 · 쉬는 중) 둘레에 따뜻한 빛무리가
+        // 1.2초 주기로 밝아졌다 흐려지고(가운데가 진하고 가장자리로 옅게), 반짝이 셋이 천천히 돈다. 빛무리의 알파는 1 이상이라 누름 자리도 겸한다
+        bool canClick = _gPhase is GuestPhase.Enter or GuestPhase.Idle;
+        double hr = Math.Max(S * 0.62, 15 * k);
+        if (canClick)
         {
-            double r = Math.Max(S * 0.62, 15 * k), r2 = r * r;
+            double r2 = hr * hr, pulse = 0.55 + 0.45 * Math.Sin(t / 1200.0 * Math.PI * 2);
             for (int y = 0; y < _gWin; y++)
                 for (int x = 0; x < _gWin; x++)
                 {
-                    double ddx = x + 0.5 - ox, ddy = y + 0.5 - oy;
-                    if (ddx * ddx + ddy * ddy <= r2) o[y * _gWin + x] = 0x01000000;
+                    double ddx = x + 0.5 - ox, ddy = y + 0.5 - oy, d2 = ddx * ddx + ddy * ddy;
+                    if (d2 > r2) continue;
+                    double f = 1 - Math.Sqrt(d2) / hr;
+                    uint A = (uint)Math.Max(1, Math.Round(f * f * 110 * pulse));
+                    o[y * _gWin + x] = (A << 24) | ((255 * A / 255) << 16) | ((236 * A / 255) << 8) | (170 * A / 255);
                 }
         }
         // 그림: 거꾸로 따라가기(창 픽셀 → 그림 칸 좌표) + 쌍선형
@@ -293,6 +299,12 @@ internal static unsafe partial class CatWidget
                     uint d = o[y * _gWin + x], ca = c >> 24;
                     o[y * _gWin + x] = ca >= 255 ? c : GOver(c, d);
                 }
+        if (canClick)   // 반짝이 셋(빛무리 가장자리를 천천히 돈다)
+            for (int i = 0; i < 3; i++)
+            {
+                double ang = t / 900.0 + i * Math.PI * 2 / 3, tw = 0.5 + 0.5 * Math.Sin(t / 300.0 + i * 2.1);
+                GDot(o, _gWin, ox + Math.Cos(ang) * hr * 0.85, oy + Math.Sin(ang) * hr * 0.85, Math.Max(0.8, S * 0.05) * (0.6 + 0.6 * tw), 0xFFF6C8, tw);
+            }
         if (popU >= 0)   // 터진 물방울 일곱: 테두리에서 바깥으로 튀며 옅어진다
             for (int i = 0; i < 7; i++)
             {

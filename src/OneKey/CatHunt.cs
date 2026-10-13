@@ -119,6 +119,8 @@ internal static unsafe partial class CatWidget
         double hover = fly ? Math.Max(size * 0.9, ground - pawTop - size * 0.1) : bub ? Math.Max(size * 0.6, ground - pawFront) : 0;
         if (!GuestShow(_huntKind, _huntGuestX, ground, size, dir, hover, OnGuestClick)) { LogLine("guest show failed"); return; }
         _huntGuestAt = Environment.TickCount64;
+        // 0.5.25(2026-10-13 사용자: 눌러야 한다는 걸 알 수 없다): 나타나면 놀잇감 바로 위에 한 줄 — 누르면 같이 논다(+5)
+        if (!CatMenu.IsOpen) { CatHearts.Show((int)Math.Round(_huntGuestX), (int)Math.Round(ground - hover - size * 1.1), _work, _dpi, !_light, -1, false, "", T.CatToyHint); LogLine("toy hint"); }
     }
 
     /// <summary>덮치기 j 번째 장: 앞으로 간 몫(0..1, 웅크림에서 두 장 뒤 땅을 차고 누르는 장 land 에 닿는다)과 올린 높이(px — 나비는 높이 뛴다).</summary>

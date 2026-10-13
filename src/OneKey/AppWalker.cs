@@ -71,8 +71,9 @@ internal sealed unsafe partial class App
             items.Add(new(0, ""));
             // 아래 버튼(0.5.18-B, 사용자: 짧게 — 열기 · 잠금 · 설정 · 숨기기, 2×2). 잠겨 있으면 열기(잠금 위젯) · 숨기기
             // 0.5.21-G(사용자: 아이콘으로 바꾸고 올리면 설명 — 한 줄로): Segoe Fluent Icons — 열기 OpenInNewWindow · 잠금 Lock · 설정 Settings · 숨기기 Hide
-            items.Add(new(IdCatOpen, T.CatMenuOpen, Icon: ""));
-            if (!lockedNow)
+            bool modal = ModalUp;   // 확인 상자가 떠 있으면 열기 · 설정은 빼고(그 상자를 우회하지 않게 — 0.5.25 Codex D24-1)
+            if (!modal) items.Add(new(IdCatOpen, T.CatMenuOpen, Icon: ""));
+            if (!lockedNow && !modal)
             {
                 if (_cfg.HasMaster) items.Add(new(IdCatLock, T.CatMenuLock, Icon: ""));
                 items.Add(new(IdCatSettings, T.CatMenuSettings, Icon: ""));
@@ -107,8 +108,18 @@ internal sealed unsafe partial class App
         finally { Native.DestroyMenu(menu); }
     }
 
+    /// <summary>본창이 상자(Dialog 등 모달)로 막혀 있다.</summary>
+    private bool ModalUp => _hwnd != 0 && !Native.IsWindowEnabled(_hwnd);
+    private void BringModalForward()
+    {
+        nint pop = GetLastActivePopup(_hwnd);
+        if (pop != 0 && pop != _hwnd) Native.SetForegroundWindow(pop);
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetLastActivePopup(nint hWnd);
+
     private void OnWalkerCommand(int cmd, int gen)
     {
+        if (ModalUp && cmd is IdCatOpen or IdCatSettings) { BringModalForward(); return; }
         if (Program.IsTestMode) Native.SetPropW(_hwnd, "OneKeyTestCatMenu", cmd);
         switch (cmd)
         {
@@ -183,7 +194,8 @@ internal sealed unsafe partial class App
     private void OnWalkerClick(int gen, bool fromMenu = false)
     {
         // 메뉴에서 고른 [열기]는 고양이 클릭 검사를 다시 하지 않는다(메뉴 판이 닫힌 직후에는 앞 창이 없어 EnvOk 가 숨김으로 본다)
-        if (!WalkerWanted || (!fromMenu && !CatWidget.AcceptClick(gen))) return;   // 그사이 잠김·끔·창이 보임·다시 보임(낡은 클릭)·환경 부적합이면 무시(Codex R83-2)
+        if (!WalkerWanted || (!fromMenu && !CatWidget.AcceptClick(gen))) return;   // 그사이 잠김·끔·창이 보임·다시 보임(낡은 클릭)·환경 부적합
+        if (ModalUp) { BringModalForward(); return; }   // 0.5.25(Codex D24-1): 확인 상자가 떠 있으면 새 본창 동작 대신 그 상자를 앞으로이면 무시(Codex R83-2)
         bool locked = LockedWalker;
         _lockedWalker = false;
         ShowMainWindow();   // 잠겨 있으면 잠금 위젯(ShowMainWindow → ShowLockWidget)

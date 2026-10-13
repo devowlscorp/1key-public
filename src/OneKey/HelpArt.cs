@@ -20,7 +20,7 @@ internal static unsafe class HelpArt
     public const string ClassName = "OneKeyHelpArt";
     public const int Height = 36;
     private const int AlbumCell = 84, AlbumCap = 18, AlbumGap = 8, AlbumCols = 4, StagesH = 48;
-    private const int MisSlot = 38, MisCap = 34, MisCols = 5, MisColW = 72, MisRowGap = 6;
+    private const int MisSlot = 38, MisCap = 51, MisCols = 5, MisColW = 72, MisRowGap = 6;   // MisCap: 이름 두 줄 + 점수 줄(0.5.25 — 예전 34 = 이름 한 줄 + 점수)
 
     /// <summary>그림 줄의 높이(논리 px): 앨범은 칸 줄 수만큼, 단계 줄은 48, 나머지는 36.</summary>
     public static int HeightFor(string spec)
@@ -60,7 +60,7 @@ internal static unsafe class HelpArt
             "mark" => "",
             "stages" => "",
             "album" => string.Join(", ", items.Where(s => s.EndsWith("=1")).Select(s => CatGrowth.AlbumName(s.Split('=')[0]))),
-            "missions" => string.Join(", ", items.Select(s => { var kv = s.Split('='); return Mission(kv[0]).Name + " " + (kv.Length > 1 && kv[1].Contains('/') ? kv[1] : kv.Length > 1 && kv[1] == "1" ? "✓" : "○"); })),
+            "missions" => string.Join(", ", items.Select(s => { var kv = s.Split('='); return Mission(kv[0]).Name.Replace('\n', ' ') + " " + (kv.Length > 1 && kv[1].Contains('/') ? kv[1] : kv.Length > 1 && kv[1] == "1" ? "✓" : "○"); })),
             _ => string.Join(", ", items.Select(s => s.TrimStart('*'))),
         };
         nint c;
@@ -181,10 +181,14 @@ internal static unsafe class HelpArt
                             int dot = Math.Max(3, S(4)), dg = S(3), dw = need * dot + (need - 1) * dg, dx = sx + (slot - dw) / 2, dy = cy + slot - dot - S(5);
                             for (int j = 0; j < need; j++) Gdiplus.FillEllipse(dc, dx + j * (dot + dg), dy, dot, dot, j < got ? (done ? 0xFFFFFFu : pink) : Theme.FieldBorder);
                         }
-                        int ly = cy + slot + S(1), lh = cap / 2;
-                        Ctl.Text(dc, Theme.FontSmall, m.Name, done ? Theme.ControlText : Theme.SecondaryText, cx, ly, cx + colW, ly + lh, Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
+                        // 0.5.25(2026-10-13 사용자: 이름이 불명확 — "내 항목 비밀번호"): 이름은 두 줄까지(\n), 그 아래 점수 줄. 한 줄 이름은 두 줄 자리의 가운데
+                        int ly = cy + slot + S(1), lh = cap / 3;
+                        string[] nameLines = m.Name.Split('\n');
+                        int nameTop = nameLines.Length >= 2 ? ly : ly + lh / 2;
+                        for (int nl = 0; nl < Math.Min(2, nameLines.Length); nl++)
+                            Ctl.Text(dc, Theme.FontSmall, nameLines[nl], done ? Theme.ControlText : Theme.SecondaryText, cx, nameTop + lh * nl, cx + colW, nameTop + lh * (nl + 1), Native.DT_CENTER | Native.DT_VCENTER | Native.DT_END_ELLIPSIS);
                         string sub = need > 1 ? $"{got}/{need}" : done ? "\u2713 +" + m.Points : "+" + m.Points;
-                        Ctl.Text(dc, Theme.FontSmall, sub, done ? pink : Theme.SecondaryText, cx, ly + lh, cx + colW, ly + 2 * lh, Native.DT_CENTER | Native.DT_VCENTER);
+                        Ctl.Text(dc, Theme.FontSmall, sub, done ? pink : Theme.SecondaryText, cx, ly + 2 * lh, cx + colW, ly + 3 * lh, Native.DT_CENTER | Native.DT_VCENTER);
                     }
                     return;
                 }

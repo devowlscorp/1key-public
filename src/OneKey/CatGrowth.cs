@@ -232,6 +232,7 @@ internal static class CatGrowth
         Save();
     }
     private static int _home = -1;
+    private static bool? _lastLight;   // 지난 점검 때의 테마(밝음 = 흰 고양이)
 
     /// <summary>켜져 있던 시간만큼 줄인다(지금 테마의 고양이만).</summary>
     public static void Tick() => Update();
@@ -246,7 +247,10 @@ internal static class CatGrowth
         bool changed = false;
         // 0.5.24(2026-10-13 사용자): 지금 테마의 고양이만 줄어든다 — 테마를 바꿔 안 보이는 고양이는 그 점수 그대로 기다린다(예전에는 두 마리가 같이 줄어
         // 하루쯤 다른 테마로 쓰면 키운 고양이가 콩떡으로 돌아가 "바꾸면 처음부터"처럼 보였다)
-        var cur = Of(FlipClock.MascotLight());
+        // 지난 점검 뒤의 시간은 그때 테마였던 고양이 몫(0.5.25, Codex 4): 테마를 바꾼 직후의 첫 점검이 그 시간을 새 고양이에게 넘기지 않게
+        bool lightNow = FlipClock.MascotLight();
+        var cur = Of(_lastLight ?? lightNow);
+        _lastLight = lightNow;
         foreach (var c in _cats)
         {
             if (c != cur) continue;

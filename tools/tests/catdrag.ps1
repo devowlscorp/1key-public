@@ -1,22 +1,32 @@
 # Cat stays while the 1Key window is open, click opens 1Key, drag moves it, a high drop falls and lands, the spot is remembered;
-# only the cat of the current theme loses points (0.5.24, user 2026-10-13).
+# only the cat of the current theme loses points (0.5.24, user 2026-10-13); 0.5.25: Codex D24-1..3 (own windows first, clock vs drag,
+# fall failure, real mouse safety).
 # CD00 environment: taskbar at the bottom, cat shown after closing the window, at the default home (right end)
-# CD01 the 1Key window shown (tray click): the cat stays shown
-# CD02 a plain click on the cat (real mouse, no move) opens the 1Key window; the cat stays; the name / stage / hearts label shows (0.5.25)
-# CD03 drag up-left and let go high: the cat falls (log: drag start, drop, fallplan, clipstart fall) and ends at the drop x; the click did not open 1Key
+# CD01 the 1Key window shown (tray click, away from the cat): the cat stays shown
+# CD02 a plain click on the cat (real mouse, no move) opens the 1Key window; the cat stays; the name / stage / hearts label shows
+# CD03 drag up-left and let go high: the cat falls (log: drag start, drop, fallplan, clipstart fall) and ends at the drop x; no 1Key window
 # CD04 drag a little along the taskbar and let go low: no fall, the cat sits at the new x at once
 # CD05 the cat record keeps the spot (P line) and a new 1Key run shows the cat there
-# CD06 points fade only for the cat of the current theme (light theme, fast fade: the light cat drops, the dark cat keeps its points)
-# Real mouse input: before every press the window under the cursor must be the test cat (otherwise it stops - nothing else is clicked).
+# CD06 points fade only for the cat of the current theme: light run - the light cat drops, the dark cat keeps 60; then a dark run -
+#      the dark cat loses only its own few seconds, the light cat keeps its points
+# CD07 hourly clock showing (test clock): drag high closes the clock and the cat still falls and lands
+# CD08 the fall pictures fail to prepare (injected): the cat does not hang in the air - it sits at the drop x on the ground
+# CD09 a 1Key window over the cat: the cat hides while they overlap (OneKeyTestCatDucked) and comes back when the window moves away
+# CD10 a 1Key box (help) is open: clicking the cat brings the box forward and does not start anything in the 1Key window
+# REAL MOUSE (lib\RealMouse.ps1): runs only with -RealMouseApproved (the runner passes it only with its own -RealMouseApproved).
+# Never starts while a button is down, always releases what it pressed, stops when the cursor is moved by someone else or the capture
+# is not on the test cat, and presses only when the window under the real cursor is the test cat.
 # Own config folder and instance suffix; the real 1Key is not touched. Run it while nobody uses the PC.
-#   powershell -ExecutionPolicy Bypass -File tools\tests\catdrag.ps1 [-Exe <1Key.exe>]
+#   powershell -ExecutionPolicy Bypass -File tools\tests\catdrag.ps1 [-Exe <1Key.exe>] -RealMouseApproved
 # ASCII only.
-param([string]$Exe = "")
+param([string]$Exe = "", [switch]$RealMouseApproved)
 $ErrorActionPreference = "Continue"
 Add-Type -AssemblyName System.Windows.Forms
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-$ids = @(); 0..6 | ForEach-Object { $ids += "CD{0:D2}" -f $_ }
+$ids = @(); 0..10 | ForEach-Object { $ids += "CD{0:D2}" -f $_ }
 Start-Checks -Required $ids
+if (-not $RealMouseApproved) { Add-Failure "not run: real mouse test - needs -RealMouseApproved (PC unused, user approval)"; Complete-Checks; exit 2 }
+. (Join-Path $PSScriptRoot "lib\RealMouse.ps1")
 
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
 New-Item -ItemType Directory -Force $sp | Out-Null
@@ -38,20 +48,25 @@ public class CDU {
   [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr GetPropW(IntPtr h, string name);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [StructLayout(LayoutKind.Sequential)] public struct PT { public int X, Y; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out PT p);
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(PT p);
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint f);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint f, int x, int y, uint d, UIntPtr e);
+  [StructLayout(LayoutKind.Sequential)] public struct GTI { public int cbSize, flags; public IntPtr active, focus, capture, menuOwner, moveSize, caret; public int l, t, r, b; }
+  [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint tid, ref GTI g);
   [StructLayout(LayoutKind.Sequential)] public struct ABD { public uint cbSize; public IntPtr hWnd; public uint cb, uEdge; public RECT rc; public IntPtr lParam; }
   [DllImport("shell32.dll")] public static extern UIntPtr SHAppBarMessage(uint msg, ref ABD d);
   public static string Cls(IntPtr h) { var t = new StringBuilder(256); GetClassNameW(h, t, 256); return t.ToString(); }
   public static IntPtr Find(uint pid, string cls, bool vis) { IntPtr f = IntPtr.Zero; EnumWindows((h,l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && Cls(h) == cls && (!vis || IsWindowVisible(h))) { f = h; return false; } return true; }, IntPtr.Zero); return f; }
-  public static bool Under(int x, int y, IntPtr want) { var p = new PT { X = x, Y = y }; IntPtr h = WindowFromPoint(p); return h != IntPtr.Zero && GetAncestor(h, 2) == want; }
+  public static bool UnderCursor(IntPtr want) { PT p; GetCursorPos(out p); IntPtr h = WindowFromPoint(p); return h != IntPtr.Zero && GetAncestor(h, 2) == want; }
+  public static bool HasCapture(IntPtr w) { uint pid; uint tid = GetWindowThreadProcessId(w, out pid); var g = new GTI(); g.cbSize = Marshal.SizeOf(typeof(GTI)); return GetGUIThreadInfo(tid, ref g) && g.capture == w; }
+  public static IntPtr Under(int x, int y) { var p = new PT { X = x, Y = y }; IntPtr h = WindowFromPoint(p); return h == IntPtr.Zero ? h : GetAncestor(h, 2); }
 }
 '@
 function Start1Key() {
@@ -70,51 +85,38 @@ function CatShown() { (Prop 'OneKeyTestWalker') -eq 1 -and (CatWnd) -ne [IntPtr]
 function MainShown() { [CDU]::IsWindowVisible($m) }
 function CloseMain() { [void][CDU]::PostMessageW($m, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero); Start-Sleep -Milliseconds 800 }   # WM_CLOSE -> tray
 function ShowMain() { [void][CDU]::PostMessageW($m, 0x8001, [IntPtr]::Zero, [IntPtr]0x0202); Start-Sleep -Milliseconds 900 }   # tray icon left click
+# keep the 1Key window in the top-left corner, away from the cat (and away from the cat's drop spots)
+function ParkMain() { $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; [void][CDU]::SetWindowPos($m, [IntPtr]::Zero, $wa.Left + 10, $wa.Top + 10, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010) }
 function WaitShown([int]$ms = 6000) { $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt $ms) { if (CatShown) { return $true }; Start-Sleep -Milliseconds 100 }; $false }
-# a point on the cat's body: the window centre at 55 % height, retried until the cat window is what is under it (a layered window lets
-# clicks through its transparent pixels - during a motion the window is bigger)
-function CatCenter() {
+# a point on the cat's body (the window centre at 55 % height) that the cat window itself answers to
+function CatPoint() {
   for ($k = 0; $k -lt 12; $k++) {
     $w = CatWnd
     if ($w -ne [IntPtr]::Zero) {
       $r = New-Object CDU+RECT; [void][CDU]::GetWindowRect($w, [ref]$r)
       $x = [int](($r.L + $r.R) / 2); $y = [int]($r.T + ($r.B - $r.T) * 0.55)
-      if ([CDU]::Under($x, $y, $w)) { return @($x, $y, $w) }
+      if ([CDU]::Under($x, $y) -eq $w) { return @($x, $y, $w) }
     }
     Start-Sleep -Milliseconds 400
   }
   $null
 }
-# (not "Move" - that is a PowerShell alias of Move-Item and silently wins over a function of the same name)
-function Set-TestCursor($x, $y) { [void][CDU]::SetCursorPos($x, $y); [CDU]::mouse_event(0x0001, 0, 0, 0, [UIntPtr]::Zero) }
-# guard before any press: the REAL cursor must be at (x, y) and the window under the real cursor must be the test cat
-function Assert-OnCat($x, $y, $w) {
-  $cp = New-Object CDU+PT; [void][CDU]::GetCursorPos([ref]$cp)
-  if ([Math]::Abs($cp.X - $x) -gt 1 -or [Math]::Abs($cp.Y - $y) -gt 1) { throw "the cursor is at $($cp.X),$($cp.Y), not on the cat at $x,$y - stopped before pressing" }
-  if (-not [CDU]::Under($cp.X, $cp.Y, $w)) { throw "the window under the cursor is not the test cat - stopped before pressing" }
-}
-# press on the cat (guarded), move to (tx, ty) in steps, let go
 function DragTo($tx, $ty, [int]$steps = 16) {
-  $c = CatCenter; if (-not $c) { throw "no cat to press" }
-  Set-TestCursor $c[0] $c[1]; Start-Sleep -Milliseconds 120
-  Assert-OnCat $c[0] $c[1] $c[2]
-  [CDU]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 80
-  for ($i = 1; $i -le $steps; $i++) { Set-TestCursor ([int]($c[0] + ($tx - $c[0]) * $i / $steps)) ([int]($c[1] + ($ty - $c[1]) * $i / $steps)); Start-Sleep -Milliseconds 30 }
-  Start-Sleep -Milliseconds 150
-  [CDU]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-  $c
+  $c = CatPoint; if (-not $c) { throw "no cat to press" }
+  $w = $c[2]; $proc = $script:p
+  Invoke-RmDrag $c[0] $c[1] $tx $ty $steps { [CDU]::UnderCursor($w) }.GetNewClosure() { -not $proc.HasExited -and [CDU]::HasCapture($w) }.GetNewClosure()
 }
 function ClickCat() {
-  $c = CatCenter; if (-not $c) { throw "no cat to click" }
-  Set-TestCursor $c[0] $c[1]; Start-Sleep -Milliseconds 150
-  Assert-OnCat $c[0] $c[1] $c[2]
-  [CDU]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [CDU]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  $c = CatPoint; if (-not $c) { throw "no cat to click" }
+  $w = $c[2]
+  Invoke-RmClick $c[0] $c[1] { [CDU]::UnderCursor($w) }.GetNewClosure()
 }
 function WaitX([int]$want, [int]$tol, [int]$ms) { $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt $ms) { $x = Prop 'OneKeyTestCatX'; if ([Math]::Abs($x - $want) -le $tol) { return $x }; Start-Sleep -Milliseconds 100 }; Prop 'OneKeyTestCatX' }
 function Setup1Key([bool]$fresh) {
   Start1Key
   if ($fresh) { SetText 101 $master; SetText 102 $master; Click 103 1500 } else { SetText 101 $master; Click 103 1500 }
   if (-not (Has 203)) { throw "setup: no list after the master" }
+  ParkMain
   if ($fresh) {
     Click 220
     $cur = [int][CDU]::SendMessageW([CDU]::GetDlgItem($m, 2032), 0x00F0, [IntPtr]::Zero, [IntPtr]::Zero) -eq 1
@@ -122,9 +124,11 @@ function Setup1Key([bool]$fresh) {
     Click 2012 900
   }
 }
+function LogText() { if (Test-Path $log) { Get-Content $log -Raw } else { "" } }
+function ScoreOf([string]$dir, [string]$k) { $l = Get-ChildItem $dir -File | ForEach-Object { Get-Content $_.FullName -ErrorAction Ignore } | Where-Object { $_ -match "^$k \d+ " } | Select-Object -First 1; if ($l) { [int]($l -split ' ')[1] } else { -1 } }
 
-$cursor0 = New-Object CDU+PT; [void][CDU]::GetCursorPos([ref]$cursor0)
 try {
+  Start-RealMouse
   Stop-TestInstances $suffix
   $env:ONEKEY_TEST = "1"; $env:ONEKEY_CONFIG_DIR = $cfg; $env:ONEKEY_INSTANCE_SUFFIX = $suffix; $env:ONEKEY_TEST_LOCKWIDGET = "0"; $env:ONEKEY_TEST_NO_AUTOLOCK = "1"
   $env:ONEKEY_TEST_CAT_LOG = $log
@@ -138,63 +142,121 @@ try {
   $x0 = Prop 'OneKeyTestCatX'
   Check CD00 "True|True|True" "$envOk|$shown0|$($x0 -gt $wa.Left + $wa.Width * 0.7)" "taskbar at the bottom, cat shown after closing the window, at the right end (x $x0)"
 
-  ShowMain
+  ShowMain; ParkMain
   $main1 = MainShown; Start-Sleep -Seconds 2
-  Check CD01 "True|True" "$main1|$(CatShown)" "1Key window shown: the cat stays"
+  Check CD01 "True|True" "$main1|$(CatShown)" "1Key window shown (away from the cat): the cat stays"
   CloseMain; Start-Sleep -Seconds 4
 
   ClickCat; Start-Sleep -Milliseconds 500
   $hearts2 = [CDU]::Find([uint32]$p.Id, "OneKeyCatHearts", $true) -ne [IntPtr]::Zero
-  Start-Sleep -Milliseconds 1000
+  ParkMain; Start-Sleep -Milliseconds 1000
   Check CD02 "True|True|True" "$(MainShown)|$(CatShown)|$hearts2" "plain click on the cat opens the 1Key window; the cat stays; the hearts label shows"
   CloseMain; Start-Sleep -Seconds 5
 
-  # CD03 drag up-left, let go high
   $w = Prop 'OneKeyTestCatW'
   $tx = [int]($wa.Left + $wa.Width * 0.45); $ty = [int]($wa.Top + $wa.Height * 0.45)
-  [void](DragTo $tx $ty)
+  DragTo $tx $ty
   $want = [Math]::Max($wa.Left, [Math]::Min($tx - [int]($w / 2), $wa.Right - $w))
   $x3 = WaitX $want 4 9000
-  $main3 = MainShown
-  Check CD03 "True|True|False" "$([Math]::Abs($x3 - $want) -le 4)|$(CatShown)|$main3" "dropped high at x ${want}: settled at x $x3, cat shown, the drag did not open 1Key"
+  Check CD03 "True|True|False" "$([Math]::Abs($x3 - $want) -le 4)|$(CatShown)|$(MainShown)" "dropped high at x ${want}: settled at x $x3, cat shown, the drag did not open 1Key"
   Start-Sleep -Seconds 1
 
-  # CD04 drag a little along the taskbar, let go low (no fall)
-  $c = CatCenter; $tx4 = $c[0] + 160; $ty4 = $c[1]
-  [void](DragTo $tx4 $ty4 8)
+  $c = CatPoint; $tx4 = $c[0] + 160; $ty4 = $c[1]
+  DragTo $tx4 $ty4 8
   $want4 = [Math]::Max($wa.Left, [Math]::Min($tx4 - [int]($w / 2), $wa.Right - $w))
   $x4 = WaitX $want4 4 1500
   Check CD04 "True|True" "$([Math]::Abs($x4 - $want4) -le 4)|$(CatShown)" "dropped low at x ${want4}: sits at x $x4 at once"
   Start-Sleep -Seconds 1
+
+  # CD09 a 1Key window over the cat hides it; moved away, the cat is back
+  ShowMain
+  $cr = New-Object CDU+RECT; $cw = CatWnd; [void][CDU]::GetWindowRect($cw, [ref]$cr)
+  [void][CDU]::SetWindowPos($m, [IntPtr]::Zero, $cr.L - 120, $cr.T - 300, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010)
+  Start-Sleep -Milliseconds 800
+  $duck = Prop 'OneKeyTestCatDucked'; $hidden = -not [CDU]::IsWindowVisible($cw)
+  ParkMain; Start-Sleep -Milliseconds 800
+  $back = Prop 'OneKeyTestCatDucked'; $vis = [CDU]::IsWindowVisible($cw)
+  Check CD09 "1|True|0|True" "$duck|$hidden|$back|$vis" "1Key window over the cat: hidden while they overlap, back when the window moves away"
+
+  # CD10 a 1Key box open: a click on the cat brings the box forward, nothing else
+  Click 250 1200   # help (a 1Key box)
+  $box = [CDU]::Find([uint32]$p.Id, "OneKeyDialog", $true)
+  if ($box -ne [IntPtr]::Zero) {
+    $wa2 = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    [void][CDU]::SetWindowPos($box, [IntPtr]::Zero, $wa2.Left + 20, $wa2.Top + 20, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010)   # away from the cat
+    Start-Sleep -Milliseconds 800
+  }
+  $disabledBefore = -not [CDU]::IsWindowEnabled($m)
+  ClickCat; Start-Sleep -Milliseconds 900
+  $fg = [CDU]::GetForegroundWindow()
+  $stillBox = $box -ne [IntPtr]::Zero -and [CDU]::IsWindowVisible($box)
+  Check CD10 "True|True|True|True" "$($box -ne [IntPtr]::Zero)|$disabledBefore|$stillBox|$($fg -eq $box)" "1Key box open: a cat click brings the box forward (foreground) and starts nothing else"
+  if ($box -ne [IntPtr]::Zero) { [void][CDU]::PostMessageW($box, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero); Start-Sleep -Milliseconds 600 }
+  CloseMain; Start-Sleep -Seconds 1
   Quit1Key; Start-Sleep -Milliseconds 600
 
-  # CD05 the spot is kept: P line, and a new run shows the cat there
   $rec = Get-ChildItem $cfg -File | Where-Object { (Get-Content $_.FullName -ErrorAction Ignore) -match '^P \d+$' } | Select-Object -First 1
   Setup1Key $false; CloseMain
   $shown5 = WaitShown; Start-Sleep -Milliseconds 800
   $x5 = Prop 'OneKeyTestCatX'
   Check CD05 "True|True|True" "$($null -ne $rec)|$shown5|$([Math]::Abs($x5 - $x4) -le 3)" "cat record has a P line ($($rec.Name)); new run shows the cat at x $x5 (was $x4)"
   Quit1Key; Start-Sleep -Milliseconds 600
+  $lt = LogText
+  "log: drag start $([regex]::Matches($lt, 'drag start').Count), drop $([regex]::Matches($lt, ' drop x ').Count), fallplan $([regex]::Matches($lt, 'fallplan').Count), clipstart fall $([regex]::Matches($lt, 'clipstart fall').Count), ducked $([regex]::Matches($lt, 'ducked under own window').Count)"
+  if (-not ($lt -match 'fallplan height \d+' -and $lt -match 'clipstart fall')) { Add-Failure "CD03 log: no fallplan / clipstart fall" }
 
-  $logText = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
-  "log: drag start $([regex]::Matches($logText, 'drag start').Count), drop $([regex]::Matches($logText, ' drop x ').Count), fallplan $([regex]::Matches($logText, 'fallplan').Count), clipstart fall $([regex]::Matches($logText, 'clipstart fall').Count)"
-  if (-not ($logText -match 'fallplan height \d+' -and $logText -match 'clipstart fall')) { Add-Failure "CD03 log: no fallplan / clipstart fall" }
+  # CD07 hourly clock showing: drag high closes it and the cat still falls
+  $cfg7 = "$root\cfg7"; New-Item -ItemType Directory $cfg7 | Out-Null; $log7 = "$root\cat7.log"
+  $env:ONEKEY_CONFIG_DIR = $cfg7; $env:ONEKEY_TEST_CAT_LOG = $log7; $env:ONEKEY_TEST_CLOCK = "1"
+  Setup1Key $true; CloseMain
+  [void](WaitShown); Start-Sleep -Milliseconds 1500
+  $clockUp = [CDU]::Find([uint32]$p.Id, "OneKeyFlipClock", $true) -ne [IntPtr]::Zero
+  $w7 = Prop 'OneKeyTestCatW'; $tx7 = [int]($wa.Left + $wa.Width * 0.5); $ty7 = [int]($wa.Top + $wa.Height * 0.4)
+  DragTo $tx7 $ty7
+  $want7 = [Math]::Max($wa.Left, [Math]::Min($tx7 - [int]($w7 / 2), $wa.Right - $w7))
+  $x7 = WaitX $want7 4 9000
+  $clockGone = [CDU]::Find([uint32]$p.Id, "OneKeyFlipClock", $true) -eq [IntPtr]::Zero
+  Quit1Key; Start-Sleep -Milliseconds 600
+  $l7 = if (Test-Path $log7) { Get-Content $log7 -Raw } else { "" }
+  Check CD07 "True|True|True|True|True" "$clockUp|$($l7 -match 'clock closed by drag')|$($l7 -match 'clipstart fall')|$clockGone|$([Math]::Abs($x7 - $want7) -le 4)" "clock showing: drag high closes it, the cat falls and sits at x $x7"
+  Remove-Item env:ONEKEY_TEST_CLOCK -ErrorAction Ignore
 
-  # CD06 fade only for the cat of the current theme
+  # CD08 fall pictures fail to prepare: no hanging in the air
+  $cfg8 = "$root\cfg8"; New-Item -ItemType Directory $cfg8 | Out-Null; $log8 = "$root\cat8.log"
+  $env:ONEKEY_CONFIG_DIR = $cfg8; $env:ONEKEY_TEST_CAT_LOG = $log8; $env:ONEKEY_TEST_FAIL = "cat:fall-prepare"
+  Setup1Key $true; CloseMain
+  [void](WaitShown); Start-Sleep -Seconds 3
+  $w8 = Prop 'OneKeyTestCatW'; $tx8 = [int]($wa.Left + $wa.Width * 0.4); $ty8 = [int]($wa.Top + $wa.Height * 0.4)
+  DragTo $tx8 $ty8
+  $want8 = [Math]::Max($wa.Left, [Math]::Min($tx8 - [int]($w8 / 2), $wa.Right - $w8))
+  Start-Sleep -Milliseconds 1500
+  $cr8 = New-Object CDU+RECT; [void][CDU]::GetWindowRect((CatWnd), [ref]$cr8)
+  $onGround = $cr8.B -ge $wa.Bottom - 2
+  $x8 = Prop 'OneKeyTestCatX'
+  Quit1Key; Start-Sleep -Milliseconds 600
+  $l8 = if (Test-Path $log8) { Get-Content $log8 -Raw } else { "" }
+  Check CD08 "True|True|False|True" "$($l8 -match 'fallplan')|$onGround|$($l8 -match 'clipstart fall')|$([Math]::Abs($x8 - $want8) -le 4)" "fall pictures fail: sits on the ground at once (bottom $($cr8.B), work bottom $($wa.Bottom)), x $x8"
+  Remove-Item env:ONEKEY_TEST_FAIL -ErrorAction Ignore
+
+  # CD06 fade only for the cat of the current theme, light run then dark run
   $cfg6 = "$root\cfg6"; New-Item -ItemType Directory $cfg6 | Out-Null
-  $env:ONEKEY_CONFIG_DIR = $cfg6; $env:ONEKEY_TEST_THEME = "light"; $env:ONEKEY_TEST_CAT_SCORE = "60"; $env:ONEKEY_TEST_CAT_DECAY_MS = "400"
+  $env:ONEKEY_CONFIG_DIR = $cfg6; $env:ONEKEY_TEST_CAT_LOG = "$root\cat6.log"; $env:ONEKEY_TEST_THEME = "light"; $env:ONEKEY_TEST_CAT_SCORE = "60"; $env:ONEKEY_TEST_CAT_DECAY_MS = "400"
   Setup1Key $true; CloseMain
   [void](WaitShown); Start-Sleep -Seconds 7
   Quit1Key; Start-Sleep -Milliseconds 600
-  $lines = Get-ChildItem $cfg6 -File | ForEach-Object { Get-Content $_.FullName -ErrorAction Ignore } | Where-Object { $_ -match '^[LD] \d+ ' }
-  $L = ($lines | Where-Object { $_ -match '^L ' } | Select-Object -First 1); $D = ($lines | Where-Object { $_ -match '^D ' } | Select-Object -First 1)
-  $ls = if ($L) { [int]($L -split ' ')[1] } else { -1 }; $ds = if ($D) { [int]($D -split ' ')[1] } else { -1 }
-  Check CD06 "True|60" "$($ls -ge 0 -and $ls -lt 60)|$ds" "light theme, 1 point per 0.4 s: light cat $ls (below 60), dark cat $ds (kept)"
+  $l1 = ScoreOf $cfg6 'L'; $d1 = ScoreOf $cfg6 'D'
+  Remove-Item env:ONEKEY_TEST_CAT_SCORE -ErrorAction Ignore
+  $env:ONEKEY_TEST_THEME = "dark"
+  Setup1Key $false; CloseMain
+  [void](WaitShown); Start-Sleep -Seconds 3
+  Quit1Key; Start-Sleep -Milliseconds 600
+  $l2 = ScoreOf $cfg6 'L'; $d2 = ScoreOf $cfg6 'D'
+  Check CD06 "True|60|True|True" "$($l1 -ge 0 -and $l1 -lt 60)|$d1|$($l2 -eq $l1)|$($d2 -lt 60 -and $d2 -ge 60 - 35)" "light run: light $l1 (below 60), dark $d1; dark run: light $l2 (kept), dark $d2 (only its own few seconds)"
 } catch { Add-Failure ("exception: " + $_) }
 finally {
+  Stop-RealMouse
   Quit1Key; Stop-TestInstances $suffix
-  [void][CDU]::SetCursorPos($cursor0.X, $cursor0.Y)
-  foreach ($v in "ONEKEY_TEST_CAT_LOG", "ONEKEY_TEST_LOCKWIDGET", "ONEKEY_TEST_NO_AUTOLOCK", "ONEKEY_TEST_THEME", "ONEKEY_TEST_CAT_SCORE", "ONEKEY_TEST_CAT_DECAY_MS") { Remove-Item "env:$v" -ErrorAction Ignore }
+  foreach ($v in "ONEKEY_TEST_CAT_LOG", "ONEKEY_TEST_LOCKWIDGET", "ONEKEY_TEST_NO_AUTOLOCK", "ONEKEY_TEST_THEME", "ONEKEY_TEST_CAT_SCORE", "ONEKEY_TEST_CAT_DECAY_MS", "ONEKEY_TEST_CLOCK", "ONEKEY_TEST_FAIL") { Remove-Item "env:$v" -ErrorAction Ignore }
   "log kept: $log"
 }
 Complete-Checks

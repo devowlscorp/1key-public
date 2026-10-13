@@ -150,6 +150,7 @@ internal static unsafe partial class CatWidget
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
         }
         _shown = false;
+        _ducked = false;   // 다시 보일 때 겹침을 처음부터 본다(OwnCoverTick)
         SetProps();
     }
 
@@ -640,6 +641,7 @@ internal static unsafe partial class CatWidget
     private static void Tick()
     {
         if (!_shown) return;
+        OwnCoverTick();
         HoverTick(Environment.TickCount64);   // 마우스를 올리면 이름표 — 동작 중에도(ClipTick 도 부른다)
         if (_clipOn || _clipLoading) return;   // 동작 중에는 시선·환경 점검을 쉰다(틱 스레드가 그린다, CatClips.cs)
         long now = Environment.TickCount64;
@@ -651,6 +653,7 @@ internal static unsafe partial class CatWidget
                 || work.right != _work.right || FlipClock.MascotLight() != _light;
             if (redo) { Evaluate(); return; }
             CatGrowth.Tick();
+            if (_pressed || _dragOn || _holdAir) return;   // 0.5.25(Codex D24-2): 누르고 있는 동안 · 끄는 중 · 떨어지기 준비 중에는 새 하트 · 도장 · 쉬자 · 커지기를 미룬다
             if (CatMenu.IsOpen) { KeepOnTop(); return; }   // 메뉴 판이 열려 있는 동안은 하트·쉬자·커지기를 미룬다(판 위에 겹치지 않게)
             if (BreakTick(now)) return;
             // 처음 말풍선(0.5.20, 2026-10-10 사용자: 사용자는 이걸 어떻게 아나): 아직 오른쪽 클릭을 해 보지 않았으면 하루 한 번, 서로 다른 날 세 번까지
@@ -674,7 +677,7 @@ internal static unsafe partial class CatWidget
             if (CatGrowth.Scale(_light, HasInteractArt(_light)) != _scale) { ApplyGrowth(); return; }
             KeepOnTop();
         }
-        if (_pressed) return;
+        if (_pressed || _dragOn || _holdAir) return;
         var dt = DateTime.Now;
         if (_clock == ClockPhase.None && ClockDue(dt)) { if (_peekOn) EndPeek(); StartClock(dt); }
         if (_clock != ClockPhase.None) ClockTick(now, dt);
@@ -765,6 +768,49 @@ internal static unsafe partial class CatWidget
         if (_hwnd != 0 && Native.GetCapture() == _hwnd) Native.ReleaseCapture();
     }
 
+    // ------------------------------------------------------------------ 1Key 창과 겹치면 잠깐 숨기(0.5.25, Codex D24-1)
+    // 고양이는 항상 위(TOPMOST)라, 본창이 열려 있어도 보이게 한 뒤(0.5.24)로는 1Key 자신의 본창 · 확인 상자 · 입력 칩 · 잠금 위젯의 단추나 입력칸을
+    // 고양이 몸이 가릴 수 있었다(몸 픽셀은 누름을 가로챈다). 그런 창이 고양이 사각형과 실제로 겹치는 동안만 고양이 창을 숨기고(동작 · 자리는 그대로),
+    // 겹침이 풀리면 다시 보인다. 끄는 중에는 하지 않는다. 알림(토스트) · 흐림 막 · 고양이 자신의 창들은 보지 않는다.
+    private static bool _ducked;
+    private static Native.RECT _coverCat;
+    private static bool _coverHit;
+
+    private static void OwnCoverTick()
+    {
+        if (_hwnd == 0 || !_shown || _dragOn) return;
+        bool hit = false;
+        if (Native.GetWindowRect(_hwnd, out _coverCat) && _coverCat.right > _coverCat.left)
+        {
+            _coverHit = false;
+            EnumThreadWindows(GetCurrentThreadId(), &CoverProc, 0);
+            hit = _coverHit;
+        }
+        if (hit == _ducked) return;
+        _ducked = hit;
+        if (hit) { CatHearts.Close(); Native.ShowWindow(_hwnd, Native.SW_HIDE); }
+        else { Native.ShowWindow(_hwnd, 4 /* SW_SHOWNOACTIVATE */); KeepOnTop(); }
+        LogLine(hit ? "ducked under own window" : "back from own window");
+        if (Program.IsTestMode) Native.SetPropW(_owner, "OneKeyTestCatDucked", hit ? 1 : 0);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+    private static int CoverProc(nint h, nint l)
+    {
+        try
+        {
+            if (h == _hwnd || !Native.IsWindowVisible(h)) return 1;
+            string cls = Native.GetClassName(h);
+            bool mine = cls.StartsWith("OneKeyMainWindow", StringComparison.Ordinal) || cls is Dialog.ClassName or Chip.ClassName or LockWidget.ClassName or LockWidget.InputClass;
+            if (!mine || !Native.GetWindowRect(h, out Native.RECT r)) return 1;
+            if (r.left < _coverCat.right && r.right > _coverCat.left && r.top < _coverCat.bottom && r.bottom > _coverCat.top) { _coverHit = true; return 0; }
+        }
+        catch { }
+        return 1;
+    }
+    [DllImport("user32.dll")] private static extern bool EnumThreadWindows(uint threadId, delegate* unmanaged[Stdcall]<nint, nint, int> proc, nint lParam);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
     // ------------------------------------------------------------------ 끌어 옮기기(0.5.24, 2026-10-13 사용자)
     // 누른 채 조금(Windows 끌기 거리 이상) 움직이면 끌기: 하던 동작 · 메뉴 · 하트를 접고 고양이가 손을 따라온다(목덜미를 잡힌 듯 — 커서가 머리 위쪽).
     // 놓으면 그 자리 아래 작업 표시줄로 떨어져 착지하고(높이 놓았으면 — 사냥 점프의 공중 · 착지 장을 빌려 씀), 그 자리가 새 집이 된다(다음에 켜도 —
@@ -785,6 +831,9 @@ internal static unsafe partial class CatWidget
         if (CatMenu.IsOpen) CatMenu.Close();
         CatHearts.Close();
         StopClip();
+        // 0.5.25(Codex D24-2): 정시 시계가 떠 있으면 닫는다 — 끌기를 앞세운다(그 시각은 이미 보인 것으로 쳐서 다시 띄우지 않는다). 예전에는 시계가 남아
+        // 그 자리에 떠 있었고, 높이 놓아도 OnClipReady 가 시계 중이라 떨어지기를 거절했다
+        if (_clock != ClockPhase.None) { FlipClock.Hide(); _clock = ClockPhase.None; LogLine("clock closed by drag"); }
         _hoverStart = 0; _hoverShown = false;
         _dragOn = true; _holdAir = false;
         _from = _gaze = Center; _pending = -1; _seq = Array.Empty<int>();
@@ -800,6 +849,19 @@ internal static unsafe partial class CatWidget
         _dragY = Math.Clamp(p.y - (int)Math.Round(_h * 0.2), _work.top, GroundY);
         Render();
     }
+
+    /// <summary>
+    /// 잡기를 잃었다(다른 창 · 상자가 가져감 — 사용자가 놓은 것이 아님, 0.5.25 Codex D24-2): 새 집으로 삼지 않고 원래 자리(집 · 걷던 자리)에 그대로 앉는다.
+    /// </summary>
+    private static void CancelDrag()
+    {
+        _dragOn = false;
+        LogLine("drag cancel");
+        Render();
+        _nextClipAt = Math.Max(_nextClipAt, Environment.TickCount64 + 1500);
+        SetProps();
+    }
+    private static bool _dropping;   // WM_LBUTTONUP 에서 ReleaseCapture 하는 동안(그때 오는 WM_CAPTURECHANGED 는 취소가 아니다)
 
     /// <summary>놓았다: 그 자리가 새 집. 높이 놓았으면 떨어져 착지한다(그림이 준비될 때까지는 놓은 자리에 그대로).</summary>
     private static void EndDrag()
@@ -1012,7 +1074,7 @@ internal static unsafe partial class CatWidget
                     int x = (short)(lParam & 0xFFFF), y = (short)((lParam >> 16) & 0xFFFF);
                     bool inside = x >= 0 && y >= 0 && x < CurW && y < CurH;
                     _pressed = false;
-                    if (_dragOn) { if (Native.GetCapture() == hwnd) Native.ReleaseCapture(); if (_dragOn) EndDrag(); return 0; }
+                    if (_dragOn) { _dropping = true; try { if (Native.GetCapture() == hwnd) Native.ReleaseCapture(); } finally { _dropping = false; } if (_dragOn) EndDrag(); return 0; }
                     if (Native.GetCapture() == hwnd) Native.ReleaseCapture();
                     if (was && inside && _shown && _owner != 0)
                     {
@@ -1029,11 +1091,12 @@ internal static unsafe partial class CatWidget
                 case 0x0204:             // WM_RBUTTONDOWN
                     return 0;
                 case 0x0205:             // WM_RBUTTONUP: 오른쪽 클릭 메뉴(0.5.15-V, 2026-10-09 사용자) — 앱이 메뉴를 띄운다(lParam 1)
-                    if (_shown && _owner != 0 && !_pressed && EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 1);
+                    if (_shown && _owner != 0 && !_pressed && !_dragOn && !_holdAir && !(_clipOn && _playName == "fall") && EnvOk(out _, out _))   // 떨어지는 중에는 메뉴를 열지 않는다(0.5.25)
+                        Native.PostMessageW(_owner, _clickMsg, _showGen, 1);
                     return 0;
-                case 0x0215:             // WM_CAPTURECHANGED: 끄는 중에 잡기를 잃으면(다른 창이 가져감 등) 그 자리에 놓는다
+                case 0x0215:             // WM_CAPTURECHANGED: 끄는 중에 잡기를 잃으면(다른 창이 가져감 등 — 놓기가 아니면) 끌기를 취소한다
                     _pressed = false;
-                    if (_dragOn && _shown) EndDrag();
+                    if (_dragOn && _shown && !_dropping) CancelDrag();
                     return 0;
                 case (int)WM_ANIMTICK:   // 동작 틱(CatClips.cs의 틱 스레드)
                     Interlocked.Exchange(ref _tickPending, 0);

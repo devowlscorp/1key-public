@@ -18,7 +18,7 @@
 # Exit code (Codex pre-release review R11, 0.5.22-C): 0 only when every selected script ran and passed; 1 = a script failed or timed out;
 # 2 = stopped because somebody used the PC (the rest did not run). The summary lists every script of this folder that was not selected
 # and why (R09), and the candidate exe is pinned for every child through ONEKEY_TEST_EXE (R10) - each row shows the hash the child saw.
-param([string]$Exe = "", [string]$Base = "", [string[]]$Only = @(), [switch]$All, [switch]$ClipboardApproved, [switch]$DryRun, [int]$IdleSeconds = 30)
+param([string]$Exe = "", [string]$Base = "", [string[]]$Only = @(), [switch]$All, [switch]$ClipboardApproved, [switch]$RealMouseApproved, [switch]$DryRun, [int]$IdleSeconds = 30)
 $ErrorActionPreference = "Continue"
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
@@ -49,8 +49,9 @@ $map = [ordered]@{
   '^tools/tests/run-all\.ps1$'                                                 = @("selfcheck")
   '^installer/'                                                                = @("psblocked")
   '^tools/tests/lib/'                                                          = @("selfcheck")
+  '^tools/tests/lib/RealMouse\.ps1$'                                           = @("realmouse")   # real mouse safety without the mouse (Codex D24-3)
 }
-$noWindow = @("selfcheck", "siteunit", "kdfcross", "i18ngen", "psblocked")
+$noWindow = @("selfcheck", "realmouse", "siteunit", "kdfcross", "i18ngen", "psblocked")
 # scripts in this folder the runner never starts, with the reason shown in every summary (R09: "all passed" must say what it does not cover)
 $never = [ordered]@{
   "autolock" = "10 real idle minutes - by hand"; "bounce" = "mouse switch bounce check - by hand"; "catfull" = "every motion dumped for eyes - by hand when art changes"
@@ -71,6 +72,11 @@ else {
   $list = @($start + $hit | Select-Object -Unique)
 }
 if ($All -or $ClipboardApproved) { $list = @($list + @("clip", "lockwidget\inputext") | Select-Object -Unique) }
+# real mouse tests (Codex D24-3, 2026-10-13): only with -RealMouseApproved (PC unused, user approval). Without it they are held back,
+# listed as not run and the run is not counted as all passed
+$realMouse = @("catdrag")
+$heldBack = @()
+if (-not $RealMouseApproved) { $heldBack = @($list | Where-Object { $realMouse -contains $_ }); $list = @($list | Where-Object { $realMouse -notcontains $_ }) }
 # inject refuses to start within 2 minutes of any input, and sitefill types for ~15 minutes: run inject before sitefill
 # (2026-10-05 0.3.32 full run: the map order put inject right after sitefill and it did not run)
 $si = [array]::IndexOf($list, "sitefill"); $ii = [array]::IndexOf($list, "inject")
@@ -103,6 +109,7 @@ foreach ($name in $list) {
   $log = Join-Path $out "$tag.txt"
   $args2 = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$script`"")
   if ($name -eq "lockwidget\inputext") { $args2 += @("-Exe", "`"$exe`"", "-UserApproved") }
+  elseif ($realMouse -contains $name) { $args2 += @("-Exe", "`"$exe`"", "-RealMouseApproved") }
   elseif ($name -eq "clip") { $args2 += "`"$exe`"" }
   elseif ($name -in @("inject", "sitefill")) { $args2 += @("-Foreground", "-Exe", "`"$exe`"") }   # they type into windows in front
   elseif ($name -in @("siteunit", "kdfcross")) { $args2 += @("-Exe", "`"$exe`"") }   # R10: they take -Exe and used the project's default before
@@ -123,9 +130,11 @@ foreach ($name in $list) {
 # R09: every script of this folder that was not run, and why
 $allScripts = @(Get-ChildItem $PSScriptRoot -Filter *.ps1 | Where-Object { $_.BaseName -ne "run-all" } | ForEach-Object { $_.BaseName }) +
        @(Get-ChildItem (Join-Path $PSScriptRoot "lockwidget") -Filter *.ps1 -ErrorAction Ignore | ForEach-Object { "lockwidget\" + $_.BaseName })
-$skipped = foreach ($s in $allScripts) { if ($list -notcontains $s) { "| $s | " + $(if ($never.Contains($s)) { $never[$s] } elseif ($All) { "not in the map" } else { "not mapped to the changed files" }) + " |" } }
-$result = if ($stopped) { 2 } elseif ($anyFail) { 1 } else { 0 }
-$verdict = @("all selected scripts ran and passed", "FAILED - a script failed or timed out", "STOPPED - somebody used the PC; the rest did not run")[$result]
+$skipped = foreach ($s in $allScripts) { if ($list -notcontains $s -and $heldBack -notcontains $s) { "| $s | " + $(if ($never.Contains($s)) { $never[$s] } elseif ($All) { "not in the map" } else { "not mapped to the changed files" }) + " |" } }
+foreach ($h in $heldBack) { $rows += "| $h | not run | | real mouse - needs -RealMouseApproved (not counted as passed) |"; "{0,-28} not run: real mouse - needs -RealMouseApproved" -f $h }
+$result = if ($stopped) { 2 } elseif ($anyFail) { 1 } elseif ($heldBack.Count -gt 0) { 3 } else { 0 }
+$verdict = @("all selected scripts ran and passed", "FAILED - a script failed or timed out", "STOPPED - somebody used the PC; the rest did not run",
+             "INCOMPLETE - real mouse tests held back (need -RealMouseApproved)")[$result]
 $md = @("# Test run - $([IO.Path]::GetFileName($exe)) $ver", "", "- exe: ``$exe``", "- SHA-256: ``$hash`` (pinned for every child: ONEKEY_TEST_EXE)", "- started: $(Get-Date -Format 'yyyy-MM-dd HH:mm')",
         "- base: $(if ($Base) { $Base } else { '-' }), changed files: $($changed.Count)", "- result: **$verdict** (exit $result)", "",
         "| script | exit | min | judgement |", "|---|---|---|---|") + $rows + @("", "## Not run", "", "| script | why |", "|---|---|") + $skipped
