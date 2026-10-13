@@ -115,8 +115,9 @@ internal sealed unsafe partial class App
             case IdCatPet: CatWidget.Interact("I1"); break;
             case IdCatTreat: CatWidget.Interact("I2"); break;
             case IdCatPlay: CatWidget.Interact("I3"); break;
-            case IdCatNote: Dialog.Show(_hwnd, CatNoteText(), T.CatNoteTitle, Native.MB_OK, width: 440, okText: T.CommonClose, fold: false); break;
-            case IdCatGuide: Dialog.Show(_hwnd, T.HelpCat, T.CatGuideTitle, Native.MB_OK, width: 460, okText: T.CommonClose, fold: false); break;
+            // 수첩 · 안내는 한 번에 하나(0.5.25): 열려 있던 쪽은 닫고 새로 연다 — 겹쳐 열리면 먼저 연 상자의 [닫기]가 듣지 않았다(Dialog.CloseTagged)
+            case IdCatNote: Dialog.CloseTagged("cat"); Dialog.Show(_hwnd, CatNoteText(), T.CatNoteTitle, Native.MB_OK, width: 440, okText: T.CommonClose, fold: false, tag: "cat"); break;
+            case IdCatGuide: Dialog.CloseTagged("cat"); Dialog.Show(_hwnd, T.HelpCat, T.CatGuideTitle, Native.MB_OK, width: 460, okText: T.CommonClose, fold: false, tag: "cat"); break;
             case IdCatOpen: OnWalkerClick(gen, fromMenu: true); break;
             case IdCatLock: if (Unlocked) LockNow(); break;
             case IdCatSettings:

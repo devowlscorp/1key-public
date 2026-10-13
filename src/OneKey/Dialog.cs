@@ -59,6 +59,7 @@ internal static unsafe class Dialog
         public int Result, DefaultId, TextH;
         public bool Done, YesNo, HasCancel;   // HasCancel: 확인/취소 상자
         public bool ClosedByLock;
+        public string? Tag;                   // 같은 꼬리표의 상자는 한 번에 하나(CloseTagged — 고양이 수첩 · 안내)
         public nint Body;                     // 스크롤 본문 EDIT(있으면). 상자 여백에서 굴린 휠도 이 본문으로 보낸다             // 잠금이 닫았다: 포커스·활성 창을 되돌리지 않는다(숨긴 본창을 앞으로 부르지 않도록)
         public uint Dpi = 96;
         // 접는 섹션(도움말, 2026-10-04 사용자 결정 D6: 처음에는 첫 섹션만 펼침). Section = 그 칸이 속한 섹션(-1 = 첫 제목 앞, 늘 보임)
@@ -161,12 +162,28 @@ internal static unsafe class Dialog
         }
     }
 
+    /// <summary>
+    /// 꼬리표가 tag 인 떠 있는 상자를 닫는다(답은 취소). 0.5.25(2026-10-13 사용자: 고양이 수첩과 안내가 같이 열린 채 안내의 [닫기]를 눌러도 닫히지 않는다):
+    /// 고양이 메뉴는 상자가 떠 있어도 눌리므로 두 번째 상자가 첫 상자의 루프 안에 겹쳐 열렸고, 바깥 상자는 안쪽 상자가 끝나야 사라졌다. 새 상자를 열기 전에
+    /// 같은 꼬리표의 상자를 숨기고 끝냄 표시를 해 두면, 겹쳐 있어도 눈에 보이는 것은 새 상자 하나이고 새 상자를 닫으면 바깥 루프도 바로 끝난다.
+    /// </summary>
+    public static void CloseTagged(string tag)
+    {
+        foreach (var (h, st) in _state.ToArray())
+        {
+            if (st.Done || st.Tag != tag) continue;
+            st.Result = 0; st.Done = true;
+            Native.ShowWindow(h, Native.SW_HIDE);
+            Native.PostMessageW(h, 0, 0, 0);   // WM_NULL: 그 상자의 루프가 기다리고 있어도 깨어나 끝나게
+        }
+    }
+
     /// <summary>MessageBox 와 같은 인자. flags: MB_OK / MB_OKCANCEL / MB_YESNO + MB_ICON* + MB_DEFBUTTON2.
     /// width·okText: 도움말 창용(넓게, [닫기]). 그 밖에는 기본값.</summary>
     /// <summary>extraText: 확인 상자(MB_OK)에 [확인] 왼쪽의 추가 버튼(누르면 IDEXTRA). maxBodyH: 본문이 이 높이(논리 px)를 넘으면
     /// 작업 영역과 상관없이 스크롤·복사되는 읽기 전용 본문으로(라이선스 전문처럼 긴 글).</summary>
     /// <summary>share: 로그성 안내면 파일 이름에 넣을 짧은 말 — 왼쪽에 [복사]·[파일로 저장](제목·버전·시각을 붙여서, 상자는 그대로, 2026-10-07 사용자).</summary>
-    public static int Show(nint owner, string text, string title, uint flags, int width = Width, string? okText = null, string? extraText = null, int maxBodyH = 0, string? share = null, bool fold = true)
+    public static int Show(nint owner, string text, string title, uint flags, int width = Width, string? okText = null, string? extraText = null, int maxBodyH = 0, string? share = null, bool fold = true, string? tag = null)
     {
         okText ??= T.CommonOk;
         // 섹션 제목("## " 로 시작하는 줄)이 있으면 제목은 굵게, 본문은 보통 글꼴로 칸을 나눠 만든다 (2026-09-29 사용자 요청).
@@ -200,7 +217,7 @@ internal static unsafe class Dialog
             _registered = true;
         }
 
-        var st = new State { Share = share, Title = title, Text = text, YesNo = (flags & 0xF) == Native.MB_YESNO, HasCancel = (flags & 0xF) is Native.MB_OKCANCEL or Native.MB_YESNOCANCEL };
+        var st = new State { Tag = tag, Share = share, Title = title, Text = text, YesNo = (flags & 0xF) == Native.MB_YESNO, HasCancel = (flags & 0xF) is Native.MB_OKCANCEL or Native.MB_YESNOCANCEL };
         st.Dpi = WorkArea.DpiFor(owner);
         int S(int v) => (int)((long)v * st.Dpi / 96);
         switch (flags & 0xF0)
