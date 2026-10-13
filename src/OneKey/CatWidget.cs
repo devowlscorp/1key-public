@@ -150,6 +150,7 @@ internal static unsafe partial class CatWidget
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
         }
         _shown = false;
+        SyncPassThrough();   // 다시 보일 때는 누를 수 있게
         _ducked = false;   // 다시 보일 때 겹침을 처음부터 본다(OwnCoverTick)
         ClearPerch();      // 0.5.27: 창 위 자리는 저장하지 않는다 — 다시 나오면 작업 표시줄 집에서(사용자 결정)
         SetProps();
@@ -879,6 +880,20 @@ internal static unsafe partial class CatWidget
     }
     private static bool _dropping;   // WM_LBUTTONUP 에서 ReleaseCapture 하는 동안(그때 오는 WM_CAPTURECHANGED 는 취소가 아니다)
 
+    // 0.5.28(Codex C27-1): 놓은 뒤 떨어지는 동안(그림 준비 · 떨어지기 동작)은 고양이 창이 누름을 통과시킨다(WS_EX_TRANSPARENT — 층 창은 아래 창이 받는다).
+    // 0.5.27 에서 떨어지는 동안 1Key 창 앞에서 숨지 않게 했더니, 그 사이 아래 단추 · 입력칸을 누르면 고양이가 가로챘다. 앉으면(동작 끝 · 멈춤 · 숨김) 다시 누를 수 있다
+    private static bool _passThrough;
+    private static void SyncPassThrough()
+    {
+        bool want = _shown && (_holdAir || ((_clipOn || _clipLoading) && _playName == "fall"));
+        if (_hwnd == 0 || want == _passThrough) return;
+        long ex = (long)Native.GetWindowLongPtrW(_hwnd, -20 /* GWL_EXSTYLE */);
+        ex = want ? ex | 0x20 /* WS_EX_TRANSPARENT */ : ex & ~0x20L;
+        Native.SetWindowLongPtrW(_hwnd, -20, (nint)ex);
+        _passThrough = want;
+        LogLine(want ? "pass-through on (falling)" : "pass-through off");
+    }
+
     /// <summary>놓았다: 그 자리가 새 집. 높이 놓았으면 떨어져 착지한다(그림이 준비될 때까지는 놓은 자리에 그대로).</summary>
     private static void EndDrag()
     {
@@ -924,6 +939,7 @@ internal static unsafe partial class CatWidget
         Render();
         LogLine($"fallplan height {height} steps {steps.Count}");
         StartPlay("fall", new[] { jump, back }, steps.ToArray());
+        SyncPassThrough();   // 떨어지는 동안 누름 통과(C27-1)
         return true;
     }
 
@@ -1123,6 +1139,9 @@ internal static unsafe partial class CatWidget
                 case (int)WM_CLIPREADY:
                     OnClipReady((int)wParam);
                     return 0;
+                case (int)WM_TESTCLOCK:  // 시험 전용(perch.ps1 PE11): 정시 시계를 지금 띄운다
+                    if (Program.IsTestMode && _shown && _clock == ClockPhase.None && !_dragOn) { StartClock(DateTime.Now); SetTick(FastMs); LogLine("test clock"); }
+                    return 0;
                 case (int)WM_TESTDROP:   // 시험 전용(perch.ps1): 실제 마우스 없이 (x, y) 에서 집어 들었다 놓기 — 손 자리는 머리 위쪽(MoveDrag 와 같다)
                     if (Program.IsTestMode && _shown && !_dragOn)
                     {
@@ -1136,8 +1155,8 @@ internal static unsafe partial class CatWidget
                     else if (wParam == (nint)TimerTop) { if (_shown && TaskbarAbove()) { KeepOnTop(); LogLine("taskbar above -> top"); } }
                     else if (wParam == (nint)TimerPerch) PerchTick();   // 0.5.27: 앉은 창 점검(CatPerch.cs)
                     return 0;
-                case 0x0084:             // WM_NCHITTEST: 보이지 않을 때는 통과
-                    if (!_shown) return -1;
+                case 0x0084:             // WM_NCHITTEST: 보이지 않을 때 · 떨어지는 동안(C27-1)은 통과
+                    if (!_shown || _passThrough) return -1;
                     break;
             }
         }

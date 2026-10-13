@@ -72,8 +72,19 @@ internal static unsafe partial class CatWidget
             _perchRect = r;
             if (_posX != int.MinValue) _posX += dx;
             if (_clipOn) _baseX += dx;
-            if (_holdAir) _dragX += dx;
+            if (_holdAir) _dragX = Math.Clamp(_dragX + dx, min, max);
             if (_posX != int.MinValue) _posX = Math.Clamp(_posX, min, max);
+            // 0.5.28(Codex C27-2): 창 폭이 줄어 하던 동작(걷기 · 사냥)의 남은 걸음이 새 범위 밖으로 나가면 지금 걸음 자리에서 멈추고 앉는다
+            // (끝날 때만 범위 안으로 맞추면 그동안 창 밖에서 걸었다). 떨어지는 중이면 떨어지는 자리만 범위 안으로
+            if (_clipOn && _playName == "fall") _baseX = Math.Clamp(_baseX, min, max);
+            else if (_clipOn && PathLeaves(_steps, _clipFrame, _baseX, min, max))
+            {
+                int cur = Math.Clamp(CurrentSitX(), min, max);
+                StopClip();
+                _posX = cur; _from = _gaze = Center; _pending = -1;
+                LogLine($"perch narrowed: motion stopped at {cur} (range {min}..{max})");
+                ScheduleNextClip(Environment.TickCount64);
+            }
             if (!_clipOn && !_holdAir) Render();
             if (_clock != ClockPhase.None) ClockTick(Environment.TickCount64, DateTime.Now);
             SetProps();
@@ -85,11 +96,13 @@ internal static unsafe partial class CatWidget
     private static void FallFromPerch()
     {
         nint old = _perch;
-        int x = WinX, y = WinY;
-        if (_clipOn && _steps.Length > 0 && _clipFrame >= 0 && _clipFrame < _steps.Length && _playName != "fall")
-            x = _baseX + (int)Math.Round(_steps[_clipFrame].Dx);   // 걷던 중이면 지금 걸음 자리에서
+        // 0.5.28(Codex C27-3): 지금 실제 자리 — 걷던 중이면 지금 걸음, 그 창으로 떨어지던 중이면 지금 공중(목적지 바닥이 아니라)
+        int x = CurrentSitX(), y = CurrentSitY();
+        // 정시 시계가 떠 있으면 닫는다(끌기와 같다 — 그 정시는 이미 보인 것으로). 닫지 않으면 떨어지기가 시계 때문에 거절되어 새 면으로 순간 이동했다
+        if (_clock != ClockPhase.None) { FlipClock.Hide(); _clock = ClockPhase.None; LogLine("clock closed by fall"); }
         if (_clipOn || _clipLoading || _peekOn) StopClip();
         if (_holdAir) { _holdAir = false; }
+        LogLine($"fall from perch at {x},{y}");
         ClearPerch();
         _from = _gaze = Center; _pending = -1;
         LandFrom(x, y, old);
@@ -153,8 +166,55 @@ internal static unsafe partial class CatWidget
         var wins = ZWindows();
         int i = wins.FindIndex(w => w.H == _perch);
         if (i < 0) return false;   // 목록에 없으면(잠깐 상태가 바뀌는 중) 다음 점검에서 Perchable 이 본다
-        int cx = WinX + _sitCx;
+        int cx = CurrentSitX() + _sitCx;   // 0.5.28(Codex C27-2): 걷는 중이면 지금 걸음 자리(시작 자리가 아니라)
         return Covered(wins, i, cx - BodyHalf / 2, cx + BodyHalf / 2, _perchRect.top);
+    }
+
+    // ---- 지금 실제 자리(0.5.28, Codex C27-2 · C27-3): 정지 · 걷기 · 사냥 · 떨어지기 모두 같은 식. 걸음 자리는 동작이 끝날 때 새 자리로 쓰는 것과 같다
+    // (EndClip: _baseX + Dx), 높이는 그 걸음의 Lift 만큼 바닥 위(RenderStep: _cy = WinY + … - Lift)
+    private static int SitXOf(int posX, int baseX, bool clipOn, PlayStep[] steps, int frame)
+        => clipOn && frame >= 0 && frame < steps.Length ? baseX + (int)Math.Round(steps[frame].Dx) : posX;
+    private static int SitYOf(int winY, bool clipOn, PlayStep[] steps, int frame)
+        => clipOn && frame >= 0 && frame < steps.Length ? winY - steps[frame].Lift : winY;
+    private static int CurrentSitX() => SitXOf(WinX, _baseX, _clipOn, _steps, _clipFrame);
+    private static int CurrentSitY() => SitYOf(WinY, _clipOn, _steps, _clipFrame);
+
+    /// <summary>남은 걸음(frame 부터) 가운데 범위 밖으로 나가는 것이 있나.</summary>
+    private static bool PathLeaves(PlayStep[] steps, int frame, int baseX, int min, int max)
+    {
+        for (int j = Math.Max(0, frame); j < steps.Length; j++)
+        {
+            int x = baseX + (int)Math.Round(steps[j].Dx);
+            if (x < min || x > max) return true;
+        }
+        return false;
+    }
+
+    /// <summary>위(z 차례)에 있는 창들 가운데 앉은 자리 띠(가로 l..r, 윗변 top 부터 band)와 겹치는 것이 있나.</summary>
+    private static bool CoveredBy(IEnumerable<Native.RECT> above, int l, int r, int top, int band)
+    {
+        foreach (var o in above)
+            if (o.left < r && o.right > l && o.top <= top + band && o.bottom > top) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// siteunit 자체 시험(PC01, Codex C27-2 · C27-3): 화면 없이 계산하는 자리 판단. 결과 "a|b|…" 를 SiteSelfTest 가 기대값과 비교한다.
+    /// 반례(Codex): 시작 500 · 걸은 Dx 120 · 고양이 가운데 40 · 반폭 24 → 실제 가운데 660. 그 자리만 덮으면 덮임, 떠난 시작 자리만 덮으면 아님.
+    /// </summary>
+    internal static string PerchSelfTest()
+    {
+        var walk = new PlayStep[] { new(1, 0, false, 0), new(1, 1, false, 60), new(1, 2, false, 120), new(1, 3, false, 180), new(1, 4, false, 240) };
+        int sx = SitXOf(500, 500, true, walk, 2);                       // 660 - 40 = 620
+        int cx = sx + 40;
+        bool walkedSpot = CoveredBy(new[] { new Native.RECT { left = 650, top = 300, right = 675, bottom = 600 } }, cx - 12, cx + 12, 400, 4);
+        bool startSpot = CoveredBy(new[] { new Native.RECT { left = 520, top = 300, right = 560, bottom = 600 } }, cx - 12, cx + 12, 400, 4);
+        bool leaves = PathLeaves(walk, 2, 500, 300, 700);                  // 남은 걸음 620 · 680 · 740 → 740 이 범위(300..700) 밖
+        bool stays = PathLeaves(walk, 2, 500, 300, 800);
+        var fall = new PlayStep[] { new(0, 14, false, 0, 300), new(0, 15, false, 0, 120), new(0, 16, false, 0, 0) };
+        int airY = SitYOf(900, true, fall, 1);                            // 바닥 900 위 120 = 780(목적지 900 이 아니라)
+        int idleX = SitXOf(432, 999, false, walk, 2), idleY = SitYOf(900, false, fall, 1);
+        return $"{sx}|{walkedSpot}|{startSpot}|{leaves}|{stays}|{airY}|{idleX}|{idleY}";
     }
 
     private static bool Covered(List<(nint H, Native.RECT R, bool Ok)> wins, int i, int l, int r, int top)

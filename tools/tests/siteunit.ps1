@@ -26,6 +26,7 @@ $ids = @(); 1..21 | ForEach-Object { $ids += "SN{0:D2}" -f $_ }; 1..15 | ForEach
 1..5 | ForEach-Object { $ids += "MG{0:D2}" -f $_ }   # format 10 / Argon2id: migration of formats 3-9, exact profile, header damage, AAD (security follow-up B1)
 1..28 | ForEach-Object { $ids += "RL{0:D2}" -f $_ }   # Codex pre-release review 0.5.22: R01 whole field text, password cap; R02 saves never write through links
 1..13 | ForEach-Object { $ids += "WB{0:D2}" -f $_ }
+$ids += "PC01"   # cat on a window: real seat while walking / falling, cover and narrowing (0.5.28, Codex C27-2/C27-3)
 $ids += "PW01"   # password-change reward of the cat (0.5.25): login item = second input   # website bookmarks: address check, favicon origin, redirect rule, launch.dat keeps url fields, image header, decode (Codex 02:46)
 Start-Checks -Required $ids
 

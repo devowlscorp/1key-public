@@ -11,6 +11,14 @@
 # PE07 on A again, A closed: falls to the taskbar
 # PE08 1Key window right under the drop point: the cat does not hide while it falls past it (OneKeyTestCatDucked stays 0 until it sits)
 # PE09 on A again, the display changes (WM_DISPLAYCHANGE -> the cat is shown again): it comes back on the taskbar, not on A
+# 0.5.28 (Codex C27-1..3):
+# PE10 while it falls, the cat lets clicks through: the window under any point of the falling cat (WindowFromPoint) is never the cat
+#      and is the test tool window's button where the cat passes over it; the cat window has WS_EX_TRANSPARENT only while falling;
+#      once it sits, the cat is hit again
+# PE11 on A with the hourly clock showing (test message WM_TESTCLOCK 0x8035), A minimized: the clock closes and the cat falls
+#      (log: "clock closed by fall" then "fallplan"; it does not jump straight down)
+# PE12 dropped high above form D, D closed while the cat is still falling: the next fall starts where the cat is in the air
+#      (log "fall from perch at x,y": below the drop point, above the seat on D it was falling to), and it sits on the taskbar
 # Own config folder and instance suffix; the real 1Key is not touched. Windows appear: only while nobody uses the PC.
 #   powershell -ExecutionPolicy Bypass -File tools\tests\perch.ps1 [-Exe <1Key.exe>]
 # ASCII only.
@@ -18,7 +26,7 @@ param([string]$Exe = "")
 $ErrorActionPreference = "Continue"
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-$ids = @(); 0..9 | ForEach-Object { $ids += "PE{0:D2}" -f $_ }
+$ids = @(); 0..12 | ForEach-Object { $ids += "PE{0:D2}" -f $_ }
 Start-Checks -Required $ids
 
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
@@ -47,6 +55,11 @@ public class PEU {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int size);
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint f);
+  [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
+  public static IntPtr RootAt(int x, int y) { var p = new POINT(); p.X = x; p.Y = y; IntPtr w = WindowFromPoint(p); return w == IntPtr.Zero ? w : GetAncestor(w, 2); }
   public static RECT Frame(IntPtr h) { RECT r; if (DwmGetWindowAttribute(h, 9, out r, 16) != 0) GetWindowRect(h, out r); return r; }
   public static string Cls(IntPtr h) { var t = new StringBuilder(256); GetClassNameW(h, t, 256); return t.ToString(); }
   public static IntPtr Find(uint pid, string cls, bool vis) { IntPtr f = IntPtr.Zero; EnumWindows((h,l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && Cls(h) == cls && (!vis || IsWindowVisible(h))) { f = h; return false; } return true; }, IntPtr.Zero); return f; }
@@ -158,10 +171,67 @@ try {
   $s9 = WaitSettled
   Check PE09 "0|True|True" "$(Perch)|$(CatShown)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "display change: shown again on the taskbar, not on A ($s9)"
 
+  # PE11 hourly clock showing, A minimized: the clock closes and the cat falls
+  Raise $A; OnA "PE11"
+  [void][PEU]::PostMessageW((CatWnd), 0x8035, [IntPtr]::Zero, [IntPtr]::Zero); Pump 1500
+  $clockUp = [PEU]::Find([uint32]$p.Id, "OneKeyFlipClock", $true) -ne [IntPtr]::Zero
+  $A.WindowState = "Minimized"; $s11 = WaitSettled
+  $clockAfter = [PEU]::Find([uint32]$p.Id, "OneKeyFlipClock", $true) -ne [IntPtr]::Zero
+  $lt = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
+  $i1 = $lt.LastIndexOf("clock closed by fall"); $i2 = if ($i1 -ge 0) { $lt.IndexOf("fallplan", $i1) } else { -1 }
+  Check PE11 "True|False|True|True|0" "$clockUp|$clockAfter|$($i1 -ge 0)|$($i2 -gt $i1)|$(Perch)" "clock showing on A, A minimized: clock closed, then a fall (not a jump) to the taskbar ($s11)"
+  $A.WindowState = "Normal"; Pump 600
+
   # PE07 closed
   Raise $A; OnA "PE07"
   $A.Close(); $s7 = WaitSettled
   Check PE07 "0|True" "$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "A closed: cat fell to the taskbar ($s7)"
+
+  # PE12 the target window closes while the cat is still falling onto it
+  $D = NewForm "perch D" ($wa.Left + 700) ($wa.Bottom - 330) 520 260
+  Raise $D
+  $dr = [PEU]::Frame($D.Handle)
+  $dropY = $wa.Top + 60
+  Drop ([int](($dr.L + $dr.R) / 2)) $dropY
+  Pump 650
+  $onD = (Perch) -eq [int64]$D.Handle
+  $D.Close(); $s12 = WaitSettled
+  $lt = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
+  # from the log: the drop (cat window top y), its landing lift onto D (destination = drop y + lift) and where the next fall started
+  $iF = $lt.LastIndexOf("fall from perch at"); $seg = if ($iF -ge 0) { $lt.Substring(0, $iF) } else { $lt }
+  $md = [regex]::Matches($seg, "drop x -?\d+ y (-?\d+)"); $ml = [regex]::Matches($seg, "land x -?\d+ perch \S+ lift (-?\d+)")
+  $dropTop = if ($md.Count) { [int]$md[$md.Count - 1].Groups[1].Value } else { -99999 }
+  $dest = if ($ml.Count) { $dropTop + [int]$ml[$ml.Count - 1].Groups[1].Value } else { -99999 }
+  $mf = if ($iF -ge 0) { [regex]::Match($lt.Substring($iF), "fall from perch at (-?\d+),(-?\d+)") } else { $null }
+  $airY = if ($mf -and $mf.Success) { [int]$mf.Groups[2].Value } else { -99999 }
+  Check PE12 "True|True|True|0|True" "$onD|$($airY -gt $dropTop + 5)|$($airY -lt $dest - 5)|$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "D closed mid-fall: next fall from the air (y $airY between drop $dropTop and the seat on D $dest), sits on the taskbar ($s12)"
+
+  # PE10 click-through while falling: a tool window (the cat never sits on it) with a button under the fall path
+  $C = New-Object System.Windows.Forms.Form
+  $C.FormBorderStyle = "FixedToolWindow"; $C.StartPosition = "Manual"; $C.Left = $wa.Left + 300; $C.Top = $wa.Top + 300; $C.Width = 360; $C.Height = 420; $C.ShowInTaskbar = $false; $C.TopMost = $true
+  $btn = New-Object System.Windows.Forms.Button; $btn.Dock = "Fill"; $btn.Text = "under the cat"; $C.Controls.Add($btn)
+  $C.Show(); Pump 400
+  $cr = [PEU]::Frame($C.Handle)
+  Drop ([int](($cr.L + $cr.R) / 2)) ($wa.Top + 60)
+  $hitCat = 0; $hitC = 0; $samples = 0; $transp = 0
+  $t10 = [Environment]::TickCount
+  while ([Environment]::TickCount - $t10 -lt 6000) {
+    Pump 15
+    if ((Prop 'OneKeyTestCatBusy') -eq 0 -and [Environment]::TickCount - $t10 -gt 400) { break }
+    $cw10 = CatWnd; if ($cw10 -eq [IntPtr]::Zero) { continue }
+    $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw10, [ref]$rr)
+    $px = [int](($rr.L + $rr.R) / 2); $py = [int]($rr.T + ($rr.B - $rr.T) * 0.6)
+    $root = [PEU]::RootAt($px, $py); $samples++
+    if ($root -eq $cw10) { $hitCat++ }
+    if ($root -eq $C.Handle) { $hitC++ }
+    if (([int64][PEU]::GetWindowLongPtrW($cw10, -20) -band 0x20) -ne 0) { $transp++ }
+  }
+  $s10 = WaitSettled
+  $cw10 = CatWnd; $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw10, [ref]$rr)
+  $afterHit = [PEU]::RootAt([int](($rr.L + $rr.R) / 2), [int]($rr.T + ($rr.B - $rr.T) * 0.6)) -eq $cw10
+  $afterTransp = ([int64][PEU]::GetWindowLongPtrW($cw10, -20) -band 0x20) -ne 0
+  Check PE10 "0|True|True|True|False" "$hitCat|$($hitC -gt 0)|$($transp -gt 0)|$afterHit|$afterTransp" "falling over a button: never hit ($samples samples, button got $hitC, transparent $transp); sitting: hit again ($s10)"
+  $C.Close(); Pump 300
 
   # PE08 1Key window under the drop point: no hiding while falling
   [void][PEU]::PostMessageW($m, 0x8001, [IntPtr]::Zero, [IntPtr]0x0202); Pump 1200   # tray icon click -> 1Key window
@@ -177,7 +247,7 @@ try {
   Check PE08 "0|0|True" "$ducks|$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "dropped above the 1Key window: never hidden while falling past it, sits on the taskbar ($s8; window $($mr.L),$($mr.T),$($mr.R),$($mr.B))"
 } catch { Add-Failure ("exception: " + $_) }
 finally {
-  foreach ($f in @($A, $B)) { if ($f) { try { $f.Close() } catch { } } }
+  foreach ($f in @($A, $B, $C, $D)) { if ($f) { try { $f.Close() } catch { } } }
   Quit1Key; Stop-TestInstances $suffix
   foreach ($v in "ONEKEY_TEST_CAT_LOG", "ONEKEY_TEST_LOCKWIDGET", "ONEKEY_TEST_NO_AUTOLOCK", "ONEKEY_TEST_PERCH_CLASS") { Remove-Item "env:$v" -ErrorAction Ignore }
   "log kept: $log"

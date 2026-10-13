@@ -75,7 +75,7 @@ internal static unsafe partial class CatWidget
     // BlendFrames: 동작 처음·끝 몇 장을 쉬는 그림과 섞을지. 0.5.15-Y 부터 0 — 쉬는 그림과 동작 첫·끝 장은 다른 그림이라 섞으면 윤곽이 두 겹이 되고
     // 다른 고양이로 바뀌듯 보였다(전체 시험, 사용자: 변신하듯). 대신 그림 띠 앞뒤에 RIFE 로 이은 사이 장이 들어 있다(work/cat-motions/flf/cat_edges.py)
     private const int ClipTickMs = 47, BlendFrames = 0, SeqGapMs = 600, FallTickMs = 16;   // FallTickMs: 떨어지기 틱(16 → 15.625 ms, 0.5.25)   // 47 → 46.875 ms(StartTicks 가 15.625 의 배수로) = 1.33배
-    private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033, WM_TESTDROP = 0x8034;
+    private const uint WM_ANIMTICK = 0x8032, WM_CLIPREADY = 0x8033, WM_TESTDROP = 0x8034, WM_TESTCLOCK = 0x8035;
     /// <summary>걷기 빠르기: 그림 띠 px(앉은 키 80 기준)로 한 장에 이만큼 = 딛고 있는 발이 한 장에 뒤로 가는 거리(발이 미끄러지지 않게).
     /// 0.5.15-O 새 걸음(핵심 8장 + 사이 8장, 네 발이 차례로 딛는 걸음): 원본 1024 기준 장마다 25px → 띠 약 2.95px(잇기 그림에서 실측 11.6~12.0 × 0.25).
     /// 0.5.15-R: 옆모습 그림이 정면보다 작게 그려져 있어(사용자: 커졌다 작아졌다) 걷기를 1.16배로 키웠다 → 보폭도 1.16배(3.42).</summary>
@@ -502,6 +502,7 @@ internal static unsafe partial class CatWidget
         if (arts is null || arts.Length == 0 || arts[0].Gen != gen || gen != _clipGen || !_shown || _clock != ClockPhase.None || _pressed)
         {
             if (fall && _shown && !_dragOn) { Render(); SetProps(); }   // 떨어지기를 못 하면 그 자리에 바로 앉는다(시험 자리 값도 — catdrag CD08)
+            SyncPassThrough();
             ScheduleNextClip(Environment.TickCount64); return;
         }
         FreeClipDib();
@@ -549,6 +550,7 @@ internal static unsafe partial class CatWidget
         if (_playName == "hunt" && _gPhase is GuestPhase.Enter or GuestPhase.Idle) GuestLeave();
         _clipOn = false; _arts = Array.Empty<ClipArt>();
         FreeClipDib();
+        SyncPassThrough();   // 착지: 다시 누를 수 있게(C27-1)
         if (_shown) { _from = _gaze = Center; Render(); }
         ScheduleNextClip(Environment.TickCount64);
         SetProps();
@@ -576,6 +578,7 @@ internal static unsafe partial class CatWidget
         if (_clipOn) { StopTicks(); _clipOn = false; _arts = Array.Empty<ClipArt>(); }
         GuestClose();
         FreeClipDib();
+        SyncPassThrough();   // 떨어지기를 멈추면 다시 누를 수 있게(C27-1)
     }
 
     private static void FreeClipDib()
