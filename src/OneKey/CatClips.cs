@@ -212,7 +212,7 @@ internal static unsafe partial class CatWidget
     private static string? _interact;
 
     /// <summary>상호작용 동작(I1 쓰다듬기 · I2 츄르 주기 · I3 놀아 주기)을 할 수 있나: 밝은 고양이(동작 그림은 밝은 고양이뿐)이고 그림이 있을 때.</summary>
-    internal static bool CanInteract(string name) => _shown && !_ducked && HasInteractArt(_light) && ClipIndex(name) >= 0;   // 0.5.27(Codex 0.5.26 후속): 1Key 창에 가려 숨은 동안은 아니다
+    internal static bool CanInteract(string name) => _shown && HasInteractArt(_light) && ClipIndex(name) >= 0;   // 0.5.30: 1Key 창과 겹쳐도 보이므로 놀기도 된다(0.5.27 의 숨은 동안 끄기는 뺌)
 
     /// <summary>그 색 고양이에게 상호작용 그림이 있나(키우기도 이것을 따른다 — CatGrowth). 동작 그림은 아직 밝은 고양이뿐: 검은 고양이 그림이 들어오면 여기만 바꾼다.</summary>
     internal static bool HasInteractArt(bool light) => ClipIndex("I1") >= 0 && (light || HasPng("catclip_I1_dark.jpg"));   // 0.5.22: 검은 고양이도(색만 바꾼 띠)

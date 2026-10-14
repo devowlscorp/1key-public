@@ -11,7 +11,8 @@
 #      the dark cat loses only its own few seconds, the light cat keeps its points
 # CD07 hourly clock showing (test clock): drag high closes the clock and the cat still falls and lands
 # CD08 the fall pictures fail to prepare (injected): the cat does not hang in the air - it sits at the drop x on the ground
-# CD09 a 1Key window over the cat: the cat hides while they overlap (OneKeyTestCatDucked) and comes back when the window moves away
+# CD09 a 1Key window over the cat (0.5.30, user: the cat should stay visible): it stays shown on top but lets clicks through while they
+#      overlap (OneKeyTestCatDucked 1, WS_EX_TRANSPARENT), and takes clicks again when the window moves away
 # CD10 a 1Key box (help) is open: clicking the cat brings the box forward and does not start anything in the 1Key window
 # REAL MOUSE (lib\RealMouse.ps1): runs only with -RealMouseApproved (the runner passes it only with its own -RealMouseApproved).
 # Never starts while a button is down, always releases what it pressed, stops when the cursor is moved by someone else or the capture
@@ -39,6 +40,7 @@ $master = "Cd-Dummy-6230"
 Add-Type @'
 using System;using System.Runtime.InteropServices;using System.Text;
 public class CDU {
+  [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
   public delegate bool CB(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] public static extern bool EnumWindows(CB cb, IntPtr l);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -170,7 +172,7 @@ try {
   Check CD04 "True|True" "$([Math]::Abs($x4 - $want4) -le 4)|$(CatShown)" "dropped low at x ${want4}: sits at x $x4 at once"
   Start-Sleep -Seconds 1
 
-  # CD09 a 1Key window over the cat hides it; moved away, the cat is back
+  # CD09 a 1Key window over the cat: still shown, clicks pass through; moved away, clicks reach the cat again
   ShowMain
   $cr = New-Object CDU+RECT; $cw = CatWnd; [void][CDU]::GetWindowRect($cw, [ref]$cr)
   # the window's bottom goes 12 px below the cat's bottom so it really covers the cat (0.5.26: with "top = cat top - 300" a short window
@@ -178,10 +180,10 @@ try {
   $mr = New-Object CDU+RECT; [void][CDU]::GetWindowRect($m, [ref]$mr)
   [void][CDU]::SetWindowPos($m, [IntPtr]::Zero, $cr.L - 120, $cr.B + 12 - ($mr.B - $mr.T), 0, 0, 0x0001 -bor 0x0004 -bor 0x0010)
   Start-Sleep -Milliseconds 800
-  $duck = Prop 'OneKeyTestCatDucked'; $hidden = -not [CDU]::IsWindowVisible($cw)
+  $duck = Prop 'OneKeyTestCatDucked'; $vis1 = [CDU]::IsWindowVisible($cw); $tr1 = ([int64][CDU]::GetWindowLongPtrW($cw, -20) -band 0x20) -ne 0
   ParkMain; Start-Sleep -Milliseconds 800
-  $back = Prop 'OneKeyTestCatDucked'; $vis = [CDU]::IsWindowVisible($cw)
-  Check CD09 "1|True|0|True" "$duck|$hidden|$back|$vis" "1Key window over the cat: hidden while they overlap, back when the window moves away"
+  $back = Prop 'OneKeyTestCatDucked'; $vis = [CDU]::IsWindowVisible($cw); $tr2 = ([int64][CDU]::GetWindowLongPtrW($cw, -20) -band 0x20) -ne 0
+  Check CD09 "1|True|True|0|True|False" "$duck|$vis1|$tr1|$back|$vis|$tr2" "1Key window over the cat: shown and click-through while they overlap, clickable again when the window moves away"
 
   # CD10 a 1Key box open: a click on the cat brings the box forward, nothing else
   Click 250 1200   # help (a 1Key box)

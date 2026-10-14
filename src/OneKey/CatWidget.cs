@@ -487,7 +487,8 @@ internal static unsafe partial class CatWidget
 
     private static void HoverTick(long now)
     {
-        if (SeqTest || WalkTest || PeekTest || FullTest || CatMenu.IsOpen || _hwnd == 0 || !_shown || _pressed || _dragOn || _holdAir) { _hoverStart = 0; return; }
+        // _passThrough(0.5.30): 1Key 창과 겹쳐 누름을 통과시키는 동안은 이름표도 띄우지 않는다(그 창에서 일하는 동안 고양이 딱지가 뜨지 않게)
+        if (SeqTest || WalkTest || PeekTest || FullTest || CatMenu.IsOpen || _hwnd == 0 || !_shown || _pressed || _dragOn || _holdAir || _passThrough) { _hoverStart = 0; return; }
         Native.GetCursorPos(out Native.POINT cp);
         bool inside = Native.GetWindowRect(_hwnd, out Native.RECT r) && cp.x >= r.left && cp.x < r.right && cp.y >= r.top && cp.y < r.bottom;
         if (!inside) { _hoverStart = 0; _hoverShown = false; return; }
@@ -803,9 +804,11 @@ internal static unsafe partial class CatWidget
         }
         if (hit == _ducked) return;
         _ducked = hit;
-        if (hit) { CatHearts.Close(); Native.ShowWindow(_hwnd, Native.SW_HIDE); }
-        else { Native.ShowWindow(_hwnd, 4 /* SW_SHOWNOACTIVATE */); KeepOnTop(); }
-        LogLine(hit ? "ducked under own window" : "back from own window");
+        // 0.5.30(2026-10-14 사용자: 1Key 메인 창 밑에 있으면 고양이가 안 보인다 → "늘 맨 위에 보이기"): 숨기지 않고 맨 위에 그대로 보이되,
+        // 겹친 동안은 누름을 통과시킨다(WS_EX_TRANSPARENT — 떨어지는 동안과 같은 방식). 그래서 고양이 아래의 1Key 단추 · 입력칸은 그대로 눌린다(D24-1 의 목적).
+        // 그동안 고양이를 누르거나 끌 수는 없다
+        SyncPassThrough();
+        LogLine(hit ? "over own window: pass-through" : "off own window");
         if (Program.IsTestMode) Native.SetPropW(_owner, "OneKeyTestCatDucked", hit ? 1 : 0);
     }
 
@@ -885,7 +888,7 @@ internal static unsafe partial class CatWidget
     private static bool _passThrough;
     private static void SyncPassThrough()
     {
-        bool want = _shown && (_holdAir || ((_clipOn || _clipLoading) && _playName == "fall"));
+        bool want = _shown && (_ducked || _holdAir || ((_clipOn || _clipLoading) && _playName == "fall"));   // 1Key 창과 겹친 동안도(0.5.30)
         if (_hwnd == 0 || want == _passThrough) return;
         long ex = (long)Native.GetWindowLongPtrW(_hwnd, -20 /* GWL_EXSTYLE */);
         ex = want ? ex | 0x20 /* WS_EX_TRANSPARENT */ : ex & ~0x20L;
