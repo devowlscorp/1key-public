@@ -88,8 +88,8 @@ function WaitSettled([int]$ms = 10000) {
 function Raise($f) { [void][MMU]::SetWindowPos($f.Handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010); Pump 200 }
 function NewForm([string]$title, [int]$x, [int]$y, [int]$w, [int]$h) {
   $f = New-Object System.Windows.Forms.Form
-  $f.Text = $title; $f.StartPosition = "Manual"; $f.ShowInTaskbar = $false; $f.TopMost = $true
-  $f.Show(); $f.SetBounds($x, $y, $w, $h); Pump 300; $f
+  $f.Text = $title; $f.StartPosition = "Manual"; $f.Left = $x; $f.Top = $y; $f.Width = $w; $f.Height = $h; $f.ShowInTaskbar = $false
+  $f.TopMost = $true; $f.Show(); Pump 300; $f
 }
 # 1Key again (same config: master and widget mode already set); cat shown
 function Restart1Key() {
@@ -101,7 +101,7 @@ function Restart1Key() {
   Pump 1500
 }
 # where the cat is: "monitor-work-left|perched|inside the work area horizontally|sits at the bottom of that work area"
-function Where([System.Drawing.Rectangle]$wa) {
+function CatPlace([System.Drawing.Rectangle]$wa) {   # not 'Where' - that is an alias of Where-Object and wins over a function
   $r = CatRect; $sink = $r.B - (Prop 'OneKeyTestCatWorkB')
   "$((Prop 'OneKeyTestCatWorkL') -eq $wa.Left)|$((Perch) -ne 0)|$($r.L -ge $wa.Left -and $r.R -le $wa.Right)|$((Prop 'OneKeyTestCatWorkB') -eq $wa.Bottom -and $sink -ge 0 -and $sink -le ($r.B - $r.T) / 3)"
 }
@@ -123,29 +123,30 @@ try {
   [void][MMU]::PostMessageW($m, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero); Pump 1500   # to the tray
   $t0 = [Environment]::TickCount; while ([Environment]::TickCount - $t0 -lt 6000 -and -not (CatShown)) { Pump 100 }
   Pump 2500
-  $dpiA = Prop 'OneKeyTestCatDpi'; $wA = Prop 'OneKeyTestCatW'
-  Check MM00 "True|True|False|True|True" "$(CatShown)|$(Where $wa)" "cat on the primary monitor (dpi $dpiA, cat width $wA)"
+  $dpiA = Prop 'OneKeyTestCatDpi'; $catW1 = Prop 'OneKeyTestCatW'   # not $wA: PowerShell names ignore case ($wa)
+  Check MM00 "True|True|False|True|True" "$(CatShown)|$(CatPlace $wa)" "cat on the primary monitor (dpi $dpiA, cat width $catW1)"
 
   # MM01 drop on the second monitor, high up
   Drop ([int](($wb.Left + $wb.Right) / 2)) ([int]($wb.Top + 300))
   $s1 = WaitSettled
-  $dpiB = Prop 'OneKeyTestCatDpi'; $wB = Prop 'OneKeyTestCatW'
-  Check MM01 "True|True|False|True|True" "$(CatShown)|$(Where $wb)" "dropped on the second monitor ($s1; dpi $dpiA -> $dpiB, cat width $wA -> $wB)"
+  $dpiB = Prop 'OneKeyTestCatDpi'; $catW2 = Prop 'OneKeyTestCatW'
+  Check MM01 "True|True|False|True|True" "$(CatShown)|$(CatPlace $wb)" "dropped on the second monitor ($s1; dpi $dpiA -> $dpiB, cat width $catW1 -> $catW2)"
 
   # MM02 restart: home monitor remembered
   Restart1Key
-  Check MM02 "True|True|False|True|True" "$(CatShown)|$(Where $wb)" "1Key started again: the cat is on the second monitor"
+  Check MM02 "True|True|False|True|True" "$(CatShown)|$(CatPlace $wb)" "1Key started again: the cat is on the second monitor"
 
   # MM03 perch on a form on the second monitor
   $F = NewForm "multimon F" ($wb.Left + 100) ($wb.Top + 500) ([Math]::Min(700, $wb.Width - 200)) 360
   Raise $F
   $r = [MMU]::Frame($F.Handle)
+  "F on the second monitor: $($r.L),$($r.T),$($r.R),$($r.B)"
   Drop ([int](($r.L + $r.R) / 2)) ([int]($r.T - 260))
   $s3 = WaitSettled
   Check MM03 "True|True" "$((Perch) -eq [int64]$F.Handle)|$((Prop 'OneKeyTestCatWorkL') -eq $wb.Left)" "dropped above F on the second monitor: on F ($s3)"
 
   # MM04 F moved to the primary monitor: the cat goes with it
-  $F.SetBounds($wa.Left + 400, $wa.Top + 400, $F.Width, $F.Height); Raise $F; Pump 800
+  [void][MMU]::SetWindowPos($F.Handle, [IntPtr](-1), $wa.Left + 400, $wa.Top + 400, 0, 0, 0x0001 -bor 0x0010); Pump 800
   $s4 = WaitSettled
   $r = [MMU]::Frame($F.Handle); $c = CatRect; $cx = [int](($c.L + $c.R) / 2)
   Check MM04 "True|True|True" "$((Perch) -eq [int64]$F.Handle)|$((Prop 'OneKeyTestCatWorkL') -eq $wa.Left)|$($cx -ge $r.L -and $cx -le $r.R -and $c.B -le $r.T + ($c.B - $c.T) / 3)" "F moved to the primary monitor: the cat came along ($s4; F $($r.L)..$($r.R) top $($r.T), cat centre $cx bottom $($c.B))"
@@ -153,11 +154,11 @@ try {
   # MM05 F closed: falls to the primary taskbar
   $F.Close(); $F = $null
   $s5 = WaitSettled
-  Check MM05 "True|True|False|True|True" "$(CatShown)|$(Where $wa)" "F closed: the cat fell to the primary taskbar ($s5)"
+  Check MM05 "True|True|False|True|True" "$(CatShown)|$(CatPlace $wa)" "F closed: the cat fell to the primary taskbar ($s5)"
 
   # MM06 restart: on the primary monitor
   Restart1Key
-  Check MM06 "True|True|False|True|True" "$(CatShown)|$(Where $wa)" "1Key started again: the cat is on the primary monitor"
+  Check MM06 "True|True|False|True|True" "$(CatShown)|$(CatPlace $wa)" "1Key started again: the cat is on the primary monitor"
 } catch { Add-Failure ("exception: " + $_) }
 finally {
   if ($F -is [System.Windows.Forms.Form]) { try { $F.Close() } catch { } }

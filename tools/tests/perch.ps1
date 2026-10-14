@@ -291,10 +291,12 @@ try {
   # PE17 the 1Key window over the landing spot
   $mr = [PEU]::Frame($m); $mh = $mr.B - $mr.T; $mw = $mr.R - $mr.L
   $lx = [int]($wa.Left + $wa.Width * 0.55)
-  [void][PEU]::SetWindowPos($m, [IntPtr]::Zero, $lx - [int]($mw / 2), $groundY + 24 - $mh, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010); Pump 500
+  # TOPMOST while PE17 runs (2026-10-14: a real window of this PC - a messenger - covered the landing spot and the 1Key window sat
+  # under it, so no sample could reach the 1Key window); NOTOPMOST again when it is moved away below
+  [void][PEU]::SetWindowPos($m, [IntPtr](-1), $lx - [int]($mw / 2), $groundY + 24 - $mh, 0, 0, 0x0001 -bor 0x0010); Pump 500
   $mr = [PEU]::Frame($m)
   Drop $lx ($wa.Top + 60)
-  $vis17 = 0; $opq17 = 0; $hit17 = 0; $toMain = 0; $n17 = 0; $t17 = [Environment]::TickCount
+  $vis17 = 0; $opq17 = 0; $hit17 = 0; $toMain = 0; $n17 = 0; $t17 = [Environment]::TickCount; $roots17 = @{}
   while ([Environment]::TickCount - $t17 -lt 7000) {
     Pump 15
     $cw17 = [PEU]::Find([uint32]$p.Id, "OneKeyCat", $false)
@@ -307,18 +309,18 @@ try {
     $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw17, [ref]$rr)
     $root = [PEU]::RootAt([int](($rr.L + $rr.R) / 2), [int]($rr.T + ($rr.B - $rr.T) * 0.6))
     if ($root -eq $cw17) { $hit17++ }
-    if ($root -eq $m) { $toMain++ }
+    if ($root -eq $m) { $toMain++ } elseif ($root -ne $cw17 -and $rr.B -gt $mr.T) { $roots17[[PEU]::Cls($root)] = 1 }   # what else is under the cat once it is over the window
   }
   Pump 400
   $cw17 = CatWnd; $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw17, [ref]$rr)
   $sitTr = ((([int64][PEU]::GetWindowLongPtrW($cw17, -20)) -band 0x20) -ne 0)
   $sitDuck = Prop 'OneKeyTestCatDucked'
   $overlap = ($rr.T -lt $mr.B) -and ($rr.B -gt $mr.T) -and ($rr.L -lt $mr.R) -and ($rr.R -gt $mr.L)
-  [void][PEU]::SetWindowPos($m, [IntPtr]::Zero, $wa.Left + 10, $wa.Top + 10, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010); Pump 800
+  [void][PEU]::SetWindowPos($m, [IntPtr](-2), $wa.Left + 10, $wa.Top + 10, 0, 0, 0x0001 -bor 0x0010); Pump 800
   $cw17 = CatWnd; $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw17, [ref]$rr)
   $awayTr = ((([int64][PEU]::GetWindowLongPtrW($cw17, -20)) -band 0x20) -ne 0)
   $awayHit = [PEU]::RootAt([int](($rr.L + $rr.R) / 2), [int]($rr.T + ($rr.B - $rr.T) * 0.6)) -eq $cw17
-  Check PE17 "True|0|0|0|True|True|1|False|True" "$overlap|$vis17|$opq17|$hit17|$($toMain -gt 0)|$sitTr|$sitDuck|$awayTr|$awayHit" "landed overlapping the 1Key window (window $($mr.L),$($mr.T),$($mr.R),$($mr.B)): $n17 samples while falling and landing - hidden $vis17, not click-through $opq17, cat hit $hit17, clicks to 1Key $toMain; sitting: click-through, ducked $sitDuck; window moved away: clicks reach the cat"
+  Check PE17 "True|0|0|0|True|True|1|False|True" "$overlap|$vis17|$opq17|$hit17|$($toMain -gt 0)|$sitTr|$sitDuck|$awayTr|$awayHit" "landed overlapping the 1Key window (window $($mr.L),$($mr.T),$($mr.R),$($mr.B)): $n17 samples while falling and landing - hidden $vis17, not click-through $opq17, cat hit $hit17, clicks to 1Key $toMain (other windows there: $(($roots17.Keys | Sort-Object) -join ', ')); sitting: click-through, ducked $sitDuck; window moved away: clicks reach the cat"
 
   # PE13 the motion window picture fails right when the fall should start (log line read after this 1Key exits - the log is
   # written every 2 s while a motion plays, and on exit)

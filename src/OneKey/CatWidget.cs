@@ -234,7 +234,10 @@ internal static unsafe partial class CatWidget
             why = 7;
             work = mi.rcWork; dpi = (int)dx;
             int fh = (int)Math.Round(HeightLogical * dpi / 96.0);
-            if ((work.right - work.left) / 5 < fh * 5 || work.bottom - work.top < fh * 3) return false;   // 좁은 작업 영역
+            // 좁은 작업 영역. 0.5.34: 다른 모니터(세로로 세운 모니터 등)는 폭이 고양이 키 10배면 된다 — 주 모니터 기준(폭의 5분의 1 = 다니는 범위가
+            // 키 5배)이면 세로 1080 모니터는 거절돼 옮길 수 없었다(multimon MM01). 주 모니터는 예전 그대로
+            bool narrow = mon == primary ? (work.right - work.left) / 5 < fh * 5 : work.right - work.left < fh * 10;
+            if (narrow || work.bottom - work.top < fh * 3) return false;
             why = 0;
             return true;
         }

@@ -5,7 +5,7 @@
 # TY01 the hint bubble (OneKeyCatHearts) shows when the toy appears and again while it can be clicked (at least twice in 12 s)
 # TY02 a click on the cat while the toy is there plays with it: the 1Key window stays closed, the log has "cat click during toy -> play"
 #      and the catch ("hunt caught")
-# TY03 after the toy, a click on the cat opens the 1Key window as before
+# TY03 after the toy, a click on the cat opens the 1Key window as before (clicked 1 s after the toy went, while no toy is there)
 # Own config folder and instance suffix; the real 1Key is not touched. Windows appear: only while nobody uses the PC.
 #   powershell -ExecutionPolicy Bypass -File tools\tests\cattoy.ps1 [-Exe <1Key.exe>]
 # ASCII only.
@@ -89,9 +89,15 @@ try {
   Check TY02 "False|True|True" "$opened|$($lt.Contains('cat click during toy -> play'))|$($lt.Contains('hunt caught'))" "cat clicked while the toy waits: played (caught), the 1Key window stayed closed"
 
   # TY03 a cat click after the toy opens the 1Key window as before
-  $t3 = [Environment]::TickCount
-  while ([Environment]::TickCount - $t3 -lt 20000 -and (Win "OneKeyCatGuest") -ne [IntPtr]::Zero) { Start-Sleep -Milliseconds 200 }
-  Start-Sleep -Seconds 6   # the hunt motion ends with the cat sitting again
+  # in test mode a new toy comes 6-8 s after the last one went (2026-10-14: the old 6 s wait clicked on the NEXT toy - right
+  # that it played - and TY03 failed): click 1 s after the toy went, and only when no toy is there right before the click
+  $t3 = [Environment]::TickCount; $noToy = $false
+  while ([Environment]::TickCount - $t3 -lt 60000) {
+    while ([Environment]::TickCount - $t3 -lt 60000 -and (Win "OneKeyCatGuest") -ne [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 }
+    Start-Sleep -Milliseconds 1000
+    if ((Win "OneKeyCatGuest") -eq [IntPtr]::Zero) { $noToy = $true; break }
+  }
+  if (-not $noToy) { Add-Failure "TY03 setup: a toy was always there for 60 s" }
   $cat = Win "OneKeyCat"
   [void][TYU]::PostMessageW($cat, 0x8036, [IntPtr]::Zero, [IntPtr]::Zero)
   $t3 = [Environment]::TickCount; $opened3 = $false
