@@ -546,8 +546,10 @@ internal static unsafe partial class CatWidget
         if (_clipFrame >= _steps.Length) { EndClip(); LogTick(t0, "S"); return; }
         HuntTick(_clipFrame);   // 사냥: 누름 · 떠남에 따라 남은 걸음을 바꾸고, 잡는 장이면 하트(CatHunt.cs)
         var s = _steps[_clipFrame];
-        if (_playName == "fall") SyncPassThrough();   // 0.5.31: 발이 닿는 걸음부터 다시 누를 수 있게
         bool ok = RenderStep(_clipFrame);
+        // 0.5.31: 발이 닿는 걸음부터 다시 누를 수 있게. 0.5.32(Codex C31-1): 떨어지기 동안은 장마다, 이 장을 그린 바로 뒤(같은 메시지 안 — 그 사이에
+        // 입력을 처리하지 않는다) 그린 자리의 1Key 창 겹침을 먼저 보고 누름 통과를 정한다 — 첫 접지 장이 1Key 창과 겹치면 통과가 풀리지 않는다
+        if (_playName == "fall") { OwnCoverTick(); SyncPassThrough(); }
         if (Program.IsTestMode && _owner != 0) Native.SetPropW(_owner, "OneKeyTestCatSitX", CurrentSitX());   // perch.ps1: 걷는 중 지금 자리
         NotePush(ok);
         if (DumpDir is not null && (_playName == "hunt" ? _clipFrame % 2 == 0 : _clipFrame < 4 || _clipFrame % 6 == 0 || _clipFrame >= _steps.Length - 4)) DumpClipFrame(_playName == "hunt" ? $"hunt{_clipGen}" : _playName, _clipFrame);   // 사냥은 판마다 따로(다음 사냥이 덮어쓰지 않게)

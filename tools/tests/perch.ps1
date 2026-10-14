@@ -9,7 +9,7 @@
 # PE05 on A again, A minimized: falls to the taskbar
 # PE06 on A again, A maximized: falls to the taskbar
 # PE07 on A again, A closed: falls to the taskbar
-# PE08 1Key window right under the drop point: the cat does not hide while it falls past it (OneKeyTestCatDucked stays 0 until it sits)
+# PE08 1Key window right under the drop point: the cat does not hide while it falls past it (cat window visible in every sample)
 # PE09 on A again, the display changes (WM_DISPLAYCHANGE -> the cat is shown again): it comes back on the taskbar, not on A
 # 0.5.28 (Codex C27-1..3):
 # PE10 while it falls, the cat lets clicks through: the window under any point of the falling cat (WindowFromPoint) is never the cat
@@ -19,6 +19,9 @@
 #      (log: "clock closed by fall" then "fallplan"; it does not jump straight down)
 # PE12 dropped high above form D, D closed while the cat is still falling: the next fall starts where the cat is in the air
 #      (log "fall from perch at x,y": below the drop point, above the seat on D it was falling to), and it sits on the taskbar
+# PE17 (0.5.32, Codex C31-1) the 1Key window covers the spot where the cat will land: dropped above it, the cat falls past it and lands
+#      overlapping it - visible all the time, click-through all the time (in the air and from the first ground frame, while it still
+#      lands), a click there reaches the 1Key window, never the cat; the window moved away -> the cat takes clicks again
 # 0.5.28-B (Codex C28-1, C27-2 follow-up) - 1Key is started again with test switches for each of these:
 # PE13 ONEKEY_TEST_FAIL=cat:fall-dib (the motion window picture fails right when the fall should start): the cat sits on the
 #      ground at once, not busy, clicks reach it again (no WS_EX_TRANSPARENT, WindowFromPoint = cat), log "clip dib failed"
@@ -34,7 +37,7 @@ param([string]$Exe = "")
 $ErrorActionPreference = "Continue"
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 . (Join-Path $PSScriptRoot "lib\Check.ps1")
-$ids = @(); 0..16 | ForEach-Object { $ids += "PE{0:D2}" -f $_ }
+$ids = @(); 0..17 | ForEach-Object { $ids += "PE{0:D2}" -f $_ }
 Start-Checks -Required $ids
 
 $sp = if ($env:ONEKEY_TEST_DIR) { $env:ONEKEY_TEST_DIR } else { Join-Path $env:TEMP "1Key-tests" }
@@ -278,9 +281,41 @@ try {
   $ducks = 0
   Drop $mx ($wa.Top + 120)
   $t8 = [Environment]::TickCount
-  while ([Environment]::TickCount - $t8 -lt 4000) { if ((Prop 'OneKeyTestCatDucked') -eq 1) { $ducks++ }; Pump 25 }
+  while ([Environment]::TickCount - $t8 -lt 4000) { $cw8 = [PEU]::Find([uint32]$p.Id, "OneKeyCat", $false); if ($cw8 -eq [IntPtr]::Zero -or -not [PEU]::IsWindowVisible($cw8)) { $ducks++ }; Pump 25 }   # 0.5.32: overlap is no longer hiding (OneKeyTestCatDucked = click-through) - count hidden samples
   $s8 = WaitSettled
   Check PE08 "0|0|True" "$ducks|$(Perch)|$([Math]::Abs((Prop 'OneKeyTestCatY') - $groundY) -le 2)" "dropped above the 1Key window: never hidden while falling past it, sits on the taskbar ($s8; window $($mr.L),$($mr.T),$($mr.R),$($mr.B))"
+
+  # PE17 the 1Key window over the landing spot
+  $mr = [PEU]::Frame($m); $mh = $mr.B - $mr.T; $mw = $mr.R - $mr.L
+  $lx = [int]($wa.Left + $wa.Width * 0.55)
+  [void][PEU]::SetWindowPos($m, [IntPtr]::Zero, $lx - [int]($mw / 2), $groundY + 24 - $mh, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010); Pump 500
+  $mr = [PEU]::Frame($m)
+  Drop $lx ($wa.Top + 60)
+  $vis17 = 0; $opq17 = 0; $hit17 = 0; $toMain = 0; $n17 = 0; $t17 = [Environment]::TickCount
+  while ([Environment]::TickCount - $t17 -lt 7000) {
+    Pump 15
+    $cw17 = [PEU]::Find([uint32]$p.Id, "OneKeyCat", $false)
+    if ($cw17 -eq [IntPtr]::Zero) { continue }
+    $busy17 = (Prop 'OneKeyTestCatBusy') -ne 0
+    if (-not $busy17 -and [Environment]::TickCount - $t17 -gt 400) { break }
+    $n17++
+    if (-not [PEU]::IsWindowVisible($cw17)) { $vis17++ }
+    if ((([int64][PEU]::GetWindowLongPtrW($cw17, -20)) -band 0x20) -eq 0) { $opq17++ }
+    $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw17, [ref]$rr)
+    $root = [PEU]::RootAt([int](($rr.L + $rr.R) / 2), [int]($rr.T + ($rr.B - $rr.T) * 0.6))
+    if ($root -eq $cw17) { $hit17++ }
+    if ($root -eq $m) { $toMain++ }
+  }
+  Pump 400
+  $cw17 = CatWnd; $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw17, [ref]$rr)
+  $sitTr = ((([int64][PEU]::GetWindowLongPtrW($cw17, -20)) -band 0x20) -ne 0)
+  $sitDuck = Prop 'OneKeyTestCatDucked'
+  $overlap = ($rr.T -lt $mr.B) -and ($rr.B -gt $mr.T) -and ($rr.L -lt $mr.R) -and ($rr.R -gt $mr.L)
+  [void][PEU]::SetWindowPos($m, [IntPtr]::Zero, $wa.Left + 10, $wa.Top + 10, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010); Pump 800
+  $cw17 = CatWnd; $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw17, [ref]$rr)
+  $awayTr = ((([int64][PEU]::GetWindowLongPtrW($cw17, -20)) -band 0x20) -ne 0)
+  $awayHit = [PEU]::RootAt([int](($rr.L + $rr.R) / 2), [int]($rr.T + ($rr.B - $rr.T) * 0.6)) -eq $cw17
+  Check PE17 "True|0|0|0|True|True|1|False|True" "$overlap|$vis17|$opq17|$hit17|$($toMain -gt 0)|$sitTr|$sitDuck|$awayTr|$awayHit" "landed overlapping the 1Key window (window $($mr.L),$($mr.T),$($mr.R),$($mr.B)): $n17 samples while falling and landing - hidden $vis17, not click-through $opq17, cat hit $hit17, clicks to 1Key $toMain; sitting: click-through, ducked $sitDuck; window moved away: clicks reach the cat"
 
   # PE13 the motion window picture fails right when the fall should start (log line read after this 1Key exits - the log is
   # written every 2 s while a motion plays, and on exit)

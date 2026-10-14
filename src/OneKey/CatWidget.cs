@@ -788,10 +788,9 @@ internal static unsafe partial class CatWidget
     {
         if (_hwnd == 0 || !_shown || _dragOn) return;
         bool hit = false;
-        // 0.5.27(2026-10-13 사용자: 떨어뜨릴 때 1Key 창이 있는 곳에서는 창 뒤에 가려져 안 보인다): 놓은 뒤 떨어지는 동안(그림 준비 · 떨어지기 동작)은
-        // 1Key 창 앞을 지나가도 숨지 않는다 — 앉은 뒤에 겹쳐 있으면 그때 숨는다(단추 · 입력칸을 가리지 않게)
-        bool falling = _holdAir || ((_clipOn || _clipLoading) && _playName == "fall");
-        if (!falling && Native.GetWindowRect(_hwnd, out _coverCat) && _coverCat.right > _coverCat.left)
+        // 0.5.32(Codex C31-1): 떨어지는 동안에도 본다 — 0.5.30 부터 겹침은 숨기지 않고 누름 통과만이라 공중에서 봐도 보이는 모양은 같고,
+        // 발이 닿는 첫 장부터 겹침이 반영돼야 착지한 자리가 1Key 창과 겹칠 때 아래 단추를 가로채지 않는다(예전 0.5.27 은 떨어지는 동안 건너뛰었다)
+        if (Native.GetWindowRect(_hwnd, out _coverCat) && _coverCat.right > _coverCat.left)
         {
             _coverHit = false; _coverSeen = 0; _coverFirst = "";
             EnumThreadWindows(GetCurrentThreadId(), &CoverProc, 0);
