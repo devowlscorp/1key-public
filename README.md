@@ -69,10 +69,7 @@
 
 1Key 목록 아래 [위젯](트레이 위젯 모드를 켰을 때)이나 고양이 메뉴의 [수첩]을 누르면 고양이에 관한 것이 한 화면에 모여 있습니다 — 지금 단계 · 하트 · 점수, 쓰담 · 츄르 · 놀이 단추(누르면 작업 표시줄 고양이가 바로 반응), 오늘의 미션, 고양이가 처음 보여 준 장면을 모으는 앨범(13장), 흰 · 검은 고양이 이름.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/cat/widget-dark.png">
-  <img src="docs/images/cat/widget-light.png" alt="위젯 화면: 단계와 하트, 같이 놀기 단추, 오늘의 미션" width="436">
-</picture>
+<img src="docs/images/cat/widget-light.png" alt="위젯 화면: 단계와 하트, 같이 놀기 단추, 오늘의 미션" width="436">
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/cat/album-dark.png">
