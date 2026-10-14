@@ -135,6 +135,9 @@ function OnForm($f) {
   Raise $f
   $r = [PEU]::Frame($f.Handle)
   Drop ([int](($r.L + $r.R) / 2)) ([int]($r.T - 260))
+  # first see the drop take effect (busy = fall), then wait for it to end - checking only 'busy 0' right after the drop could read the
+  # state before the drop message was handled, and PE16 then took the landing for a walk being prepared (0.5.32 public run)
+  $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt 1500 -and (Prop 'OneKeyTestCatBusy') -eq 0) { Pump 20 }
   $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt 8000 -and (Prop 'OneKeyTestCatBusy') -ne 0) { Pump 100 }
   Pump 300
   (Perch) -eq [int64]$f.Handle
