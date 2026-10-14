@@ -319,7 +319,9 @@ try {
   $cx0 = (SitX) + (Prop 'OneKeyTestCatSitCx')
   $x1 = WaitWalk (SitX) 30
   $wr = [PEU]::Frame($W.Handle)
-  $B.Width = 16; $B.Height = 150; $B.Left = $cx0 - 8; $B.Top = $wr.T - 40; Raise $B; Pump 400
+  # B without a frame: a framed form has a minimum width (about 136 px) and would cover where the cat is now as well
+  $B.FormBorderStyle = "None"; $B.MinimumSize = New-Object System.Drawing.Size(1, 1)
+  $B.SetBounds($cx0 - 8, $wr.T - 40, 16, 150); Raise $B; Pump 400
   $stay = (Perch) -eq [int64]$W.Handle
   $cxn = (SitX) + (Prop 'OneKeyTestCatSitCx')
   $B.Left = $cxn - 8; Raise $B
