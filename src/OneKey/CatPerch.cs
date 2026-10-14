@@ -62,6 +62,14 @@ internal static unsafe partial class CatWidget
     private static void PerchTick()
     {
         if (_perch == 0 || !_shown || _dragOn || _pressed) return;
+        // 0.5.33: 앉은 창이 다른 모니터로 옮겨졌으면(창 대부분이 그 모니터) 고양이도 그 모니터로 — 떨어지는 중이면 다음 점검에서
+        if (IsWindow(_perch) && Frame(_perch, out Native.RECT fr) && MonitorFromRect(ref fr, Native.MONITOR_DEFAULTTONEAREST) is var wm && wm != 0 && wm != CurMonitor(PrimaryMonitor()))
+        {
+            if (_holdAir || _clipLoading || (_clipOn && _playName == "fall")) return;
+            if (!ToMonitor(wm)) return;   // 그림을 못 만들어 숨었다
+            if (!_clipOn) Render();
+            KeepOnTop();
+        }
         if (!Perchable(_perch, out Native.RECT r, out string why)) { LogLine($"perch lost {why}"); FallFromPerch(); return; }
         var (min, max) = PerchRange(r);
         if (max < min) { LogLine("perch lost narrow"); FallFromPerch(); return; }
@@ -124,8 +132,7 @@ internal static unsafe partial class CatWidget
         else
         {
             int cx = Math.Clamp(x, _work.left, Math.Max(_work.left, _work.right - _w));
-            int room = Math.Max(1, _work.right - _work.left - _w);
-            CatGrowth.SetHome((cx - _work.left) / (double)room);
+            SaveHomeAt(cx);   // 그 모니터도(0.5.33 — 다시 켜도 거기서)
             _posX = Math.Clamp(cx, MinX, MaxX);
         }
         int lift = GroundY - y;

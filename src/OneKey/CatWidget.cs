@@ -102,6 +102,7 @@ internal static unsafe partial class CatWidget
     private static void Evaluate()
     {
         if (!_wanted) { HideAll(); return; }
+        if (!_shown) UseHomeMonitor();   // 0.5.33: 보일 때는 집 모니터에서
         if (!EnvOk(out Native.RECT work, out int dpi, out int why))
         {
             _why = why;   // 숨기 전에(시험 기록에 이유가 남게)
@@ -114,7 +115,13 @@ internal static unsafe partial class CatWidget
         // 1Key 창에서 받은 보상(보안 습관)이 아직 알려지지 않았으면 예전 크기로 다시 나온다 — 하트와 한 줄로 알린 뒤 "부풀었어요"와 함께 커지게(ApplyGrowth)
         if (CatGrowth.HasPending && _scaleSet && light == _light) scale = _scale;
         if (_shown && dpi == _dpi && light == _light && scale == _scale && work.left == _work.left && work.right == _work.right && work.bottom == _work.bottom) return;
-        if (_shown) Hide(keepCheck: true);
+        if (_shown)
+        {
+            Hide(keepCheck: true);
+            // 0.5.33: 다른 모니터의 창 위에 앉아 있었으면 다시 나오는 곳은 집 모니터 — 그 모니터로 다시 본다
+            UseHomeMonitor();
+            if (!EnvOk(out work, out dpi, out why)) { _why = why; RetryLater(); return; }
+        }
         if (!EnsureWindow()) { _why = 9; SetProps(); return; }
         if (_mem == 0 || dpi != _dpi || light != _light || scale != _scale) { FreeArt(); _dpi = dpi; _light = light; _scale = scale; if (!BuildArt()) { FreeArt(); _why = 8; RetryLater(); return; } }
         _scaleSet = true;
@@ -188,7 +195,7 @@ internal static unsafe partial class CatWidget
     // ------------------------------------------------------------------ 환경
 
     /// <summary>
-    /// 보여도 되는 환경인가. 주 모니터의 작업 영역·배율을 돌려준다. 알림을 받는 상태가 아니거나(전체 화면·발표·바쁨·확인 실패), 작업 표시줄이
+    /// 보여도 되는 환경인가. 고양이가 지내는 모니터(0.5.33 — 보통 주 모니터, CatMonitor.cs)의 작업 영역·배율을 돌려준다. 알림을 받는 상태가 아니거나(전체 화면·발표·바쁨·확인 실패), 작업 표시줄이
     /// 아래가 아니거나 자동 숨김이거나 주 모니터가 아니거나, 시스템 패널이 앞에 있거나, 무엇이든 확인하지 못하면 false(숨김 쪽, Codex Q1·Q2·Q3).
     /// </summary>
     internal static bool EnvOk(out Native.RECT work, out int dpi) => EnvOk(out work, out dpi, out _);
@@ -214,11 +221,14 @@ internal static unsafe partial class CatWidget
             why = 4;
             nint primary = MonitorFromPoint(new Native.POINT { x = 0, y = 0 }, 1 /* MONITOR_DEFAULTTOPRIMARY */);
             if (primary == 0 || MonitorFromRect(ref abd.rc, 0 /* NULL */) != primary) return false;
+            nint mon = CurMonitor(primary);   // 0.5.33: 고양이가 지내는 모니터(CatMonitor.cs — 보통 주 모니터)
             var mi = new Native.MONITORINFO { cbSize = (uint)sizeof(Native.MONITORINFO) };
-            if (!Native.GetMonitorInfoW(primary, ref mi)) return false;
-            if (Math.Abs(mi.rcWork.bottom - abd.rc.top) > 2) return false;   // 작업 영역 아래 끝이 작업 표시줄 위 가장자리가 아니면(예상 밖 배치)
+            if (!Native.GetMonitorInfoW(mon, ref mi)) return false;
+            // 주 모니터: 작업 영역 아래 끝이 작업 표시줄 위 가장자리가 아니면(예상 밖 배치). 다른 모니터는 작업 영역 아래 끝 그대로 — 그 모니터의
+            // 작업 표시줄 위, 작업 표시줄이 없으면(모든 디스플레이에 표시 끔) 화면 아래 끝
+            if (mon == primary && Math.Abs(mi.rcWork.bottom - abd.rc.top) > 2) return false;
             why = 5;
-            if (GetDpiForMonitor(primary, 0 /* MDT_EFFECTIVE_DPI */, out uint dx, out _) != 0 || dx is < 48 or > 480) return false;
+            if (GetDpiForMonitor(mon, 0 /* MDT_EFFECTIVE_DPI */, out uint dx, out _) != 0 || dx is < 48 or > 480) return false;
             why = 6;
             if (SystemPanelUp(mi.rcWork, (int)dx)) return false;
             why = 7;
@@ -861,11 +871,12 @@ internal static unsafe partial class CatWidget
         SetProps();
     }
 
-    /// <summary>커서가 머리 위쪽(목덜미)에 오게. 작업 영역 안(아래는 앉는 자리까지)으로만.</summary>
+    /// <summary>커서가 머리 위쪽(목덜미)에 오게. 커서가 있는 모니터(0.5.33 — 다른 모니터로도)의 작업 영역 안(아래는 앉는 자리까지)으로만.</summary>
     private static void MoveDrag(Native.POINT p)
     {
-        _dragX = Math.Clamp(p.x - _w / 2, _work.left, Math.Max(_work.left, _work.right - _w));
-        _dragY = Math.Clamp(p.y - (int)Math.Round(_h * 0.2), _work.top, GroundY);
+        var dw = WorkAt(p);
+        _dragX = Math.Clamp(p.x - _w / 2, dw.left, Math.Max(dw.left, dw.right - _w));
+        _dragY = Math.Clamp(p.y - (int)Math.Round(_h * 0.2), dw.top, Math.Max(dw.top, dw.bottom - _h + SitSinkPx));
         Render();
     }
 
@@ -903,7 +914,10 @@ internal static unsafe partial class CatWidget
     private static void EndDrag()
     {
         _dragOn = false;
+        // 0.5.33: 다른 모니터에 놓았으면 그 모니터로(배율이 다르면 그림을 다시 — 가운데 · 발 자리 그대로). 그림을 못 만들면 숨었다(다시 나오면 집에서)
+        if (!ToMonitor(MonitorFromPoint(new Native.POINT { x = _dragX + _w / 2, y = _dragY + _h / 2 }, Native.MONITOR_DEFAULTTONEAREST))) return;
         int x = Math.Clamp(_dragX, _work.left, Math.Max(_work.left, _work.right - _w));
+        _dragY = Math.Clamp(_dragY, _work.top, Math.Max(_work.top, _work.bottom - _h + SitSinkPx));   // 그 모니터를 쓸 수 없어 원래 모니터에 내려앉을 때
         LogLine($"drop x {x} y {_dragY} home {HomeX} min {MinX} max {MaxX}");
         // 0.5.27: 놓은 자리 바로 아래 보이는 창의 윗변이 있으면 거기에 착지(그 창 위가 자리 — 집은 그대로), 없으면 작업 표시줄(그 자리가 새 집)
         LandFrom(x, _dragY, 0);
@@ -967,6 +981,10 @@ internal static unsafe partial class CatWidget
         Native.SetPropW(_owner, "OneKeyTestCatSitCx", _sitCx);
         Native.SetPropW(_owner, "OneKeyTestCatMin", _shown ? MinX : 0);
         Native.SetPropW(_owner, "OneKeyTestCatMax", _shown ? MaxX : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatWorkL", _shown ? _work.left : 0);     // 0.5.33(multimon.ps1): 지내는 모니터의 작업 영역 · 배율
+        Native.SetPropW(_owner, "OneKeyTestCatWorkR", _shown ? _work.right : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatWorkB", _shown ? _work.bottom : 0);
+        Native.SetPropW(_owner, "OneKeyTestCatDpi", _shown ? _dpi : 0);
         Native.SetPropW(_owner, "OneKeyTestCatPeeks", _peekCount);   // 앉은 고양이 창 왼쪽(걷기 뒤 자리 — catwalk.ps1)   // 그린 고양이 색: 2 = 밝은 회색, 1 = 검은 고양이(cattheme.ps1)
     }
 
@@ -1089,6 +1107,7 @@ internal static unsafe partial class CatWidget
             switch (msg)
             {
                 case 0x0021: return 3;   // WM_MOUSEACTIVATE → MA_NOACTIVATE
+                case 0x02E0: return 0;   // WM_DPICHANGED(0.5.33 — 배율이 다른 모니터로 끌 때): 크기는 그림이 정한다(놓으면 ToMonitor 가 그 배율로 다시 만든다)
                 case 0x0020:             // WM_SETCURSOR: 손 모양
                     Native.SetCursor(Native.LoadCursorW(0, (nint)32649 /* IDC_HAND */));
                     return 1;

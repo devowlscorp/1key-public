@@ -223,15 +223,25 @@ internal static class CatGrowth
     /// (작업 표시줄 오른쪽 끝). 고양이 기록 파일에 함께 쓴다(P 줄 — 예전 판은 모르는 줄이라 건너뛴다).
     /// </summary>
     public static double HomeRatio { get { Load(); return _home < 0 ? double.NaN : _home / 10000.0; } }
-    public static void SetHome(double ratio)
+    /// <summary>
+    /// 집이 있는 모니터(0.5.33, 2026-10-14 사용자: 확장 모니터로도 옮기기 — 다시 켜도 기억): 그 모니터 한가운데 점(가상 화면 좌표). 주 모니터면 false
+    /// (W 줄을 쓰지 않는다 — 예전 판은 모르는 줄이라 건너뛰고 비율만 주 모니터에 쓴다). 그 점에 모니터가 없으면(뺐거나 배치가 바뀜) CatWidget 이 주 모니터를 쓴다.
+    /// </summary>
+    public static bool HomeMonitor(out int x, out int y) { Load(); x = _homeMonX; y = _homeMonY; return _homeMon; }
+    /// <param name="ratio">작업 영역 폭(고양이 폭을 뺀)에 대한 비율 0~1.</param>
+    /// <param name="primary">주 모니터면 true(모니터 점을 지운다). 아니면 (monX, monY) = 그 모니터 한가운데.</param>
+    public static void SetHome(double ratio, bool primary = true, int monX = 0, int monY = 0)
     {
         Load();
         int v = (int)Math.Round(Math.Clamp(ratio, 0, 1) * 10000);
-        if (v == _home) return;
-        _home = v;
+        if (primary) monX = monY = 0;
+        if (v == _home && _homeMon == !primary && _homeMonX == monX && _homeMonY == monY) return;
+        _home = v; _homeMon = !primary; _homeMonX = monX; _homeMonY = monY;
         Save();
     }
     private static int _home = -1;
+    private static bool _homeMon;
+    private static int _homeMonX, _homeMonY;
     private static bool? _lastLight;   // 지난 점검 때의 테마(밝음 = 흰 고양이)
 
     /// <summary>켜져 있던 시간만큼 줄인다(지금 테마의 고양이만).</summary>
@@ -288,6 +298,7 @@ internal static class CatGrowth
                     }
                     if (v.Length >= 2 && v[0] == "C") { int.TryParse(v[1], out _catchTotal); continue; }   // 놀잇감 잡은 횟수
                     if (v.Length >= 2 && v[0] == "P") { if (int.TryParse(v[1], out int hp) && hp is >= 0 and <= 10000) _home = hp; continue; }   // 집 자리(0.5.24): 만분율
+                    if (v.Length >= 3 && v[0] == "W") { if (int.TryParse(v[1], out int wx) && int.TryParse(v[2], out int wy)) { _homeMon = true; _homeMonX = wx; _homeMonY = wy; } continue; }   // 집 모니터(0.5.33): 한가운데 점
                     if (v.Length >= 3 && v[0] == "M") { int.TryParse(v[1], out _breakDay); int.TryParse(v[2], out _toyDay); continue; }   // 오늘의 할 일: 쉬기 · 놀잇감 날
                     if (v.Length >= 4 && v[0] == "S")   // 출근 도장: S 마지막날 연속 모두
                     {
@@ -334,7 +345,7 @@ internal static class CatGrowth
             string Line(string k, Cat c) => $"{k} {c.Score} {c.Carry} {c.LastAward[0]} {c.LastAward[1]} {c.LastAward[2]}";
             QueueWrite(FilePath, System.Text.Encoding.UTF8.GetBytes(Line("L", _cats[0]) + "\n" + Line("D", _cats[1]) + "\n"
                 + $"H {_habBackup} {_habMaster} {_pwDay} {_pwCount} {_alDay}\n" + $"S {_stampDay} {_streak} {_stampTotal}\n" + $"T {_introCount} {_introDay} {(_clicked ? 1 : 0)}\n" + $"C {_catchTotal}\n" + $"M {_breakDay} {_toyDay}\n" + "A" + string.Concat(_seen.Select(kv => $" {kv.Key}:{kv.Value}")) + "\n"
-                + (_home >= 0 ? $"P {_home}\n" : "")));
+                + (_home >= 0 ? $"P {_home}\n" : "") + (_homeMon ? $"W {_homeMonX} {_homeMonY}\n" : "")));
         }
         catch { }   // 못 써도 이번 실행 동안은 기억한다
     }
