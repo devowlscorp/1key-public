@@ -134,6 +134,9 @@ function WaitMoved([int]$from, [int]$dist, [int]$ms = 15000) { $t = [Environment
 function OnForm($f) {
   Raise $f
   $r = [PEU]::Frame($f.Handle)
+  # drop only while the cat is not busy (2026-10-14 board run: a walk was being prepared when the drop came, so 'busy' was already
+  # on and the wait below took that for the fall, returned while it still fell, and PE16 narrowed W during the fall)
+  $t = [Environment]::TickCount; while ([Environment]::TickCount - $t -lt 10000 -and (Prop 'OneKeyTestCatBusy') -ne 0) { Pump 20 }
   Drop ([int](($r.L + $r.R) / 2)) ([int]($r.T - 260))
   # first see the drop take effect (busy = fall), then wait for it to end - checking only 'busy 0' right after the drop could read the
   # state before the drop message was handled, and PE16 then took the landing for a walk being prepared (0.5.32 public run)
