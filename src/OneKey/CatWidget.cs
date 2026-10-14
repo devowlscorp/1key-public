@@ -888,7 +888,10 @@ internal static unsafe partial class CatWidget
     private static bool _passThrough;
     private static void SyncPassThrough()
     {
-        bool want = _shown && (_ducked || _holdAir || ((_clipOn || _clipLoading) && _playName == "fall"));   // 1Key 창과 겹친 동안도(0.5.30)
+        // 0.5.31(2026-10-14 사용자 영상: 착지하고 완전히 앉을 때까지 선택이 안 된다): 떨어지기 동작 전체가 아니라 공중에 있는 동안만 — 준비 중 ·
+        // 매달림 · 떨어지는 걸음(Lift > 앉아 내려 둔 만큼). 발이 닿은 뒤(착지 · 일어서기 · 돌아앉기 장)는 다시 누를 수 있다. 1Key 창과 겹친 동안도(0.5.30)
+        bool inAir = _holdAir || (_playName == "fall" && (_clipLoading || (_clipOn && (_clipFrame < 0 || (_clipFrame < _steps.Length && _steps[_clipFrame].Lift > SitSinkPx)))));
+        bool want = _shown && (_ducked || inAir);
         if (_hwnd == 0 || want == _passThrough) return;
         long ex = (long)Native.GetWindowLongPtrW(_hwnd, -20 /* GWL_EXSTYLE */);
         ex = want ? ex | 0x20 /* WS_EX_TRANSPARENT */ : ex & ~0x20L;
@@ -1113,6 +1116,14 @@ internal static unsafe partial class CatWidget
                     if (Native.GetCapture() == hwnd) Native.ReleaseCapture();
                     if (was && inside && _shown && _owner != 0)
                     {
+                        // 0.5.31(2026-10-14 사용자: 놀잇감을 제대로 못 누르면 메인 창이 뜬다): 깜짝 놀잇감이 나와 누를 수 있는 동안 고양이를 누르면
+                        // 1Key 창을 열지 않고 놀잇감을 누른 것과 같이 논다
+                        if (ToyClickable)
+                        {
+                            LogLine("cat click during toy -> play");
+                            OnGuestClick();
+                            return 0;
+                        }
                         if (EnvOk(out _, out _))
                         {
                             Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
@@ -1145,6 +1156,13 @@ internal static unsafe partial class CatWidget
                     return 0;
                 case (int)WM_CLIPREADY:
                     OnClipReady((int)wParam);
+                    return 0;
+                case (int)WM_TESTCLICK:  // 시험 전용(cattoy.ps1): 실제 마우스 없이 고양이 누름(놀잇감이면 같이 놀기, 아니면 1Key 창 열기 알림 — 떼었을 때와 같은 갈래)
+                    if (Program.IsTestMode && _shown && _owner != 0)
+                    {
+                        if (ToyClickable) { LogLine("cat click during toy -> play"); OnGuestClick(); }
+                        else if (EnvOk(out _, out _)) Native.PostMessageW(_owner, _clickMsg, _showGen, 0);
+                    }
                     return 0;
                 case (int)WM_TESTCLOCK:  // 시험 전용(perch.ps1 PE11): 정시 시계를 지금 띄운다
                     if (Program.IsTestMode && _shown && _clock == ClockPhase.None && !_dragOn) { StartClock(DateTime.Now); SetTick(FastMs); LogLine("test clock"); }

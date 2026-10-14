@@ -13,8 +13,8 @@
 # PE09 on A again, the display changes (WM_DISPLAYCHANGE -> the cat is shown again): it comes back on the taskbar, not on A
 # 0.5.28 (Codex C27-1..3):
 # PE10 while it falls, the cat lets clicks through: the window under any point of the falling cat (WindowFromPoint) is never the cat
-#      and is the test tool window's button where the cat passes over it; the cat window has WS_EX_TRANSPARENT only while falling;
-#      once it sits, the cat is hit again
+#      and is the test tool window's button where the cat passes over it; the cat window has WS_EX_TRANSPARENT only while in the air;
+#      and takes clicks again from touchdown (0.5.31: while it still lands and turns to sit); once it sits, it is hit again
 # PE11 on A with the hourly clock showing (test message WM_TESTCLOCK 0x8035), A minimized: the clock closes and the cat falls
 #      (log: "clock closed by fall" then "fallplan"; it does not jump straight down)
 # PE12 dropped high above form D, D closed while the cat is still falling: the next fall starts where the cat is in the air
@@ -264,8 +264,9 @@ try {
   $cw10 = CatWnd; $rr = New-Object PEU+RECT; [void][PEU]::GetWindowRect($cw10, [ref]$rr)
   $afterHit = [PEU]::RootAt([int](($rr.L + $rr.R) / 2), [int]($rr.T + ($rr.B - $rr.T) * 0.6)) -eq $cw10
   $afterTransp = ([int64][PEU]::GetWindowLongPtrW($cw10, -20) -band 0x20) -ne 0
-  # opaqueBusy: samples where the cat was still busy but no longer transparent - at most the last one or two (landing between the two reads)
-  Check PE10 "0|True|True|True|True|False" "$hitCat|$($hitCf -gt 0)|$($transp -gt 0)|$($opaqueBusy -le 2)|$afterHit|$afterTransp" "falling over a button: hit while transparent $hitCat of $samples samples (button got $hitCf, transparent $transp, opaque-but-busy $opaqueBusy); sitting: hit again ($s10)"
+  # opaqueBusy: samples still in the fall motion but no longer transparent = after the feet touched down (0.5.31: landing, getting up
+  # and turning to sit can be clicked - user 2026-10-14); there must be some
+  Check PE10 "0|True|True|True|True|False" "$hitCat|$($hitCf -gt 0)|$($transp -gt 0)|$($opaqueBusy -gt 0)|$afterHit|$afterTransp" "falling over a button: hit while transparent $hitCat of $samples samples (button got $hitCf, transparent $transp); clickable again from touchdown ($opaqueBusy samples while still landing); sitting: hit again ($s10)"
   $Cf.Close(); Pump 300
 
   # PE08 1Key window under the drop point: no hiding while falling

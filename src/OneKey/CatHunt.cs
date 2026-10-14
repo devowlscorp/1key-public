@@ -21,6 +21,8 @@ internal static unsafe partial class CatWidget
     private static long _guestDueAt;
     private static bool _huntCatchReq, _huntGiveUp, _huntSpliced;
     private static long _huntGuestAt;
+    private static long _toyHintAt;              // 0.5.31: 놀잇감 말풍선을 마지막으로 띄운 때(누를 수 있는 동안 5초마다 다시)
+    private static int _toyHintX, _toyHintY;
     private static string _huntKind = "";
     private static int _huntCatchStep = -1;
     private static double _huntGuestX;   // 놀잇감 쉬는 자리(화면 x)
@@ -120,7 +122,9 @@ internal static unsafe partial class CatWidget
         if (!GuestShow(_huntKind, _huntGuestX, ground, size, dir, hover, OnGuestClick)) { LogLine("guest show failed"); return; }
         _huntGuestAt = Environment.TickCount64;
         // 0.5.25(2026-10-13 사용자: 눌러야 한다는 걸 알 수 없다): 나타나면 놀잇감 바로 위에 한 줄 — 누르면 같이 논다(+5)
-        if (!CatMenu.IsOpen) { CatHearts.Show((int)Math.Round(_huntGuestX), (int)Math.Round(ground - hover - size * 1.1), _work, _dpi, !_light, -1, false, "", T.CatToyHint); LogLine("toy hint"); }
+        _toyHintX = (int)Math.Round(_huntGuestX); _toyHintY = (int)Math.Round(ground - hover - size * 1.1);
+        _toyHintAt = 0;
+        ToyHint(_huntGuestAt);
     }
 
     /// <summary>덮치기 j 번째 장: 앞으로 간 몫(0..1, 웅크림에서 두 장 뒤 땅을 차고 누르는 장 land 에 닿는다)과 올린 높이(px — 나비는 높이 뛴다).</summary>
@@ -166,11 +170,29 @@ internal static unsafe partial class CatWidget
     /// 사냥 한 걸음(ClipTick, 장을 그리기 전): 웅크림 장(HW 첫 장)에서 눌렀으면 덮치기로, 놀잇감이 머문 시간이 지났거나 메뉴 동작을 시켰으면 일어나기로
     /// 남은 걸음을 바꾼다. 잡는 장에 오면 놀잇감이 사라지고 하트 + 점수.
     /// </summary>
+    /// <summary>
+    /// 놀잇감 바로 위 말풍선 "깜짝 놀잇감! 눌러서 같이 놀아요 +5"(0.5.25). 0.5.31(사용자: 아직 안 보인다 — 처음 3초는 고양이가 다가가는 중이라 놓친다):
+    /// 누를 수 있는 동안(들어오는 중 · 쉬는 중, 아직 누르지 않음) 5초마다 다시 띄운다. 메뉴 판 · 다른 하트가 떠 있으면 다음 차례에.
+    /// </summary>
+    /// <summary>깜짝 놀잇감이 나와 누를 수 있는 동안(0.5.31: 그동안 고양이를 눌러도 1Key 창 대신 같이 논다).</summary>
+    private static bool ToyClickable => _clipOn && _playName == "hunt" && GuestOpen && !_huntSpliced && _gPhase is GuestPhase.Enter or GuestPhase.Idle;
+
+    private static void ToyHint(long now)
+    {
+        if (!GuestOpen || _gPhase is not (GuestPhase.Enter or GuestPhase.Idle) || _huntCatchReq || _huntSpliced) return;
+        if (_toyHintAt != 0 && now - _toyHintAt < 5000) return;
+        if (CatMenu.IsOpen || CatHearts.IsOpen) return;
+        CatHearts.Show(_toyHintX, _toyHintY, _work, _dpi, !_light, -1, false, "", T.CatToyHint);
+        _toyHintAt = now;
+        LogLine("toy hint");
+    }
+
     private static void HuntTick(int i)
     {
         if (_playName != "hunt" || i < 0 || i >= _steps.Length) return;
         var s = _steps[i];
         long now = Environment.TickCount64;
+        ToyHint(now);
         if (GuestAutoClickMs > 0 && _huntGuestAt > 0 && !_huntCatchReq && now - _huntGuestAt >= GuestAutoClickMs) { LogLine("guest autoclick"); _huntCatchReq = true; }
         // 바꿔 끼우는 자리 = 웅크린 장: 실룩 한 번이 끝난 장(HW 첫 장), 또는 웅크림이 끝난 장(다가가는 중에 눌렀으면 실룩 없이 바로 덮친다)
         bool crouchEnd = s.Art == HArtCrouch && s.Cell == _arts[HArtCrouch].Info.Frames - 1;

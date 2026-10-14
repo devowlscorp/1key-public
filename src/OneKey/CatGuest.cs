@@ -268,18 +268,23 @@ internal static unsafe partial class CatWidget
         // 누름 자리 + 반짝임(0.5.25, 2026-10-13 사용자: 눌러야 한다는 걸 알 수 없다): 누를 수 있는 동안(들어오는 중 · 쉬는 중) 둘레에 따뜻한 빛무리가
         // 1.2초 주기로 밝아졌다 흐려지고(가운데가 진하고 가장자리로 옅게), 반짝이 셋이 천천히 돈다. 빛무리의 알파는 1 이상이라 누름 자리도 겸한다
         bool canClick = _gPhase is GuestPhase.Enter or GuestPhase.Idle;
-        double hr = Math.Max(S * 0.62, 15 * k);
+        // 0.5.31(2026-10-14 사용자: 눌러야 한다는 강조가 아직 안 보인다): 빛무리를 더 크고 진하게(반지름 그림의 0.62 → 0.9배, 가운데 알파 110 → 150),
+        // 그리고 그 가장자리 안쪽에 깜빡이는 고리(알파 120~230) — 작은 놀잇감도 눈에 띄게. 창 안으로만(가장자리 2px 여유)
+        double hr = Math.Min(_gWin / 2.0 - 2, Math.Max(S * 0.9, 18 * k));
         if (canClick)
         {
-            double r2 = hr * hr, pulse = 0.55 + 0.45 * Math.Sin(t / 1200.0 * Math.PI * 2);
+            double r2 = hr * hr, pulse = 0.55 + 0.45 * Math.Sin(t / 1200.0 * Math.PI * 2), ringW = Math.Max(1.0, 1.4 * k);
             for (int y = 0; y < _gWin; y++)
                 for (int x = 0; x < _gWin; x++)
                 {
                     double ddx = x + 0.5 - ox, ddy = y + 0.5 - oy, d2 = ddx * ddx + ddy * ddy;
                     if (d2 > r2) continue;
-                    double f = 1 - Math.Sqrt(d2) / hr;
-                    uint A = (uint)Math.Max(1, Math.Round(f * f * 110 * pulse));
-                    o[y * _gWin + x] = (A << 24) | ((255 * A / 255) << 16) | ((236 * A / 255) << 8) | (170 * A / 255);
+                    double d = Math.Sqrt(d2), f = 1 - d / hr;
+                    uint A = (uint)Math.Max(1, Math.Round(f * f * 150 * pulse));
+                    double ring = Math.Abs(d - hr * 0.86) / ringW;
+                    if (ring < 1) A = Math.Max(A, (uint)Math.Round((1 - ring) * (120 + 110 * pulse)));
+                    A = Math.Min(255u, A);
+                    o[y * _gWin + x] = (A << 24) | ((255 * A / 255) << 16) | ((226 * A / 255) << 8) | (140 * A / 255);
                 }
         }
         // 그림: 거꾸로 따라가기(창 픽셀 → 그림 칸 좌표) + 쌍선형
