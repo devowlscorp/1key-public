@@ -5,6 +5,16 @@
 #
 #   powershell -ExecutionPolicy Bypass -File tools\tests\installer.ps1 [exe]
 #
+# Expectations reviewed 2026-10-14 (in-house 0.3.136, public 0.5.32) - no check changed:
+# - Autostart today = the Startup-folder shortcut 1Key.lnk (user) or the scheduled task 1Key-AdminStartup-<SID> (admin, made by the
+#   settings screen). The setup never creates, moves or rewrites a registration (MigrateAutostart is kept but not called - the
+#   makensis warning 6010); IN18-IN26 test exactly that. Uninstall removes only what points at this install: old Run value / old task
+#   1Key_AutoStart (IN05-IN12), our Startup shortcut (IN27), never a same-name shortcut that points elsewhere (IN28).
+# - Not covered here: the admin task 1Key-AdminStartup-<SID> on uninstall (public 0.5.22+: Uninstall runs 1Key.exe --autostart-remove;
+#   the in-house 0.3.136 setup does not). Making that task needs elevation (UAC) - check it by hand in an isolated VM.
+# - This script still writes test registrations (Run value / task / Startup shortcut with .t): keep it out of the default runs and
+#   run it only in an isolated VM (Defender has flagged autostart writes on this PC before).
+#
 # IN01 the test setup is built from the exe (makensis, TESTSUFFIX=.t)
 # IN02 silent install: 1Key.exe (same SHA-256 as the source) and Uninstall.exe in the install folder
 # IN03 the Settings > Apps entry: name 1Key.t, the version, install location, uninstall command
