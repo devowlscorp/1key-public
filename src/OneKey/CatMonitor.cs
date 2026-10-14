@@ -72,6 +72,24 @@ internal static unsafe partial class CatWidget
         return true;
     }
 
+    /// <summary>
+    /// 고양이를 보일 수 없을 만큼 좁은 작업 영역인가(0.5.35, Codex 0.5.34 회신 1): 보이는 데 필요한 공간만 본다 — 앉은 고양이 한 마리(기본 키)와 양옆 여백,
+    /// 높이는 키 3배(하트 · 이름표 자리). 걷기 · 사냥 공간은 그 동작이 직접 본다(모자라면 그 동작을 하지 않고 제자리 — 걷기 · 사냥 계획이 false).
+    /// 예전 규칙(주 모니터: 폭의 5분의 1 ≥ 키 5배)은 1920×1080 을 150% 로 쓰면(키 78px, 384 &lt; 390) 고양이를 숨겼고, 0.5.34 의 보조 모니터 규칙(폭 ≥ 키 10배)과 둘이었다.
+    /// </summary>
+    internal static bool NarrowWork(int width, int height, int dpi)
+    {
+        int fh = (int)Math.Round(HeightLogical * dpi / 96.0), m = (int)Math.Round(MarginLogical * dpi / 96.0);
+        return width < fh * 2 + m * 2 || height < fh * 3;
+    }
+
+    /// <summary>siteunit PC02: 1920×1032 를 100 · 125 · 150 · 200 %, 세로 1080×1872, 1280×720 150 %, 너무 좁은 폭 · 너무 낮은 높이. Y = 보임, N = 좁음.</summary>
+    internal static string SpaceSelfTest()
+    {
+        var cases = new[] { (1920, 1032, 96), (1920, 1032, 120), (1920, 1032, 144), (1920, 1032, 192), (1080, 1872, 96), (1280, 720, 144), (130, 1000, 96), (200, 120, 96) };
+        return string.Join("|", cases.Select(c => NarrowWork(c.Item1, c.Item2, c.Item3) ? "N" : "Y"));
+    }
+
     /// <summary>작업 표시줄에 앉은 자리를 집으로(그 모니터도 — 다시 켜도 거기서).</summary>
     private static void SaveHomeAt(int x)
     {

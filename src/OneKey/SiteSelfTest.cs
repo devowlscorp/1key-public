@@ -500,6 +500,9 @@ internal static class SiteSelfTest
             // 0.5.28(Codex C27-2 · C27-3): 고양이가 창 위에서 걷는 중 · 떨어지는 중의 실제 자리, 덮임 판정, 창 폭이 줄 때 남은 걸음
             Check("PC01", "620|True|False|True|False|780|432|900", CatWidget.PerchSelfTest(),
                 "cat on a window: walking seat = start + current step (covered only where it walked to, not the spot it left), a narrowed window catches the remaining steps, a fall in progress is at its current height (not at the destination), idle = its place");
+            // 0.5.35(Codex 0.5.34 회신 1): 보이는 데 필요한 공간만 — 1920×1080 150 % 에서도 보인다
+            Check("PC02", "Y|Y|Y|Y|Y|Y|N|N", CatWidget.SpaceSelfTest(),
+                "cat work area: shown on 1920x1032 at 100/125/150/200 %, a portrait 1080 monitor and 1280x720 at 150 %; hidden only when not even one cat fits (130 px wide, 120 px high at 100 %)");
             Check("PW01", "True|False|True|True|False|False|True",
                 $"{App.PasswordChanged("id", Mo("pw1"), 2, Sl(2, "id", "pw2"))}|{App.PasswordChanged("id", Mo("pw"), 2, Sl(2, "id2", "pw"))}"
                 + $"|{App.PasswordChanged("a", Mo(), 1, Sl(1, "b"))}|{App.PasswordChanged("x", Mo("y", "z"), 3, Sl(3, "x", "y", "q"))}"
