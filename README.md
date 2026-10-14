@@ -4,10 +4,9 @@
 비밀번호·자주 쓰는 문장을 단축키 한 번으로 입력해 주는 Windows 11용 작은 도구인데, 작업 표시줄과 열어 둔 창 위를 오가며 고양이 한 마리가 같이 삽니다.
 쓰다듬고 츄르를 주면 콩떡만 하던 고양이가 대왕식빵이 될 때까지 자라고 — **백업하고 비밀번호를 바꾸는 보안 습관도 고양이 밥이 됩니다.**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/cat/walk-dark.webp">
-  <img src="docs/images/cat/walk-light.webp" alt="걷다가 돌아앉아 앞발 인사하는 고양이" width="420">
-</picture>
+<img src="docs/images/cat/intro.gif" alt="1Key 소개: 단축키 입력, 작업 표시줄을 걷는 고양이, 창 위에 앉기, 같이 놀기, 깜짝 놀잇감, 콩떡에서 대왕식빵까지, 위젯 화면, 앨범" width="640">
+
+▶ [소개 영상(MP4, 1분 14초)](docs/video/1key-cat-intro.mp4)
 
 ## 🐱 고양이 키우기
 
