@@ -282,11 +282,6 @@ struct Blake2b {
 
 @inline(__always) private func rotr(_ x: UInt64, _ n: UInt64) -> UInt64 { (x &>> n) | (x &<< (64 - n)) }
 
-private func le32(_ v: Int) -> [UInt8] {
-    let u = UInt32(truncatingIfNeeded: v)
-    return [UInt8(truncatingIfNeeded: u), UInt8(truncatingIfNeeded: u >> 8), UInt8(truncatingIfNeeded: u >> 16), UInt8(truncatingIfNeeded: u >> 24)]
-}
-
 private func loadLE64(_ b: [UInt8], _ at: Int) -> UInt64 {
     var r: UInt64 = 0
     for i in 0..<8 { r |= UInt64(b[at + i]) << (8 * UInt64(i)) }
